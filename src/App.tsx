@@ -787,7 +787,7 @@ function App() {
 
         {buildingView ? (
           <div className="flex-1 flex flex-col gap-4 lg:flex-row">
-            <div className="relative h-[560px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-gray-950">
+            <div className="relative h-[560px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
               <Canvas
                 key={`building-${buildingView.ipAddress}`}
                 camera={{ position: [0, 3.6, 8.5], fov: 42 }}
