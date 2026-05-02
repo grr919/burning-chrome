@@ -57,6 +57,20 @@ type HttpsCertificateResponse = {
   warning?: string;
 };
 
+type ExposureRecord = {
+  ipAddress: string;
+  sourceProvider: 'internetdb';
+  serviceCount: number;
+  openPortCount: number;
+  topPorts: string[];
+  serviceNames: string[];
+  labels: string[];
+  hostnames: string[];
+  lastUpdatedAt?: string;
+  warning?: string;
+  error?: string;
+};
+
 type SshLaunchResponse = {
   provider: 'ssh_launch';
   status: 'ready' | 'error';
@@ -332,6 +346,64 @@ function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 
   return 'ok';
 }
 
+function getExposureSummarySentences(exposure: ExposureRecord | null): string[] {
+  if (!exposure) {
+    return [];
+  }
+
+  const ports = new Set(
+    exposure.topPorts
+      .map((entry) => {
+        const match = entry.match(/^(\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  );
+
+  const sentences: string[] = [];
+
+  if (ports.has(80) && ports.has(443)) {
+    sentences.push('This IP appears to expose a public website over both HTTP and HTTPS.');
+  } else if (ports.has(443)) {
+    sentences.push('This IP appears to expose a secure public web service over HTTPS.');
+  } else if (ports.has(80)) {
+    sentences.push('This IP appears to expose a public web service over HTTP.');
+  }
+
+  if (ports.has(22)) {
+    sentences.push('This IP appears to expose SSH for remote shell access.');
+  }
+
+  if (ports.has(53)) {
+    sentences.push('This IP appears to expose DNS services.');
+  }
+
+  if ([25, 465, 587].some((port) => ports.has(port))) {
+    sentences.push('This IP appears to expose mail-related services.');
+  }
+
+  if (ports.has(3389)) {
+    sentences.push('This IP appears to expose Remote Desktop services.');
+  }
+
+  const knownPorts = new Set([22, 25, 53, 80, 443, 465, 587, 3389]);
+  const additionalPorts = [...ports].filter((port) => !knownPorts.has(port));
+  if (additionalPorts.length > 0) {
+    sentences.push(`This IP appears to expose additional public-facing services on ports ${additionalPorts.slice(0, 4).join(', ')}.`);
+  }
+
+  if (sentences.length === 0) {
+    if (exposure.openPortCount > 0 || exposure.serviceCount > 0) {
+      sentences.push('This IP appears to expose one or more public-facing services, but none matched the main categories shown here.');
+    } else {
+      sentences.push('No public-facing services were observed for this IP.');
+    }
+  }
+
+  return sentences;
+}
+
+
 function App() {
   const [zoomLevel, setZoomLevel] = useState<number>(0);
   const [currentPosition, setCurrentPosition] = useState<GridPosition>({
@@ -355,6 +427,8 @@ function App() {
   const [nmapLoadingIp, setNmapLoadingIp] = useState<string | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
+  const [exposureResult, setExposureResult] = useState<ExposureRecord | null>(null);
+  const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
   const [sshLaunchLoadingIp, setSshLaunchLoadingIp] = useState<string | null>(null);
   const [sshLaunchResult, setSshLaunchResult] = useState<SshLaunchResponse | null>(null);
 
@@ -522,8 +596,10 @@ function App() {
     setSelectedTargetIp(building.ipAddress);
     setNmapLoadingIp(building.ipAddress);
     setCertificateLoadingIp(building.ipAddress);
+    setExposureLoadingIp(building.ipAddress);
     setNmapResult(null);
     setCertificateResult(null);
+    setExposureResult(null);
     setSshLaunchLoadingIp(null);
     setSshLaunchResult(null);
 
@@ -594,12 +670,69 @@ function App() {
         setCertificateLoadingIp(null);
       }
     })();
+
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/exposure', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify({ ipAddresses: [building.ipAddress] }),
+        });
+        const json = (await response.json()) as { records?: ExposureRecord[]; error?: string; details?: string };
+
+        if (!response.ok) {
+          setExposureResult({
+            ipAddress: building.ipAddress,
+            sourceProvider: 'internetdb',
+            serviceCount: 0,
+            openPortCount: 0,
+            topPorts: [],
+            serviceNames: [],
+            labels: [],
+            hostnames: [],
+            error: json.error ?? json.details ?? `Exposure lookup failed with status ${response.status}`,
+          });
+          return;
+        }
+
+        const record = Array.isArray(json.records) ? json.records[0] : null;
+        setExposureResult(record ?? {
+          ipAddress: building.ipAddress,
+          sourceProvider: 'internetdb',
+          serviceCount: 0,
+          openPortCount: 0,
+          topPorts: [],
+          serviceNames: [],
+          labels: [],
+          hostnames: [],
+        });
+      } catch (error) {
+        setExposureResult({
+          ipAddress: building.ipAddress,
+          sourceProvider: 'internetdb',
+          serviceCount: 0,
+          openPortCount: 0,
+          topPorts: [],
+          serviceNames: [],
+          labels: [],
+          hostnames: [],
+          error: error instanceof Error ? error.message : 'Unknown exposure lookup error',
+        });
+      } finally {
+        setExposureLoadingIp(null);
+      }
+    })();
   };
 
   const handleExitBuildingView = () => {
     setBuildingView(null);
     setNmapLoadingIp(null);
     setCertificateLoadingIp(null);
+    setExposureLoadingIp(null);
     setSshLaunchLoadingIp(null);
     setSshLaunchResult(null);
   };
@@ -812,6 +945,39 @@ function App() {
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600 mt-2">No Nmap data available yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-semibold">Public-facing services</div>
+                  {exposureLoadingIp ? (
+                    <div className="text-sm text-blue-700 mt-1">Looking up exposure data for {exposureLoadingIp}...</div>
+                  ) : exposureResult ? (
+                    <div className="space-y-3 mt-2">
+                      <div className="space-y-2">
+                        {getExposureSummarySentences(exposureResult).map((sentence) => (
+                          <div key={sentence} className="text-sm text-gray-700">
+                            {sentence}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
+                        <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
+                        <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
+                        {exposureResult.topPorts.length > 0 && (
+                          <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
+                        )}
+                        {exposureResult.hostnames.length > 0 && (
+                          <div className="break-all"><span className="text-gray-600">Hostnames:</span> {exposureResult.hostnames.join(', ')}</div>
+                        )}
+                      </div>
+
+                      {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
+                      {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
                   )}
                 </div>
 
