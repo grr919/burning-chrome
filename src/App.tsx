@@ -14,27 +14,6 @@ type GridPosition = {
 
 type LookupMode = 'rdap' | 'ptr';
 
-type NmapPortRecord = {
-  port: number;
-  protocol: string;
-  state: string;
-  service?: string;
-  version?: string;
-};
-
-type NmapInspectResponse = {
-  provider: 'nmap';
-  ipAddress: string;
-  status: 'ready' | 'error';
-  hostUp: boolean;
-  hostnames: string[];
-  ports: NmapPortRecord[];
-  osGuess?: string;
-  rawCommand?: string;
-  error?: string;
-  warning?: string;
-};
-
 type HttpsCertificateResponse = {
   provider: 'https_certificate';
   ipAddress: string;
@@ -423,8 +402,6 @@ function App() {
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
-  const [nmapResult, setNmapResult] = useState<NmapInspectResponse | null>(null);
-  const [nmapLoadingIp, setNmapLoadingIp] = useState<string | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
   const [exposureResult, setExposureResult] = useState<ExposureRecord | null>(null);
@@ -594,48 +571,12 @@ function App() {
   const handleFlagClick = (building: BuildingViewState) => {
     setBuildingView(building);
     setSelectedTargetIp(building.ipAddress);
-    setNmapLoadingIp(building.ipAddress);
     setCertificateLoadingIp(building.ipAddress);
     setExposureLoadingIp(building.ipAddress);
-    setNmapResult(null);
     setCertificateResult(null);
     setExposureResult(null);
     setSshLaunchLoadingIp(null);
     setSshLaunchResult(null);
-
-    void (async () => {
-      try {
-        const response = await fetch(`/api/nmap-inspect?ip=${encodeURIComponent(building.ipAddress)}`);
-        const json = (await response.json()) as NmapInspectResponse & { details?: string };
-
-        if (!response.ok) {
-          setNmapResult({
-            provider: 'nmap',
-            ipAddress: building.ipAddress,
-            status: 'error',
-            hostUp: false,
-            hostnames: [],
-            ports: [],
-            error: json.error ?? json.details ?? `Nmap inspection failed with status ${response.status}`,
-          });
-          return;
-        }
-
-        setNmapResult(json);
-      } catch (error) {
-        setNmapResult({
-          provider: 'nmap',
-          ipAddress: building.ipAddress,
-          status: 'error',
-          hostUp: false,
-          hostnames: [],
-          ports: [],
-          error: error instanceof Error ? error.message : 'Unknown Nmap inspection error',
-        });
-      } finally {
-        setNmapLoadingIp(null);
-      }
-    })();
 
     void (async () => {
       try {
@@ -730,7 +671,6 @@ function App() {
 
   const handleExitBuildingView = () => {
     setBuildingView(null);
-    setNmapLoadingIp(null);
     setCertificateLoadingIp(null);
     setExposureLoadingIp(null);
     setSshLaunchLoadingIp(null);
@@ -790,8 +730,8 @@ function App() {
   const getInstructionText = (): string => {
     if (zoomLevel === 0) {
       return lookupMode === 'rdap'
-        ? 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data. Click a building flag for close-up building view and Nmap data.'
-        : 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent. Click a building flag for close-up building view and Nmap data.';
+        ? 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data. Click a building flag for close-up building view.'
+        : 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent. Click a building flag for close-up building view.';
     }
 
     if (zoomLevel === 1) {
@@ -895,59 +835,6 @@ function App() {
               </div>
 
               <div className="mt-4 space-y-5">
-                <div>
-                  {nmapLoadingIp ? (
-                    <div className="text-sm text-blue-700">Running Nmap inspection for {nmapLoadingIp}...</div>
-                  ) : nmapResult ? (
-                    <div className="space-y-4">
-                      <div>
-                        <div className="font-semibold">Host status</div>
-                        <div className="text-sm text-gray-700 mt-1">{nmapResult.hostUp ? 'up' : 'down'}</div>
-                        {nmapResult.error && <div className="text-sm text-red-700 mt-2">{nmapResult.error}</div>}
-                        {nmapResult.warning && <div className="text-sm text-blue-700 mt-2">{nmapResult.warning}</div>}
-                      </div>
-
-                      {nmapResult.hostnames.length > 0 && (
-                        <div>
-                          <div className="font-semibold">Hostnames</div>
-                          <div className="space-y-2 mt-2">
-                            {nmapResult.hostnames.map((hostname) => (
-                              <div key={hostname} className="text-xs bg-gray-100 rounded p-2 break-all">{hostname}</div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {nmapResult.osGuess && (
-                        <div>
-                          <div className="font-semibold">OS guess</div>
-                          <div className="text-sm text-gray-700 mt-1">{nmapResult.osGuess}</div>
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="font-semibold">Ports</div>
-                        {nmapResult.ports.length > 0 ? (
-                          <div className="space-y-2 mt-2">
-                            {nmapResult.ports.map((port) => (
-                              <div key={`${port.protocol}-${port.port}`} className="text-xs bg-gray-100 rounded p-2">
-                                <div><span className="text-gray-600">Port:</span> {port.port}/{port.protocol}</div>
-                                <div><span className="text-gray-600">State:</span> {port.state}</div>
-                                {port.service && <div><span className="text-gray-600">Service:</span> {port.service}</div>}
-                                {port.version && <div><span className="text-gray-600">Version:</span> {port.version}</div>}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-gray-700 mt-1">No ports were reported.</div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600 mt-2">No Nmap data available yet.</div>
-                  )}
-                </div>
-
                 <div>
                   <div className="font-semibold">Public-facing services</div>
                   {exposureLoadingIp ? (
