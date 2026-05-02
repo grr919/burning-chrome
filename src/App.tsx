@@ -382,6 +382,64 @@ function getExposureSummarySentences(exposure: ExposureRecord | null): string[] 
   return sentences;
 }
 
+function extractPortNumbers(exposure: ExposureRecord | null): Set<number> {
+  if (!exposure) {
+    return new Set();
+  }
+
+  return new Set(
+    exposure.topPorts
+      .map((entry) => {
+        const match = entry.match(/^(\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
+function normalizeHostnameCandidate(value: string): string | null {
+  const normalized = value.trim().toLowerCase().replace(/^dns:/i, '');
+  if (!normalized || /^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    return null;
+  }
+  if (!/^[a-z0-9.-]+$/.test(normalized) || !normalized.includes('.')) {
+    return null;
+  }
+  return normalized;
+}
+
+function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null) {
+  const ports = extractPortNumbers(exposure);
+  const hasHttp = ports.has(80);
+  const hasHttps = ports.has(443);
+
+  if (!hasHttp && !hasHttps) {
+    return null;
+  }
+
+  const candidates = [
+    ...(exposure?.hostnames ?? []),
+    ...(certificate?.subjectAltNames ?? []),
+    certificate?.subjectCn ?? '',
+    certificate?.host ?? '',
+  ]
+    .map((value) => normalizeHostnameCandidate(value))
+    .filter((value): value is string => Boolean(value));
+
+  const hostname = candidates.find((value) => !value.startsWith('*.'));
+  if (!hostname) {
+    return null;
+  }
+
+  return {
+    hostname,
+    hasHttp,
+    hasHttps,
+    primaryUrl: `${hasHttps ? 'https' : 'http'}://${hostname}`,
+    secondaryUrl: hasHttp && hasHttps ? `http://${hostname}` : null,
+  };
+}
+
 
 function App() {
   const [zoomLevel, setZoomLevel] = useState<number>(0);
@@ -435,6 +493,10 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
+  const websiteCandidate = useMemo(
+    () => getWebsiteCandidate(exposureResult, certificateResult),
+    [exposureResult, certificateResult]
+  );
 
   const handleGridClick = (x: number, y: number) => {
     const octetValue = y * 16 + x;
@@ -814,7 +876,7 @@ function App() {
               </div>
 
               <div className="mt-3 flex flex-col gap-2">
-                <div>
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleLaunchSsh}
                     disabled={sshLaunchLoadingIp === buildingView.ipAddress}
@@ -823,7 +885,31 @@ function App() {
                   >
                     {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH…' : 'Open SSH client'}
                   </button>
+
+                  {websiteCandidate && (
+                    <a
+                      href={websiteCandidate.primaryUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                      title={`Open ${websiteCandidate.hostname}`}
+                    >
+                      Open website
+                    </a>
+                  )}
                 </div>
+
+                {websiteCandidate && (
+                  <div className="text-sm text-gray-700">
+                    Website candidate: {websiteCandidate.hostname}
+                    {websiteCandidate.secondaryUrl ? (
+                      <div className="text-xs text-gray-600 mt-1">
+                        Tries HTTPS first. HTTP may also be available at {websiteCandidate.secondaryUrl}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {sshLaunchResult && sshLaunchResult.ipAddress === buildingView.ipAddress && (
                   <div className={`text-sm ${sshLaunchResult.status === 'ready' ? 'text-green-700' : 'text-red-700'}`}>
                     {sshLaunchResult.statusSummary ?? sshLaunchResult.error}
