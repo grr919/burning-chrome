@@ -279,8 +279,45 @@ function getAsnSummaryLabel(record?: AsnRecord | null): string {
   return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
 }
 
-function escapeHtml(value?: string | number | null): string {
-  return String(value ?? '')
+function valueToDisplayText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => valueToDisplayText(item)).filter(Boolean).join('; ');
+  }
+
+  if (typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    const preferred = objectValue.error ?? objectValue.details ?? objectValue.message ?? objectValue.reason ?? objectValue.statusText;
+    if (preferred !== undefined && preferred !== value) {
+      const preferredText = valueToDisplayText(preferred);
+      if (preferredText) {
+        return preferredText;
+      }
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'Unserializable object error';
+    }
+  }
+
+  return String(value);
+}
+
+function escapeHtml(value?: unknown): string {
+  return valueToDisplayText(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -288,10 +325,20 @@ function escapeHtml(value?: string | number | null): string {
     .replace(/'/g, '&#39;');
 }
 
+function getAsnApiErrorMessage(...values: unknown[]): string {
+  for (const value of values) {
+    const text = valueToDisplayText(value).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return 'Unknown ASN lookup error';
+}
+
 function getAsnDiagnosticLabel(record: AsnRecord | undefined, loading: boolean): string {
   if (loading) return 'loading';
   if (record?.asn) return 'ok';
-  if (record?.error) return `error: ${record.error}`;
+  if (record?.error) return `error: ${valueToDisplayText(record.error)}`;
   return 'not requested or no response yet';
 }
 
@@ -707,20 +754,23 @@ function IPGrid({
         body: JSON.stringify({ ipAddresses: missing }),
       });
 
-      let json: { records?: AsnRecord[]; error?: string; details?: string } = {};
+      let json: { records?: AsnRecord[]; error?: unknown; details?: unknown; message?: unknown } = {};
       const responseText = await response.text();
       if (responseText.trim()) {
         try {
-          json = JSON.parse(responseText) as { records?: AsnRecord[]; error?: string; details?: string };
+          json = JSON.parse(responseText) as { records?: AsnRecord[]; error?: unknown; details?: unknown; message?: unknown };
         } catch {
+          const looksLikeHtml = responseText.trim().startsWith('<');
           json = {
-            error: `ASN endpoint returned non-JSON text. Status ${response.status}. First characters: ${responseText.slice(0, 80)}`,
+            error: looksLikeHtml
+              ? `The Vercel route /api/asn returned HTML instead of JSON. Put api/asn.ts at the repository root, commit it, and redeploy. Status ${response.status}.`
+              : `ASN endpoint returned non-JSON text. Status ${response.status}. First characters: ${responseText.slice(0, 120)}`,
           };
         }
       }
 
       if (!response.ok) {
-        const message = json.error ?? json.details ?? `ASN lookup failed with status ${response.status}`;
+        const message = getAsnApiErrorMessage(json.error, json.details, json.message, `ASN lookup failed with status ${response.status}`);
         const failedRecords: Record<string, AsnRecord> = {};
         for (const ipAddress of missing) {
           failedRecords[ipAddress] = { ipAddress, error: message };
@@ -735,6 +785,7 @@ function IPGrid({
         const normalizedRecord: AsnRecord = {
           ...record,
           asn: normalizeAsn(record.asn) ?? undefined,
+          error: record.error ? getAsnApiErrorMessage(record.error) : undefined,
         };
         nextRecords[normalizedRecord.ipAddress] = normalizedRecord;
         asnCache[normalizedRecord.ipAddress] = normalizedRecord;
@@ -750,7 +801,7 @@ function IPGrid({
 
       setAsnInfo((prev) => ({ ...prev, ...nextRecords }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown ASN lookup error';
+      const message = getAsnApiErrorMessage(error);
       const failedRecords: Record<string, AsnRecord> = {};
       for (const ipAddress of missing) {
         failedRecords[ipAddress] = { ipAddress, error: message };
