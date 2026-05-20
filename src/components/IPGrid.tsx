@@ -1081,6 +1081,16 @@ function IPGrid({
       }
     }
 
+    const getAsnKeyForCell = (x: number, y: number): string | null => {
+      if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
+        return null;
+      }
+
+      const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
+      const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
+      return normalizeAsn(asnRecord?.asn) ?? null;
+    };
+
     for (let y = 0; y < gridSize; y += 1) {
       for (let x = 0; x < gridSize; x += 1) {
         const xPos = x * spacing - offset;
@@ -1088,21 +1098,25 @@ function IPGrid({
 
         const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
         const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
-        const asnBorderColor = asnRecord?.asn ? getAsnColor(asnRecord.asn) : blockOutlineColor;
-        const asnBorderOpacity = asnRecord?.asn ? 1 : 0.28;
-        const asnFillOpacity = asnRecord?.asn ? 0.1 : 0.04;
+        const asnKey = normalizeAsn(asnRecord?.asn);
+        const asnBorderColor = asnKey ? getAsnColor(asnKey) : blockOutlineColor;
+        const asnFillOpacity = asnKey ? 0.08 : 0.025;
         const lotSize = spacing - 0.18;
         const halfLotSize = lotSize / 2;
-        const borderWidth = asnRecord?.asn ? 0.16 : 0.07;
-        const borderHeight = asnRecord?.asn ? 0.075 : 0.035;
-        const borderY = groundY + 0.055;
+        const borderWidth = 0.18;
+        const borderHeight = 0.085;
+        const borderY = groundY + 0.065;
+        const shouldDrawTop = Boolean(asnKey) && getAsnKeyForCell(x, y - 1) !== asnKey;
+        const shouldDrawBottom = Boolean(asnKey) && getAsnKeyForCell(x, y + 1) !== asnKey;
+        const shouldDrawLeft = Boolean(asnKey) && getAsnKeyForCell(x - 1, y) !== asnKey;
+        const shouldDrawRight = Boolean(asnKey) && getAsnKeyForCell(x + 1, y) !== asnKey;
         const borderMaterial = (
           <meshStandardMaterial
             color={asnBorderColor}
             emissive={asnBorderColor}
-            emissiveIntensity={asnRecord?.asn ? 0.35 : 0.05}
+            emissiveIntensity={0.45}
             transparent
-            opacity={asnBorderOpacity}
+            opacity={1}
             depthWrite={false}
             depthTest={false}
           />
@@ -1120,25 +1134,33 @@ function IPGrid({
               <meshStandardMaterial color={asnBorderColor} transparent opacity={asnFillOpacity} depthWrite={false} depthTest={false} />
             </mesh>
 
-            <mesh key={`asn-border-top-${x}-${y}`} position={[xPos, borderY, zPos - halfLotSize]} renderOrder={5}>
-              <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
-              {borderMaterial}
-            </mesh>
+            {shouldDrawTop && (
+              <mesh key={`asn-border-top-${x}-${y}`} position={[xPos, borderY, zPos - halfLotSize]} renderOrder={5}>
+                <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
+                {borderMaterial}
+              </mesh>
+            )}
 
-            <mesh key={`asn-border-bottom-${x}-${y}`} position={[xPos, borderY, zPos + halfLotSize]} renderOrder={5}>
-              <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
-              {borderMaterial}
-            </mesh>
+            {shouldDrawBottom && (
+              <mesh key={`asn-border-bottom-${x}-${y}`} position={[xPos, borderY, zPos + halfLotSize]} renderOrder={5}>
+                <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
+                {borderMaterial}
+              </mesh>
+            )}
 
-            <mesh key={`asn-border-left-${x}-${y}`} position={[xPos - halfLotSize, borderY, zPos]} renderOrder={5}>
-              <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
-              {borderMaterial}
-            </mesh>
+            {shouldDrawLeft && (
+              <mesh key={`asn-border-left-${x}-${y}`} position={[xPos - halfLotSize, borderY, zPos]} renderOrder={5}>
+                <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
+                {borderMaterial}
+              </mesh>
+            )}
 
-            <mesh key={`asn-border-right-${x}-${y}`} position={[xPos + halfLotSize, borderY, zPos]} renderOrder={5}>
-              <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
-              {borderMaterial}
-            </mesh>
+            {shouldDrawRight && (
+              <mesh key={`asn-border-right-${x}-${y}`} position={[xPos + halfLotSize, borderY, zPos]} renderOrder={5}>
+                <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
+                {borderMaterial}
+              </mesh>
+            )}
           </group>
         );
       }
