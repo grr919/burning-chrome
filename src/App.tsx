@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Home, ArrowLeft, RotateCcw } from 'lucide-react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid from './components/IPGrid';
@@ -67,6 +67,47 @@ type BuildingViewState = {
   buildingHeight: number;
   flagImageUrl?: string | null;
   countryCodeLabel?: string;
+  asn?: string;
+  asnName?: string;
+  route?: string;
+  asnColor?: string;
+};
+
+type LayoutMode = 'grid' | 'street';
+type GridSystemMode = 'grid1' | 'grid2';
+type StreetOrientation = 'row' | 'column';
+
+type Grid2Position = {
+  outerFirstOctet: number;
+  outerSecondOctet: number;
+  innerThirdStart: number;
+  innerFourthStart: number;
+};
+
+const GRID2_WINDOW_SIZE = 16;
+const DEFAULT_GRID2_POSITION: Grid2Position = {
+  outerFirstOctet: 0,
+  outerSecondOctet: 0,
+  innerThirdStart: 0,
+  innerFourthStart: 0,
+};
+
+function clampOctet(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function clampGrid2WindowStart(value: number): number {
+  return Math.max(0, Math.min(256 - GRID2_WINDOW_SIZE, Math.round(value)));
+}
+
+type StreetBuilding = {
+  ipAddress: string;
+  label: number;
+  color: string;
+  buildingFamily: 'block' | 'tower' | 'stepped' | 'fort';
+  buildingHeight: number;
+  streetSide: 'left' | 'right';
+  streetPosition: number;
 };
 
 function getIpFromCell(zoomLevel: number, currentPosition: GridPosition, x: number, y: number): string {
@@ -87,7 +128,40 @@ function getIpFromCell(zoomLevel: number, currentPosition: GridPosition, x: numb
   return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.${value}`;
 }
 
-function getRepresentativeTarget(zoomLevel: number, currentPosition: GridPosition): string {
+
+function getGrid2IpFromCell(grid2Position: Grid2Position, x: number, y: number): string {
+  const firstOctet = clampOctet(grid2Position.outerFirstOctet);
+  const secondOctet = clampOctet(grid2Position.outerSecondOctet);
+  const thirdOctet = clampOctet(grid2Position.innerThirdStart + y);
+  const fourthOctet = clampOctet(grid2Position.innerFourthStart + x);
+  return `${firstOctet}.${secondOctet}.${thirdOctet}.${fourthOctet}`;
+}
+
+function getGridAwareIpFromCell(
+  gridSystemMode: GridSystemMode,
+  zoomLevel: number,
+  currentPosition: GridPosition,
+  grid2Position: Grid2Position,
+  x: number,
+  y: number
+): string {
+  if (gridSystemMode === 'grid2') {
+    return getGrid2IpFromCell(grid2Position, x, y);
+  }
+
+  return getIpFromCell(zoomLevel, currentPosition, x, y);
+}
+
+function parseIpOctets(ipAddress: string): [number, number, number, number] {
+  const [first = 0, second = 0, third = 0, fourth = 0] = ipAddress.split('.').map((part) => Number.parseInt(part, 10));
+  return [first, second, third, fourth].map((value) => (Number.isFinite(value) ? clampOctet(value) : 0)) as [number, number, number, number];
+}
+
+function getRepresentativeTarget(gridSystemMode: GridSystemMode, zoomLevel: number, currentPosition: GridPosition, grid2Position: Grid2Position): string {
+  if (gridSystemMode === 'grid2') {
+    return getGrid2IpFromCell(grid2Position, 0, 0);
+  }
+
   if (zoomLevel === 0) return '8.8.8.8';
   if (zoomLevel === 1) return `${currentPosition.firstOctet}.1.1.1`;
   if (zoomLevel === 2) return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.1.1`;
@@ -309,8 +383,13 @@ function BuildingDetailScene({
       )}
 
       <Html position={[0, labelY, 0]} center>
-        <div className="bg-white/90 text-black px-2 py-1 rounded text-sm shadow">
-          {building.ipAddress}
+        <div className="bg-white/90 text-black px-2 py-1 rounded text-sm shadow space-y-1">
+          <div className="font-semibold">{building.ipAddress}</div>
+          {building.asn && (
+            <div className="text-xs rounded px-1.5 py-0.5 text-white" style={{ background: building.asnColor ?? '#4b5563' }}>
+              {building.asn}{building.asnName ? ` — ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
+            </div>
+          )}
         </div>
       </Html>
     </>
@@ -440,6 +519,264 @@ function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: Https
   };
 }
 
+function pseudoRandom(seed: number): number {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function getHeightFromServiceCount(cubeSize: number, serviceCount: number): number {
+  const normalized = Math.log10(serviceCount + 1);
+  return cubeSize * (0.72 + normalized * 1.95);
+}
+
+function parseTopPortNumber(portLabel: string): number | null {
+  const match = portLabel.match(/^(\d+)/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getStreetBuildingFamily(exposureRecord: ExposureRecord | null): 'block' | 'tower' | 'stepped' | 'fort' {
+  const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
+    .map((portLabel) => parseTopPortNumber(portLabel))
+    .filter((port): port is number => typeof port === 'number'))];
+  const hasHttp = visiblePorts.includes(80);
+  const hasHttps = visiblePorts.includes(443);
+  const hasSsh = visiblePorts.includes(22);
+  const hasDns = visiblePorts.includes(53);
+  const hasMail = visiblePorts.some((port) => [25, 465, 587].includes(port));
+  const hasRdp = visiblePorts.includes(3389);
+  const extraPorts = visiblePorts.filter((port) => ![80, 443, 22, 53, 25, 465, 587, 3389].includes(port)).slice(0, 4);
+  const openPortCount = exposureRecord?.openPortCount ?? 0;
+
+  return hasRdp || extraPorts.length >= 2 || openPortCount >= 4
+    ? 'fort'
+    : hasDns || hasMail || hasHttps || openPortCount >= 3
+      ? 'stepped'
+      : hasHttp || hasSsh || openPortCount >= 2 || visiblePorts.length >= 1
+        ? 'tower'
+        : 'block';
+}
+
+function buildStreetBuildings(
+  gridSystemMode: GridSystemMode,
+  zoomLevel: number,
+  currentPosition: GridPosition,
+  grid2Position: Grid2Position,
+  orientation: StreetOrientation,
+  streetIndex: number,
+  exposureByIp: Record<string, ExposureRecord>,
+  getIPColor: (first: number, second: number, third: number, fourth: number) => string,
+): StreetBuilding[] {
+  const cubeSize = 0.92;
+  const items: StreetBuilding[] = [];
+
+  for (let i = 0; i < 16; i += 1) {
+    const leftX = orientation === 'row' ? i : streetIndex;
+    const leftY = orientation === 'row' ? streetIndex : i;
+    const rightX = orientation === 'row' ? i : Math.min(streetIndex + 1, 15);
+    const rightY = orientation === 'row' ? Math.min(streetIndex + 1, 15) : i;
+
+    const leftIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, leftX, leftY);
+    const rightIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, rightX, rightY);
+
+    const makeBuilding = (ipAddress: string, x: number, y: number, streetSide: 'left' | 'right') => {
+      const exposureRecord = exposureByIp[ipAddress] ?? null;
+      const serviceCount = exposureRecord?.serviceCount ?? 0;
+      const buildingHeight = getHeightFromServiceCount(cubeSize, serviceCount);
+      const [firstOctetValue, secondOctetValue, thirdOctetValue, fourthOctetValue] = parseIpOctets(ipAddress);
+      const label = gridSystemMode === 'grid2' ? thirdOctetValue * 256 + fourthOctetValue : y * 16 + x;
+
+      return {
+        ipAddress,
+        label,
+        color: getIPColor(firstOctetValue, secondOctetValue, thirdOctetValue, fourthOctetValue),
+        buildingFamily: getStreetBuildingFamily(exposureRecord),
+        buildingHeight,
+        streetSide,
+        streetPosition: i,
+      };
+    };
+
+    items.push(makeBuilding(leftIp, leftX, leftY, 'left'));
+    if (rightIp !== leftIp || orientation === 'column' || streetIndex < 15) {
+      items.push(makeBuilding(rightIp, rightX, rightY, 'right'));
+    }
+  }
+
+  return items;
+}
+
+function StreetCamera({
+  streetStep,
+  lateralOffset,
+  heading,
+}: {
+  streetStep: number;
+  lateralOffset: number;
+  heading: number;
+}) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    const z = streetStep * 7.5 - 56;
+    const x = lateralOffset;
+    const lookX = x + Math.sin(heading) * 10;
+    const lookZ = z + Math.cos(heading) * 10;
+    camera.position.set(x, 2.1, z);
+    camera.lookAt(lookX, 2.1, lookZ);
+    camera.updateProjectionMatrix();
+  }, [camera, streetStep, lateralOffset, heading]);
+
+  return null;
+}
+
+function StreetScene({
+  streetBuildings,
+  streetStep,
+  lateralOffset,
+  heading,
+  onOpenBuilding,
+}: {
+  streetBuildings: StreetBuilding[];
+  streetStep: number;
+  lateralOffset: number;
+  heading: number;
+  onOpenBuilding: (building: BuildingViewState) => void;
+}) {
+  const roadLength = 128;
+  const leftX = -5.2;
+  const rightX = 5.2;
+  const spacing = 7.5;
+
+  const buildingMesh = (building: StreetBuilding) => {
+    const x = building.streetSide === 'left' ? leftX : rightX;
+    const z = building.streetPosition * spacing - 56;
+    const faceDirection = building.streetSide === 'left' ? 1 : -1;
+    const width = building.buildingFamily === 'tower' ? 3.1 : building.buildingFamily === 'fort' ? 3.8 : 3.5;
+    const depth = building.buildingFamily === 'tower' ? 2.3 : 2.8;
+    const height = Math.max(2.6, Math.min(8.5, building.buildingHeight * 2.1));
+    const trimColor = '#4b5563';
+    const roofColor = '#374151';
+
+    return (
+      <group key={`${building.streetSide}-${building.streetPosition}-${building.ipAddress}`} position={[x, 0, z]}>
+        <mesh position={[0, 0.03, 0]} receiveShadow>
+          <boxGeometry args={[4.2, 0.06, 5.6]} />
+          <meshStandardMaterial color="#9a9a9a" />
+        </mesh>
+
+        {building.buildingFamily === 'block' && (
+          <>
+            <mesh position={[0, height / 2, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width, height, depth]} />
+              <meshStandardMaterial color={building.color} />
+            </mesh>
+            <mesh position={[0, height + 0.04, 0]} castShadow>
+              <boxGeometry args={[width * 0.92, 0.08, depth * 0.92]} />
+              <meshStandardMaterial color={roofColor} />
+            </mesh>
+          </>
+        )}
+
+        {building.buildingFamily === 'tower' && (
+          <>
+            <mesh position={[0, 0.5, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width * 1.1, 1.0, depth * 1.1]} />
+              <meshStandardMaterial color={trimColor} />
+            </mesh>
+            <mesh position={[0, (height - 1.0) / 2 + 1.0, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width * 0.72, Math.max(1.8, height - 1.0), depth * 0.72]} />
+              <meshStandardMaterial color={building.color} />
+            </mesh>
+          </>
+        )}
+
+        {building.buildingFamily === 'stepped' && (
+          <>
+            <mesh position={[0, height * 0.22, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width, height * 0.44, depth]} />
+              <meshStandardMaterial color={trimColor} />
+            </mesh>
+            <mesh position={[0, height * 0.55, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width * 0.72, height * 0.24, depth * 0.72]} />
+              <meshStandardMaterial color={building.color} />
+            </mesh>
+            <mesh position={[0, height * 0.78, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width * 0.42, height * 0.18, depth * 0.42]} />
+              <meshStandardMaterial color={building.color} />
+            </mesh>
+          </>
+        )}
+
+        {building.buildingFamily === 'fort' && (
+          <>
+            <mesh position={[0, height * 0.18, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width, height * 0.36, depth]} />
+              <meshStandardMaterial color={trimColor} />
+            </mesh>
+            <mesh position={[0, height * 0.56, 0]} castShadow receiveShadow onClick={() => onOpenBuilding(building)}>
+              <boxGeometry args={[width * 0.42, height * 0.42, depth * 0.42]} />
+              <meshStandardMaterial color={building.color} />
+            </mesh>
+          </>
+        )}
+
+        <mesh position={[0, 0.48, faceDirection * (depth / 2 + 0.03)]}>
+          <boxGeometry args={[0.8, 0.96, 0.08]} />
+          <meshStandardMaterial color="#374151" />
+        </mesh>
+
+        <Html position={[0, 1.6, faceDirection * (depth / 2 + 0.12)]} transform sprite distanceFactor={10}>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenBuilding(building);
+            }}
+            className="bg-white/90 text-black px-2 py-1 rounded text-xs shadow border border-gray-300"
+            title={building.ipAddress}
+          >
+            {building.ipAddress}
+          </button>
+        </Html>
+      </group>
+    );
+  };
+
+  return (
+    <>
+      <StreetCamera streetStep={streetStep} lateralOffset={lateralOffset} heading={heading} />
+      <fog attach="fog" args={['#bcdffb', 18, 160]} />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 16, 8]} intensity={1.0} castShadow />
+      <pointLight position={[0, 8, 20]} intensity={0.6} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+        <planeGeometry args={[48, roadLength]} />
+        <meshStandardMaterial color="#eaf6ff" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[8, roadLength]} />
+        <meshStandardMaterial color="#3a3a3a" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
+        <planeGeometry args={[0.25, roadLength]} />
+        <meshStandardMaterial color="#d9d2a6" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-3.2, 0.01, 0]} receiveShadow>
+        <planeGeometry args={[2.4, roadLength]} />
+        <meshStandardMaterial color="#9a9a9a" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.2, 0.01, 0]} receiveShadow>
+        <planeGeometry args={[2.4, roadLength]} />
+        <meshStandardMaterial color="#9a9a9a" />
+      </mesh>
+      {streetBuildings.map(buildingMesh)}
+    </>
+  );
+}
+
 
 function App() {
   const [zoomLevel, setZoomLevel] = useState<number>(0);
@@ -451,7 +788,16 @@ function App() {
   });
   const [showHeightLegend, setShowHeightLegend] = useState<boolean>(false);
   const [lookupMode, setLookupMode] = useState<LookupMode>('rdap');
-  const layoutMode = 'grid';
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('grid');
+  const [gridSystemMode, setGridSystemMode] = useState<GridSystemMode>('grid1');
+  const [grid2Position, setGrid2Position] = useState<Grid2Position>(DEFAULT_GRID2_POSITION);
+  const [streetOrientation, setStreetOrientation] = useState<StreetOrientation>('row');
+  const [streetIndex, setStreetIndex] = useState<number>(0);
+  const [streetStep, setStreetStep] = useState<number>(7);
+  const [streetLateralOffset, setStreetLateralOffset] = useState<number>(0);
+  const [streetHeading, setStreetHeading] = useState<number>(0);
+  const [streetExposureByIp, setStreetExposureByIp] = useState<Record<string, ExposureRecord>>({});
+  const [streetExposureLoading, setStreetExposureLoading] = useState<boolean>(false);
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
   const [viewResetKey, setViewResetKey] = useState(0);
 
@@ -488,8 +834,18 @@ function App() {
   };
 
   const fallbackTargetIp = useMemo(
-    () => getRepresentativeTarget(zoomLevel, currentPosition),
-    [zoomLevel, currentPosition.firstOctet, currentPosition.secondOctet, currentPosition.thirdOctet]
+    () => getRepresentativeTarget(gridSystemMode, zoomLevel, currentPosition, grid2Position),
+    [
+      gridSystemMode,
+      zoomLevel,
+      currentPosition.firstOctet,
+      currentPosition.secondOctet,
+      currentPosition.thirdOctet,
+      grid2Position.outerFirstOctet,
+      grid2Position.outerSecondOctet,
+      grid2Position.innerThirdStart,
+      grid2Position.innerFourthStart,
+    ]
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
@@ -497,11 +853,36 @@ function App() {
     () => getWebsiteCandidate(exposureResult, certificateResult),
     [exposureResult, certificateResult]
   );
+  const streetBuildings = useMemo(
+    () => buildStreetBuildings(
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position,
+      streetOrientation,
+      streetIndex,
+      streetExposureByIp,
+      getIPColor
+    ),
+    [
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position,
+      streetOrientation,
+      streetIndex,
+      streetExposureByIp
+    ]
+  );
 
   const handleGridClick = (x: number, y: number) => {
     const octetValue = y * 16 + x;
-    const clickedIp = getIpFromCell(zoomLevel, currentPosition, x, y);
+    const clickedIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
     setSelectedTargetIp(clickedIp);
+
+    if (gridSystemMode === 'grid2') {
+      return;
+    }
 
     if (zoomLevel === 0) {
       setCurrentPosition((prev) => ({ ...prev, firstOctet: octetValue }));
@@ -523,6 +904,15 @@ function App() {
 
 
   const handleBack = () => {
+    if (layoutMode === 'street') {
+      setLayoutMode('grid');
+      return;
+    }
+
+    if (gridSystemMode === 'grid2') {
+      return;
+    }
+
     if (zoomLevel === 1) {
       setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(0);
@@ -542,36 +932,19 @@ function App() {
   };
 
   const handleReset = () => {
+    setLayoutMode('grid');
     setZoomLevel(0);
     setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
-    setSelectedTargetIp('8.8.8.8');
+    setGrid2Position(DEFAULT_GRID2_POSITION);
+    setSelectedTargetIp(gridSystemMode === 'grid2' ? getGrid2IpFromCell(DEFAULT_GRID2_POSITION, 0, 0) : '8.8.8.8');
+    setStreetIndex(0);
+    setStreetOrientation('row');
+    setStreetStep(7);
+    setStreetLateralOffset(0);
+    setStreetHeading(0);
   };
 
   const handleResetView = () => {
-  const handleStopGridSpin = () => {
-    if (!controlsRef.current || !cameraRef.current) {
-      return;
-    }
-
-    const currentCameraPosition = cameraRef.current.position.clone();
-    const currentTarget = controlsRef.current.target.clone();
-
-    controlsRef.current.enabled = false;
-    cameraRef.current.position.copy(currentCameraPosition);
-    controlsRef.current.target.copy(currentTarget);
-    controlsRef.current.update();
-
-    requestAnimationFrame(() => {
-      if (!controlsRef.current || !cameraRef.current) {
-        return;
-      }
-      cameraRef.current.position.copy(currentCameraPosition);
-      controlsRef.current.target.copy(currentTarget);
-      controlsRef.current.enabled = true;
-      controlsRef.current.update();
-    });
-  };
-
     const defaultCameraPosition = new THREE.Vector3(0, 16, 22);
 
     if (cameraRef.current && controlsRef.current) {
@@ -584,6 +957,152 @@ function App() {
 
     setViewResetKey((prev) => prev + 1);
   };
+
+  const handleGridSystemChange = (mode: GridSystemMode) => {
+    setGridSystemMode(mode);
+    setLayoutMode('grid');
+    setBuildingView(null);
+    setBottomInfoHtml('');
+    setSelectedTargetIp(mode === 'grid2' ? getGrid2IpFromCell(grid2Position, 0, 0) : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position));
+  };
+
+  const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
+    setGrid2Position((prev) => {
+      const next = {
+        ...prev,
+        innerThirdStart: clampGrid2WindowStart(prev.innerThirdStart + thirdDelta),
+        innerFourthStart: clampGrid2WindowStart(prev.innerFourthStart + fourthDelta),
+      };
+      setSelectedTargetIp(getGrid2IpFromCell(next, 0, 0));
+      return next;
+    });
+    setBottomInfoHtml('');
+  };
+
+  const updateGrid2Octet = (field: keyof Grid2Position, rawValue: string) => {
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    setGrid2Position((prev) => {
+      const next = {
+        ...prev,
+        [field]: field === 'innerThirdStart' || field === 'innerFourthStart'
+          ? clampGrid2WindowStart(parsed)
+          : clampOctet(parsed),
+      };
+      setSelectedTargetIp(getGrid2IpFromCell(next, 0, 0));
+      return next;
+    });
+    setBottomInfoHtml('');
+  };
+
+
+  useEffect(() => {
+    if (layoutMode !== 'street') {
+      return;
+    }
+
+    const ips = new Set<string>();
+    for (let i = 0; i < 16; i += 1) {
+      if (streetOrientation === 'row') {
+        ips.add(getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, i, streetIndex));
+        ips.add(getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, i, Math.min(streetIndex + 1, 15)));
+      } else {
+        ips.add(getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, streetIndex, i));
+        ips.add(getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, Math.min(streetIndex + 1, 15), i));
+      }
+    }
+
+    const ipAddresses = [...ips];
+    setStreetExposureLoading(true);
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/exposure', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify({ ipAddresses }),
+        });
+        const json = (await response.json()) as { records?: ExposureRecord[] };
+
+        const next: Record<string, ExposureRecord> = {};
+        for (const ipAddress of ipAddresses) {
+          next[ipAddress] = {
+            ipAddress,
+            sourceProvider: 'internetdb',
+            serviceCount: 0,
+            openPortCount: 0,
+            topPorts: [],
+            serviceNames: [],
+            labels: [],
+            hostnames: [],
+          };
+        }
+        if (response.ok && Array.isArray(json.records)) {
+          for (const record of json.records) {
+            next[record.ipAddress] = record;
+          }
+        }
+        setStreetExposureByIp(next);
+      } catch {
+        const next: Record<string, ExposureRecord> = {};
+        for (const ipAddress of ipAddresses) {
+          next[ipAddress] = {
+            ipAddress,
+            sourceProvider: 'internetdb',
+            serviceCount: 0,
+            openPortCount: 0,
+            topPorts: [],
+            serviceNames: [],
+            labels: [],
+            hostnames: [],
+          };
+        }
+        setStreetExposureByIp(next);
+      } finally {
+        setStreetExposureLoading(false);
+      }
+    })();
+  }, [
+    layoutMode,
+    streetOrientation,
+    streetIndex,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+  ]);
+
+  useEffect(() => {
+    if (layoutMode !== 'street' || buildingView) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'w' || event.key === 'ArrowUp') {
+        setStreetStep((prev) => Math.min(15, prev + 1));
+      } else if (event.key === 's' || event.key === 'ArrowDown') {
+        setStreetStep((prev) => Math.max(0, prev - 1));
+      } else if (event.key === 'a') {
+        setStreetLateralOffset((prev) => Math.max(-1.8, prev - 0.5));
+      } else if (event.key === 'd') {
+        setStreetLateralOffset((prev) => Math.min(1.8, prev + 0.5));
+      } else if (event.key === 'ArrowLeft') {
+        setStreetHeading((prev) => prev + 0.12);
+      } else if (event.key === 'ArrowRight') {
+        setStreetHeading((prev) => prev - 0.12);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [layoutMode, buildingView]);
+
 
 
   useEffect(() => {
@@ -622,12 +1141,25 @@ function App() {
       childList: true,
       subtree: true,
       attributes: true,
+      characterData: true,
     });
 
     return () => {
       observer.disconnect();
     };
-  }, [layoutMode, lookupMode, zoomLevel, currentPosition.firstOctet, currentPosition.secondOctet, currentPosition.thirdOctet]);
+  }, [
+    layoutMode,
+    lookupMode,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition.firstOctet,
+    currentPosition.secondOctet,
+    currentPosition.thirdOctet,
+    grid2Position.outerFirstOctet,
+    grid2Position.outerSecondOctet,
+    grid2Position.innerThirdStart,
+    grid2Position.innerFourthStart,
+  ]);
 
 
   const handleFlagClick = (building: BuildingViewState) => {
@@ -781,15 +1313,47 @@ function App() {
     }
   };
 
+  const handleEnterStreetView = () => {
+    setLayoutMode('street');
+    setStreetStep(7);
+    setStreetLateralOffset(0);
+    setStreetHeading(0);
+  };
+
+  const handleOpenBuildingFromStreet = (building: StreetBuilding) => {
+    handleFlagClick({
+      ipAddress: building.ipAddress,
+      label: building.label,
+      color: building.color,
+      buildingFamily: building.buildingFamily,
+      buildingHeight: building.buildingHeight,
+    });
+  };
+
+
 
   const getCurrentRangeLabel = (): string => {
-    if (zoomLevel === 0) return 'Top-level View:';
-    if (zoomLevel === 1) return `${currentPosition.firstOctet}.x.x.x`;
-    if (zoomLevel === 2) return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.x.x`;
-    return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.x`;
+    if (gridSystemMode === 'grid2') {
+      const thirdEnd = grid2Position.innerThirdStart + GRID2_WINDOW_SIZE - 1;
+      const fourthEnd = grid2Position.innerFourthStart + GRID2_WINDOW_SIZE - 1;
+      return `Grid 2: outer point ${grid2Position.outerFirstOctet}.${grid2Position.outerSecondOctet}; inner neighborhood n3=${grid2Position.innerThirdStart}–${thirdEnd}, n4=${grid2Position.innerFourthStart}–${fourthEnd}`;
+    }
+
+    if (zoomLevel === 0) return 'Grid 1: Top-level View';
+    if (zoomLevel === 1) return `Grid 1: ${currentPosition.firstOctet}.x.x.x`;
+    if (zoomLevel === 2) return `Grid 1: ${currentPosition.firstOctet}.${currentPosition.secondOctet}.x.x`;
+    return `Grid 1: ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.x`;
   };
 
   const getInstructionText = (): string => {
+    if (layoutMode === 'street') {
+      return `Street level view of the current ${streetOrientation} street ${streetIndex + 1}. Use W/S or arrow keys to move, A/D to sidestep, and left/right arrows to turn.`;
+    }
+
+    if (gridSystemMode === 'grid2') {
+      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Click a building to select that exact IP; click a building flag for close-up building view.';
+    }
+
     if (zoomLevel === 0) {
       return lookupMode === 'rdap'
         ? 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data. Click a building flag for close-up building view.'
@@ -809,6 +1373,8 @@ function App() {
       : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Hover a building to fetch hostname data. Click a building flag for close-up building view.`;
   };
 
+  const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
+
   return (
     <div className="min-h-screen bg-white text-black flex flex-col">
       <div className="flex-1 p-4 flex flex-col gap-4">
@@ -825,8 +1391,8 @@ function App() {
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
                 <button
                   onClick={handleBack}
-                  disabled={zoomLevel === 0}
-                  className={`p-2 rounded ${zoomLevel === 0 ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
+                  disabled={isBackDisabled}
+                  className={`p-2 rounded ${isBackDisabled ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
                   title="Go back one level"
                 >
                   <ArrowLeft size={20} />
@@ -837,6 +1403,27 @@ function App() {
                 <button onClick={handleResetView} className="px-3 py-2 rounded-md bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400" title="Reset camera view">
                   <RotateCcw size={20} />
                 </button>
+                <button
+                  onClick={() => handleGridSystemChange('grid1')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${gridSystemMode === 'grid1' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
+                  title="Use the original four-level 16 by 16 grid"
+                >
+                  Grid 1
+                </button>
+                <button
+                  onClick={() => handleGridSystemChange('grid2')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${gridSystemMode === 'grid2' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
+                  title="Use one outer 256 by 256 grid with a movable local inner neighborhood"
+                >
+                  Grid 2
+                </button>
+                <button
+                  onClick={handleEnterStreetView}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${layoutMode === 'street' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
+                  title="Enter street level view"
+                >
+                  Street level
+                </button>
               </div>
 
               <div className="text-xs lg:text-right">
@@ -846,6 +1433,111 @@ function App() {
             </div>
           </div>
         </header>
+
+        {layoutMode === 'grid' && gridSystemMode === 'grid2' && !buildingView && (
+          <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3 items-end">
+              <label className="text-sm">
+                <span className="block font-medium mb-1">Outer n1</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={255}
+                  value={grid2Position.outerFirstOctet}
+                  onChange={(event) => updateGrid2Octet('outerFirstOctet', event.target.value)}
+                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block font-medium mb-1">Outer n2</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={255}
+                  value={grid2Position.outerSecondOctet}
+                  onChange={(event) => updateGrid2Octet('outerSecondOctet', event.target.value)}
+                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block font-medium mb-1">Start n3</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={grid2Position.innerThirdStart}
+                  onChange={(event) => updateGrid2Octet('innerThirdStart', event.target.value)}
+                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block font-medium mb-1">Start n4</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={grid2Position.innerFourthStart}
+                  onChange={(event) => updateGrid2Octet('innerFourthStart', event.target.value)}
+                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
+                />
+              </label>
+              <div className="text-xs text-gray-700 pb-1">
+                Current visible range: {getGrid2IpFromCell(grid2Position, 0, 0)} through {getGrid2IpFromCell(grid2Position, 15, 15)}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-sm font-medium">Move neighborhood:</span>
+              <button onClick={() => moveGrid2Window(-16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 −16</button>
+              <button onClick={() => moveGrid2Window(16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +16</button>
+              <button onClick={() => moveGrid2Window(0, -16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 −16</button>
+              <button onClick={() => moveGrid2Window(0, 16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +16</button>
+              <button onClick={() => moveGrid2Window(-1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 −1</button>
+              <button onClick={() => moveGrid2Window(1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +1</button>
+              <button onClick={() => moveGrid2Window(0, -1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 −1</button>
+              <button onClick={() => moveGrid2Window(0, 1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +1</button>
+            </div>
+
+            <p className="text-xs text-gray-700">
+              Mouse wheel moves n3 by four cells; Shift + mouse wheel moves n4 by four cells.
+            </p>
+          </div>
+        )}
+
+        {layoutMode === 'street' && !buildingView && (
+          <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-sm font-medium">Street type:</span>
+              <button
+                onClick={() => setStreetOrientation('row')}
+                className={`px-3 py-1.5 rounded-md text-sm border ${streetOrientation === 'row' ? 'bg-gray-400 text-black border-gray-500' : 'bg-gray-200 text-gray-900 border-gray-400'}`}
+              >
+                Row street
+              </button>
+              <button
+                onClick={() => setStreetOrientation('column')}
+                className={`px-3 py-1.5 rounded-md text-sm border ${streetOrientation === 'column' ? 'bg-gray-400 text-black border-gray-500' : 'bg-gray-200 text-gray-900 border-gray-400'}`}
+              >
+                Column street
+              </button>
+
+              <span className="text-sm font-medium ml-2">Index:</span>
+              <button onClick={() => setStreetIndex((prev) => Math.max(0, prev - 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Previous</button>
+              <span className="text-sm">{streetIndex + 1} / 16</span>
+              <button onClick={() => setStreetIndex((prev) => Math.min(15, prev + 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Next</button>
+              {streetExposureLoading && <span className="text-sm text-blue-700">Loading street data…</span>}
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center">
+              <button onClick={() => setStreetStep((prev) => Math.min(15, prev + 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Forward</button>
+              <button onClick={() => setStreetStep((prev) => Math.max(0, prev - 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Back</button>
+              <button onClick={() => setStreetLateralOffset((prev) => Math.max(-1.8, prev - 0.5))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Step left</button>
+              <button onClick={() => setStreetLateralOffset((prev) => Math.min(1.8, prev + 0.5))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Step right</button>
+              <button onClick={() => setStreetHeading((prev) => prev + 0.12)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Turn left</button>
+              <button onClick={() => setStreetHeading((prev) => prev - 0.12)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Turn right</button>
+            </div>
+          </div>
+        )}
 
         {buildingView ? (
           <div className="flex-1 flex flex-col gap-4 lg:flex-row">
@@ -1031,9 +1723,38 @@ function App() {
               </div>
             </div>
           </div>
+        ) : layoutMode === 'street' ? (
+          <div className="flex-1 flex justify-center">
+            <div className="relative w-full h-[560px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
+              <Canvas camera={{ position: [0, 2.1, -56], fov: 62 }} shadows>
+                <StreetScene
+                  streetBuildings={streetBuildings}
+                  streetStep={streetStep}
+                  lateralOffset={streetLateralOffset}
+                  heading={streetHeading}
+                  onOpenBuilding={handleOpenBuildingFromStreet}
+                />
+              </Canvas>
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex justify-center">
-            <div ref={gridContainerRef} className="relative w-full h-[560px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
+            <div
+              ref={gridContainerRef}
+              className="relative w-full h-[560px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+              onWheel={(event) => {
+                if (gridSystemMode !== 'grid2' || layoutMode !== 'grid') {
+                  return;
+                }
+                event.preventDefault();
+                const direction = event.deltaY > 0 ? 4 : -4;
+                if (event.shiftKey) {
+                  moveGrid2Window(0, direction);
+                } else {
+                  moveGrid2Window(direction, 0);
+                }
+              }}
+            >
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
                 camera={{ position: [0, 16, 22], fov: 45 }}
@@ -1053,6 +1774,9 @@ function App() {
                   handleGridClick={handleGridClick}
                   onFlagClick={handleFlagClick}
                   lookupMode={lookupMode}
+                  gridSystemMode={gridSystemMode}
+                  grid2Position={grid2Position}
+                  onHoverInfoHtml={setBottomInfoHtml}
                 />
                 <OrbitControls
                   ref={controlsRef}
