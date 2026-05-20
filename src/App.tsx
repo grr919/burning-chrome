@@ -1128,7 +1128,9 @@ function App() {
         }
       });
 
-      setBottomInfoHtml(activeHtml);
+      if (activeHtml) {
+        setBottomInfoHtml(activeHtml);
+      }
     };
 
     syncInfoPanel();
@@ -1776,6 +1778,7 @@ function App() {
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
+                  onHoverInfoHtml={setBottomInfoHtml}
                 />
                 <OrbitControls
                   ref={controlsRef}
