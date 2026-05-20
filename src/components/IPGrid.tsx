@@ -12,6 +12,7 @@ type GridPosition = {
 
 type LookupMode = 'rdap' | 'ptr';
 type GridSystemMode = 'grid1' | 'grid2';
+type InfoDisplayMode = 'structured' | 'prose';
 
 type Grid2Position = {
   outerFirstOctet: number;
@@ -51,6 +52,7 @@ type IPGridProps = {
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
   onHoverInfoHtml?: (html: string) => void;
+  infoDisplayMode?: InfoDisplayMode;
 };
 
 type RdapEntity = {
@@ -342,6 +344,96 @@ function getAsnDiagnosticLabel(record: AsnRecord | undefined, loading: boolean):
   return 'not requested or no response yet';
 }
 
+function joinSentenceParts(parts: Array<string | null | undefined>): string {
+  return parts.filter((part): part is string => Boolean(part && part.trim())).join(' ');
+}
+
+function describeIpPurpose(ipTypeLabel: string): string {
+  if (ipTypeLabel === 'Public') {
+    return 'It is a public IPv4 address, so it can potentially correspond to an internet-facing machine or service.';
+  }
+  if (ipTypeLabel === 'Private') {
+    return 'It is a private IPv4 address, so it is normally used inside a local network rather than routed directly on the public internet.';
+  }
+  if (ipTypeLabel === 'Loopback') {
+    return 'It is a loopback address, normally used by a machine to refer to itself.';
+  }
+  if (ipTypeLabel === 'Multicast') {
+    return 'It is in the multicast range, used for one-to-many network traffic rather than ordinary host addressing.';
+  }
+  return 'It is in a reserved or special-purpose IPv4 range, so public host information may be limited or absent.';
+}
+
+function getExposurePhrase(exposureRecord: ExposureRecord | undefined): string {
+  if (!exposureRecord) {
+    return 'Service exposure data has not loaded yet.';
+  }
+  if (exposureRecord.error) {
+    return `Service exposure lookup is unavailable: ${valueToDisplayText(exposureRecord.error)}.`;
+  }
+
+  const visiblePorts = [...new Set((exposureRecord.topPorts ?? [])
+    .map((portLabel) => parseTopPortNumber(portLabel))
+    .filter((port): port is number => typeof port === 'number'))];
+
+  if (visiblePorts.length === 0 && exposureRecord.openPortCount === 0 && exposureRecord.serviceCount === 0) {
+    return 'No public-facing services were observed in the current exposure data.';
+  }
+
+  const serviceLabels: string[] = [];
+  if (visiblePorts.includes(80) || visiblePorts.includes(443)) serviceLabels.push('web service');
+  if (visiblePorts.includes(22)) serviceLabels.push('SSH');
+  if (visiblePorts.includes(53)) serviceLabels.push('DNS');
+  if (visiblePorts.some((port) => [25, 465, 587].includes(port))) serviceLabels.push('mail');
+  if (visiblePorts.includes(3389)) serviceLabels.push('Remote Desktop');
+
+  const countPhrase = exposureRecord.openPortCount === 1
+    ? 'one open port'
+    : `${exposureRecord.openPortCount} open ports`;
+
+  if (serviceLabels.length > 0) {
+    return `The exposure data reports ${countPhrase}, including ${serviceLabels.join(', ')}${visiblePorts.length > 0 ? ` on ports ${visiblePorts.slice(0, 6).join(', ')}` : ''}.`;
+  }
+
+  return `The exposure data reports ${countPhrase}${visiblePorts.length > 0 ? ` on ports ${visiblePorts.slice(0, 6).join(', ')}` : ''}, but these ports do not match the main service categories shown in the interface.`;
+}
+
+function getHostnamePhrase(dnsRecord: ReverseDnsRecord | undefined, topReverseDnsHostname: string | null, loading: boolean): string {
+  if (loading) {
+    return 'Hostname data is still loading.';
+  }
+  if (!dnsRecord) {
+    return 'Hostname data has not loaded yet.';
+  }
+  if (dnsRecord.error) {
+    return `Hostname lookup is unavailable: ${valueToDisplayText(dnsRecord.error)}.`;
+  }
+  if (topReverseDnsHostname) {
+    return `The main hostname visible for this address is ${topReverseDnsHostname}.`;
+  }
+  return 'No hostname was found for this address.';
+}
+
+function getAsnPhrase(asnRecord: AsnRecord | undefined, loading: boolean): string {
+  if (loading) {
+    return 'ASN neighborhood data is still loading.';
+  }
+  if (!asnRecord) {
+    return 'ASN neighborhood data has not loaded yet.';
+  }
+  if (asnRecord.error) {
+    return `ASN lookup is unavailable: ${valueToDisplayText(asnRecord.error)}.`;
+  }
+  if (asnRecord.asn) {
+    return joinSentenceParts([
+      `Its ASN neighborhood is ${getAsnSummaryLabel(asnRecord)}.`,
+      asnRecord.country ? `The ASN record lists ${asnRecord.country} as the country.` : null,
+      asnRecord.registry ? `The registry source is ${asnRecord.registry}.` : null,
+    ]);
+  }
+  return 'No ASN was returned for this address.';
+}
+
 function getCountryCode(countryCode?: string): string | null {
   if (!countryCode) {
     return null;
@@ -608,6 +700,7 @@ function IPGrid({
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
   onHoverInfoHtml,
+  infoDisplayMode = 'structured',
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -1000,7 +1093,7 @@ function IPGrid({
     if (activePanel?.innerHTML) {
       onHoverInfoHtml(activePanel.innerHTML);
     }
-  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, asnInfo, isRdapLoading, isReverseLoading, isAsnLoading, lookupMode, onHoverInfoHtml]);
+  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, asnInfo, isRdapLoading, isReverseLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml]);
 
   const createStreetGrid = () => {
     const items = [];
@@ -1374,7 +1467,36 @@ function IPGrid({
         }
       }
 
-      const hoverInfoHtml = hoverInfoLines.join('');
+      const structuredHoverInfoHtml = hoverInfoLines.join('');
+      const proseHoverParagraphs = [
+        `<div class="font-bold">${escapeHtml(ipAddress)}</div>`,
+        `<p>${escapeHtml(joinSentenceParts([
+          `This square represents ${ipAddress}.`,
+          `The address is classified as ${ipTypeLabel.toLowerCase()}.`,
+          countryName ? `The registration country currently shown is ${countryName}.` : null,
+          describeIpPurpose(ipTypeLabel),
+        ]))}</p>`,
+        `<p>${escapeHtml(getAsnPhrase(asnRecord, Boolean(isAsnLoading[ipAddress])))}</p>`,
+        `<p>${escapeHtml(getExposurePhrase(exposureRecord))}</p>`,
+        `<p>${escapeHtml(getHostnamePhrase(dnsRecord, topReverseDnsHostname, Boolean(isReverseLoading[ipAddress])))}</p>`,
+      ];
+
+      if (lookupMode === 'rdap') {
+        if (isRdapLoading[ipAddress]) {
+          proseHoverParagraphs.push('<p class="text-blue-700">RDAP registration data is still loading.</p>');
+        } else if (rdapRecord?.error) {
+          proseHoverParagraphs.push(`<p class="text-red-700">RDAP lookup is unavailable: ${escapeHtml(rdapRecord.error)}</p>`);
+        } else if (rdapRecord) {
+          proseHoverParagraphs.push(`<p>${escapeHtml(joinSentenceParts([
+            rdapRecord.org ? `RDAP identifies the organization as ${rdapRecord.org}.` : null,
+            rdapRecord.networkName ? `The network name is ${rdapRecord.networkName}.` : null,
+            rdapRecord.cidr ? `The CIDR block is ${rdapRecord.cidr}.` : null,
+            rdapRecord.startAddress && rdapRecord.endAddress ? `The registered range runs from ${rdapRecord.startAddress} to ${rdapRecord.endAddress}.` : null,
+          ]) || 'No additional RDAP ownership details were returned for this address.')}</p>`);
+        }
+      }
+
+      const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverParagraphs.join('') : structuredHoverInfoHtml;
 
       const windowBands = [];
       {
@@ -1458,6 +1580,29 @@ function IPGrid({
           <mesh position={[0, 0.07, 0]} receiveShadow>
             <boxGeometry args={[cubeSize + 0.1, 0.04, cubeSize + 0.1]} />
             <meshStandardMaterial color="#7f7f7f" />
+          </mesh>
+
+          <mesh
+            position={[0, 0.13, 0]}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleGridClick(x, y);
+            }}
+            onPointerOver={() => {
+              document.body.style.cursor = 'pointer';
+              setHoveredCube(cubeId);
+              setHoveredIpAddress(ipAddress);
+              onHoverInfoHtml?.(hoverInfoHtml);
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = 'auto';
+              setHoveredCube(null);
+              setHoveredIpAddress(null);
+              onHoverInfoHtml?.('');
+            }}
+          >
+            <boxGeometry args={[spacing - 0.08, 0.06, spacing - 0.08]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
 
           <group scale={[hoverScale, hoverScale, hoverScale]}>
