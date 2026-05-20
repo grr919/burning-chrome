@@ -50,6 +50,7 @@ type IPGridProps = {
   lookupMode: LookupMode;
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
+  onHoverInfoHtml?: (html: string) => void;
 };
 
 type RdapEntity = {
@@ -559,6 +560,7 @@ function IPGrid({
   lookupMode,
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
+  onHoverInfoHtml,
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -937,6 +939,18 @@ function IPGrid({
     }
   }, [hoveredIpAddress, lookupMode]);
 
+
+  useEffect(() => {
+    if (!hoveredIpAddress || !onHoverInfoHtml) {
+      return;
+    }
+
+    const activePanel = document.querySelector('div[data-info-panel="true"]') as HTMLDivElement | null;
+    if (activePanel?.innerHTML) {
+      onHoverInfoHtml(activePanel.innerHTML);
+    }
+  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, asnInfo, isRdapLoading, isReverseLoading, isAsnLoading, lookupMode, onHoverInfoHtml]);
+
   const createStreetGrid = () => {
     const items = [];
     const laneMarkings = [];
@@ -1163,6 +1177,92 @@ function IPGrid({
       const roofColor = shadeColor(color, -55);
       const windowColor = '#dfe8ff';
 
+      const headerParts = [
+        ipAddress,
+        ipTypeLabel,
+        countryName ? `(${countryName})` : '',
+        asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? '' : '',
+        topReverseDnsHostname ? `reverse-dns: ${topReverseDnsHostname}` : '',
+      ].filter(Boolean);
+
+      const hoverInfoLines: string[] = [
+        `<div class="font-bold">${escapeHtml(headerParts.join(' — '))}</div>`,
+      ];
+
+      if (isAsnLoading[ipAddress]) {
+        hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching ASN neighborhood data...</div>');
+      } else if (asnRecord?.asn) {
+        hoverInfoLines.push(
+          `<div class="mt-2 rounded p-1.5 text-xs" style="background:${escapeHtml(asnColor)};color:white">` +
+          `<div><span class="font-semibold">ASN neighborhood:</span> ${escapeHtml(getAsnSummaryLabel(asnRecord))}</div>` +
+          `${asnRecord.country ? `<div>Country: ${escapeHtml(asnRecord.country)}</div>` : ''}` +
+          `${asnRecord.registry ? `<div>Registry: ${escapeHtml(asnRecord.registry)}</div>` : ''}` +
+          '</div>'
+        );
+      } else if (asnRecord?.error) {
+        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN lookup unavailable: ${escapeHtml(asnRecord.error)}</div>`);
+      } else {
+        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN status: ${escapeHtml(getAsnDiagnosticLabel(asnRecord, Boolean(isAsnLoading[ipAddress])))}</div>`);
+      }
+
+      if (lookupMode === 'rdap' && isRdapLoading[ipAddress]) {
+        hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching live RDAP record...</div>');
+      }
+
+      if (lookupMode === 'ptr' && isReverseLoading[ipAddress]) {
+        hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching hostname data...</div>');
+      }
+
+      if (lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord?.error) {
+        hoverInfoLines.push(`<div class="text-red-700 mt-2">${escapeHtml(rdapRecord.error)}</div>`);
+      }
+
+      if (lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord?.error) {
+        hoverInfoLines.push(`<div class="text-red-700 mt-2">${escapeHtml(dnsRecord.error)}</div>`);
+      }
+
+      if (lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord && !rdapRecord.error) {
+        const rdapLines: string[] = [];
+        if (rdapRecord.org) {
+          rdapLines.push(`<div><span class="text-gray-600">Organization:</span> ${escapeHtml(rdapRecord.org)}</div>`);
+        }
+        if (rdapRecord.networkName) {
+          rdapLines.push(`<div><span class="text-gray-600">Network:</span> ${escapeHtml(rdapRecord.networkName)}</div>`);
+        }
+        if (visibleEntities.length > 0) {
+          const entityHtml = visibleEntities.map((entity, index) =>
+            `<div class="text-xs bg-gray-100 rounded p-1.5" data-entity-index="${index}">` +
+            `${entity.name ? `<div>${escapeHtml(entity.name)}</div>` : ''}` +
+            `${entity.roles.length > 0 ? `<div class="text-gray-600">${escapeHtml(entity.roles.join(', '))}</div>` : ''}` +
+            `${entity.email ? `<div>${escapeHtml(entity.email)}</div>` : ''}` +
+            '</div>'
+          ).join('');
+          rdapLines.push(`<div class="pt-1"><div class="text-gray-600">Contacts:</div><div class="space-y-1 mt-1">${entityHtml}</div></div>`);
+        }
+        if (rdapLines.length > 0) {
+          hoverInfoLines.push(`<div class="mt-2 space-y-1">${rdapLines.join('')}</div>`);
+        }
+      }
+
+      if (lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord && !dnsRecord.error) {
+        if (dnsRecord.hostnames.length > 0) {
+          const ptrLines = dnsRecord.ptrHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${escapeHtml(hostname)}</div>`).join('');
+          const fallbackLines = dnsRecord.fallbackHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${escapeHtml(hostname)}</div>`).join('');
+          hoverInfoLines.push(
+            '<div class="mt-2 space-y-1"><div class="text-gray-600">Hostnames:</div><div class="space-y-1 mt-1">' +
+            `${dnsRecord.ptrHostnames.length > 0 ? '<div class="text-xs text-gray-600">PTR / reverse DNS</div>' : ''}` +
+            ptrLines +
+            `${dnsRecord.fallbackHostnames.length > 0 ? '<div class="text-xs text-gray-600 mt-2">Public scan data fallback</div>' : ''}` +
+            fallbackLines +
+            '</div></div>'
+          );
+        } else {
+          hoverInfoLines.push('<div class="mt-2 space-y-1"><div class="text-gray-600">Hostnames:</div><div class="text-gray-700">No hostname was found for this address.</div></div>');
+        }
+      }
+
+      const hoverInfoHtml = hoverInfoLines.join('');
+
       const windowBands = [];
       {
         const effectiveHeight =
@@ -1258,11 +1358,13 @@ function IPGrid({
                 document.body.style.cursor = 'pointer';
                 setHoveredCube(cubeId);
                 setHoveredIpAddress(ipAddress);
+                onHoverInfoHtml?.(hoverInfoHtml);
               }}
               onPointerOut={() => {
                 document.body.style.cursor = 'auto';
                 setHoveredCube(null);
                 setHoveredIpAddress(null);
+                onHoverInfoHtml?.('');
               }}
             >
               <boxGeometry
