@@ -1089,58 +1089,55 @@ function IPGrid({
         const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
         const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
         const asnBorderColor = asnRecord?.asn ? getAsnColor(asnRecord.asn) : blockOutlineColor;
-        const asnBorderOpacity = asnRecord?.asn ? 0.95 : 0.18;
-        const asnFillOpacity = asnRecord?.asn ? 0.08 : 0.05;
+        const asnBorderOpacity = asnRecord?.asn ? 1 : 0.28;
+        const asnFillOpacity = asnRecord?.asn ? 0.1 : 0.04;
         const lotSize = spacing - 0.18;
         const halfLotSize = lotSize / 2;
-        const borderWidth = asnRecord?.asn ? 0.075 : 0.035;
-        const borderY = groundY + 0.009;
+        const borderWidth = asnRecord?.asn ? 0.16 : 0.07;
+        const borderHeight = asnRecord?.asn ? 0.075 : 0.035;
+        const borderY = groundY + 0.055;
+        const borderMaterial = (
+          <meshStandardMaterial
+            color={asnBorderColor}
+            emissive={asnBorderColor}
+            emissiveIntensity={asnRecord?.asn ? 0.35 : 0.05}
+            transparent
+            opacity={asnBorderOpacity}
+            depthWrite={false}
+            depthTest={false}
+          />
+        );
 
         items.push(
-          <group key={`asn-neighborhood-${x}-${y}`}>
+          <group key={`asn-neighborhood-${x}-${y}`} renderOrder={4}>
             <mesh
               key={`lot-fill-${x}-${y}`}
               rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos, groundY + 0.002, zPos]}
+              position={[xPos, groundY + 0.006, zPos]}
+              renderOrder={2}
             >
               <planeGeometry args={[lotSize, lotSize]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnFillOpacity} depthWrite={false} />
+              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnFillOpacity} depthWrite={false} depthTest={false} />
             </mesh>
 
-            <mesh
-              key={`asn-border-top-${x}-${y}`}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos, borderY, zPos - halfLotSize]}
-            >
-              <planeGeometry args={[lotSize, borderWidth]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnBorderOpacity} depthWrite={false} />
+            <mesh key={`asn-border-top-${x}-${y}`} position={[xPos, borderY, zPos - halfLotSize]} renderOrder={5}>
+              <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
+              {borderMaterial}
             </mesh>
 
-            <mesh
-              key={`asn-border-bottom-${x}-${y}`}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos, borderY, zPos + halfLotSize]}
-            >
-              <planeGeometry args={[lotSize, borderWidth]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnBorderOpacity} depthWrite={false} />
+            <mesh key={`asn-border-bottom-${x}-${y}`} position={[xPos, borderY, zPos + halfLotSize]} renderOrder={5}>
+              <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
+              {borderMaterial}
             </mesh>
 
-            <mesh
-              key={`asn-border-left-${x}-${y}`}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos - halfLotSize, borderY, zPos]}
-            >
-              <planeGeometry args={[borderWidth, lotSize]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnBorderOpacity} depthWrite={false} />
+            <mesh key={`asn-border-left-${x}-${y}`} position={[xPos - halfLotSize, borderY, zPos]} renderOrder={5}>
+              <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
+              {borderMaterial}
             </mesh>
 
-            <mesh
-              key={`asn-border-right-${x}-${y}`}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos + halfLotSize, borderY, zPos]}
-            >
-              <planeGeometry args={[borderWidth, lotSize]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnBorderOpacity} depthWrite={false} />
+            <mesh key={`asn-border-right-${x}-${y}`} position={[xPos + halfLotSize, borderY, zPos]} renderOrder={5}>
+              <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
+              {borderMaterial}
             </mesh>
           </group>
         );
