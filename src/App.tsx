@@ -1776,7 +1776,6 @@ function App() {
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
-                  onHoverInfoHtml={setBottomInfoHtml}
                 />
                 <OrbitControls
                   ref={controlsRef}
