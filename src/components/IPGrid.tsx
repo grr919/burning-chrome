@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 
 type GridPosition = {
   firstOctet: number;
@@ -10,14 +11,46 @@ type GridPosition = {
 };
 
 type LookupMode = 'rdap' | 'ptr';
+type GridSystemMode = 'grid1' | 'grid2';
+
+type Grid2Position = {
+  outerFirstOctet: number;
+  outerSecondOctet: number;
+  innerThirdStart: number;
+  innerFourthStart: number;
+};
+
+type LookupAddress = {
+  ipAddress: string;
+  label: number;
+  displayLabel: string;
+  firstOctetValue: number;
+  secondOctetValue: number;
+  thirdOctetValue: number;
+  fourthOctetValue: number;
+};
+
+const DEFAULT_GRID2_POSITION: Grid2Position = {
+  outerFirstOctet: 0,
+  outerSecondOctet: 0,
+  innerThirdStart: 0,
+  innerFourthStart: 0,
+};
+
+function clampOctet(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
 
 type IPGridProps = {
   zoomLevel: number;
   currentPosition: GridPosition;
   getIPColor: (first: number, second: number, third: number, fourth: number) => string;
   handleGridClick: (x: number, y: number) => void;
-  onFlagClick: (building: { ipAddress: string; label: number; color: string; buildingFamily: 'block' | 'tower' | 'stepped' | 'fort'; buildingHeight: number; flagImageUrl?: string | null; countryCodeLabel?: string }) => void;
+  onFlagClick: (building: { ipAddress: string; label: number; color: string; buildingFamily: 'block' | 'tower' | 'stepped' | 'fort'; buildingHeight: number; flagImageUrl?: string | null; countryCodeLabel?: string; asn?: string; asnName?: string; route?: string; asnColor?: string }) => void;
   lookupMode: LookupMode;
+  gridSystemMode?: GridSystemMode;
+  grid2Position?: Grid2Position;
+  onHoverInfoHtml?: (html: string) => void;
 };
 
 type RdapEntity = {
@@ -63,25 +96,62 @@ type ExposureRecord = {
   error?: string;
 };
 
+type AsnRecord = {
+  ipAddress: string;
+  asn?: string;
+  asnName?: string;
+  route?: string;
+  country?: string;
+  registry?: string;
+  source?: string;
+  error?: string;
+};
+
 const rdapCache: Record<string, RdapRecord> = {};
 const pendingRdapLookups = new Set<string>();
 const reverseDnsCache: Record<string, ReverseDnsRecord> = {};
 const pendingReverseLookups = new Set<string>();
 const exposureCache: Record<string, ExposureRecord> = {};
 const pendingExposureLookups = new Set<string>();
+const asnCache: Record<string, AsnRecord> = {};
+const pendingAsnLookups = new Set<string>();
 
 function getLookupAddress(
   zoomLevel: number,
   currentPosition: GridPosition,
   x: number,
-  y: number
-): { ipAddress: string; label: number } {
+  y: number,
+  gridSystemMode: GridSystemMode = 'grid1',
+  grid2Position: Grid2Position = DEFAULT_GRID2_POSITION
+): LookupAddress {
   const value = y * 16 + x;
+
+  if (gridSystemMode === 'grid2') {
+    const firstOctetValue = clampOctet(grid2Position.outerFirstOctet);
+    const secondOctetValue = clampOctet(grid2Position.outerSecondOctet);
+    const thirdOctetValue = clampOctet(grid2Position.innerThirdStart + y);
+    const fourthOctetValue = clampOctet(grid2Position.innerFourthStart + x);
+
+    return {
+      ipAddress: `${firstOctetValue}.${secondOctetValue}.${thirdOctetValue}.${fourthOctetValue}`,
+      label: thirdOctetValue * 256 + fourthOctetValue,
+      displayLabel: `${thirdOctetValue}.${fourthOctetValue}`,
+      firstOctetValue,
+      secondOctetValue,
+      thirdOctetValue,
+      fourthOctetValue,
+    };
+  }
 
   if (zoomLevel === 0) {
     return {
       ipAddress: `${value}.0.0.0`,
       label: value,
+      displayLabel: `${value}`,
+      firstOctetValue: value,
+      secondOctetValue: 0,
+      thirdOctetValue: 0,
+      fourthOctetValue: 0,
     };
   }
 
@@ -89,6 +159,11 @@ function getLookupAddress(
     return {
       ipAddress: `${currentPosition.firstOctet}.${value}.0.0`,
       label: value,
+      displayLabel: `${value}`,
+      firstOctetValue: currentPosition.firstOctet,
+      secondOctetValue: value,
+      thirdOctetValue: 0,
+      fourthOctetValue: 0,
     };
   }
 
@@ -96,24 +171,36 @@ function getLookupAddress(
     return {
       ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${value}.0`,
       label: value,
+      displayLabel: `${value}`,
+      firstOctetValue: currentPosition.firstOctet,
+      secondOctetValue: currentPosition.secondOctet,
+      thirdOctetValue: value,
+      fourthOctetValue: 0,
     };
   }
 
   return {
     ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.${value}`,
     label: value,
+    displayLabel: `${value}`,
+    firstOctetValue: currentPosition.firstOctet,
+    secondOctetValue: currentPosition.secondOctet,
+    thirdOctetValue: currentPosition.thirdOctet,
+    fourthOctetValue: value,
   };
 }
 
 function getVisibleLookupAddresses(
   zoomLevel: number,
   currentPosition: GridPosition,
-  gridSize: number
-): { ipAddress: string; label: number }[] {
-  const items: { ipAddress: string; label: number }[] = [];
+  gridSize: number,
+  gridSystemMode: GridSystemMode = 'grid1',
+  grid2Position: Grid2Position = DEFAULT_GRID2_POSITION
+): LookupAddress[] {
+  const items: LookupAddress[] = [];
   for (let y = 0; y < gridSize; y += 1) {
     for (let x = 0; x < gridSize; x += 1) {
-      items.push(getLookupAddress(zoomLevel, currentPosition, x, y));
+      items.push(getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position));
     }
   }
   return items;
@@ -146,6 +233,66 @@ function pseudoRandom(seed: number): number {
 function getHeightFromServiceCount(cubeSize: number, serviceCount: number): number {
   const normalized = Math.log10(serviceCount + 1);
   return cubeSize * (0.72 + normalized * 1.95);
+}
+
+function normalizeAsn(value?: string | number | null): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = String(value).trim().toUpperCase();
+  if (!text) {
+    return null;
+  }
+  if (/^AS\d+$/.test(text)) {
+    return text;
+  }
+  if (/^\d+$/.test(text)) {
+    return `AS${text}`;
+  }
+  return text;
+}
+
+function getAsnColor(asn?: string | null): string {
+  const normalized = normalizeAsn(asn);
+  if (!normalized) {
+    return '#8f8f8f';
+  }
+
+  const palette = [
+    '#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2',
+    '#4f46e5', '#be123c', '#65a30d', '#0f766e', '#b45309', '#7c3aed',
+    '#0ea5e9', '#84cc16', '#f43f5e', '#14b8a6', '#6366f1', '#d946ef',
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  return palette[Math.abs(hash) % palette.length];
+}
+
+function getAsnSummaryLabel(record?: AsnRecord | null): string {
+  if (!record?.asn) {
+    return 'ASN not loaded';
+  }
+  return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
+}
+
+function escapeHtml(value?: string | number | null): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getAsnDiagnosticLabel(record: AsnRecord | undefined, loading: boolean): string {
+  if (loading) return 'loading';
+  if (record?.asn) return 'ok';
+  if (record?.error) return `error: ${record.error}`;
+  return 'not requested or no response yet';
 }
 
 function getCountryCode(countryCode?: string): string | null {
@@ -404,7 +551,17 @@ function StreetSceneryLayer({ gridSize, spacing, offset, groundY }: StreetTraffi
   return <>{sceneryItems}</>;
 }
 
-function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFlagClick, lookupMode }: IPGridProps) {
+function IPGrid({
+  zoomLevel,
+  currentPosition,
+  getIPColor,
+  handleGridClick,
+  onFlagClick,
+  lookupMode,
+  gridSystemMode = 'grid1',
+  grid2Position = DEFAULT_GRID2_POSITION,
+  onHoverInfoHtml,
+}: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
   const cubeSize = 0.92;
@@ -419,13 +576,25 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
   const [rdapInfo, setRdapInfo] = useState<Record<string, RdapRecord>>({});
   const [reverseDnsInfo, setReverseDnsInfo] = useState<Record<string, ReverseDnsRecord>>({});
   const [exposureInfo, setExposureInfo] = useState<Record<string, ExposureRecord>>({});
+  const [asnInfo, setAsnInfo] = useState<Record<string, AsnRecord>>({});
   const [isRdapLoading, setIsRdapLoading] = useState<Record<string, boolean>>({});
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
+  const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
 
   const visibleLookupAddresses = useMemo(
-    () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize),
-    [zoomLevel, currentPosition.firstOctet, currentPosition.secondOctet, currentPosition.thirdOctet]
+    () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
+    [
+      zoomLevel,
+      gridSystemMode,
+      currentPosition.firstOctet,
+      currentPosition.secondOctet,
+      currentPosition.thirdOctet,
+      grid2Position.outerFirstOctet,
+      grid2Position.outerSecondOctet,
+      grid2Position.innerThirdStart,
+      grid2Position.innerFourthStart,
+    ]
   );
 
   const performRdapLookup = async (ipAddress: string) => {
@@ -507,6 +676,98 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
     } finally {
       pendingReverseLookups.delete(ipAddress);
       setIsReverseLoading((prev) => ({ ...prev, [ipAddress]: false }));
+    }
+  };
+
+  const performAsnLookup = async (ipAddresses: string[]) => {
+    const missing = ipAddresses.filter((ipAddress) => !asnCache[ipAddress] && !pendingAsnLookups.has(ipAddress));
+    if (missing.length === 0) {
+      return;
+    }
+
+    for (const ipAddress of missing) {
+      pendingAsnLookups.add(ipAddress);
+    }
+
+    setIsAsnLoading((prev) => {
+      const next = { ...prev };
+      for (const ipAddress of missing) {
+        next[ipAddress] = true;
+      }
+      return next;
+    });
+
+    try {
+      const response = await fetch('/api/asn', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ ipAddresses: missing }),
+      });
+
+      let json: { records?: AsnRecord[]; error?: string; details?: string } = {};
+      const responseText = await response.text();
+      if (responseText.trim()) {
+        try {
+          json = JSON.parse(responseText) as { records?: AsnRecord[]; error?: string; details?: string };
+        } catch {
+          json = {
+            error: `ASN endpoint returned non-JSON text. Status ${response.status}. First characters: ${responseText.slice(0, 80)}`,
+          };
+        }
+      }
+
+      if (!response.ok) {
+        const message = json.error ?? json.details ?? `ASN lookup failed with status ${response.status}`;
+        const failedRecords: Record<string, AsnRecord> = {};
+        for (const ipAddress of missing) {
+          failedRecords[ipAddress] = { ipAddress, error: message };
+          asnCache[ipAddress] = failedRecords[ipAddress];
+        }
+        setAsnInfo((prev) => ({ ...prev, ...failedRecords }));
+        return;
+      }
+
+      const nextRecords: Record<string, AsnRecord> = {};
+      for (const record of Array.isArray(json.records) ? json.records : []) {
+        const normalizedRecord: AsnRecord = {
+          ...record,
+          asn: normalizeAsn(record.asn) ?? undefined,
+        };
+        nextRecords[normalizedRecord.ipAddress] = normalizedRecord;
+        asnCache[normalizedRecord.ipAddress] = normalizedRecord;
+      }
+
+      for (const ipAddress of missing) {
+        if (!nextRecords[ipAddress]) {
+          const fallback: AsnRecord = { ipAddress, error: 'No ASN record returned for this IP.' };
+          nextRecords[ipAddress] = fallback;
+          asnCache[ipAddress] = fallback;
+        }
+      }
+
+      setAsnInfo((prev) => ({ ...prev, ...nextRecords }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown ASN lookup error';
+      const failedRecords: Record<string, AsnRecord> = {};
+      for (const ipAddress of missing) {
+        failedRecords[ipAddress] = { ipAddress, error: message };
+        asnCache[ipAddress] = failedRecords[ipAddress];
+      }
+      setAsnInfo((prev) => ({ ...prev, ...failedRecords }));
+    } finally {
+      for (const ipAddress of missing) {
+        pendingAsnLookups.delete(ipAddress);
+      }
+      setIsAsnLoading((prev) => {
+        const next = { ...prev };
+        for (const ipAddress of missing) {
+          next[ipAddress] = false;
+        }
+        return next;
+      });
     }
   };
 
@@ -619,7 +880,9 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
   };
 
   useEffect(() => {
-    void performExposureLookup(visibleLookupAddresses.map((item) => item.ipAddress));
+    const visibleIps = visibleLookupAddresses.map((item) => item.ipAddress);
+    void performExposureLookup(visibleIps);
+    void performAsnLookup(visibleIps);
   }, [visibleLookupAddresses]);
 
   useEffect(() => {
@@ -675,6 +938,76 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
       void performReverseDnsLookup(hoveredIpAddress);
     }
   }, [hoveredIpAddress, lookupMode]);
+
+  const hoveredLookupAddress = useMemo(
+    () => visibleLookupAddresses.find((item) => item.ipAddress === hoveredIpAddress) ?? null,
+    [visibleLookupAddresses, hoveredIpAddress]
+  );
+
+  const hoverInfoHtml = useMemo(() => {
+    if (!hoveredLookupAddress) {
+      return '';
+    }
+
+    const ipAddress = hoveredLookupAddress.ipAddress;
+    const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
+    const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
+    const exposureRecord = exposureInfo[ipAddress] ?? exposureCache[ipAddress];
+    const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
+    const asnColor = getAsnColor(asnRecord?.asn);
+    const countryName = rdapRecord?.country ? getCountryName(rdapRecord.country) : null;
+    const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
+    const ipTypeLabel = getIpTypeLabel(hoveredLookupAddress.firstOctetValue, hoveredLookupAddress.secondOctetValue);
+    const asnDiagnostic = getAsnDiagnosticLabel(asnRecord, Boolean(isAsnLoading[ipAddress]));
+    const serviceSummary = exposureRecord
+      ? `${exposureRecord.openPortCount ?? 0} open ports; ${exposureRecord.serviceCount ?? 0} services${exposureRecord.topPorts?.length ? `; top ports: ${exposureRecord.topPorts.slice(0, 6).map(escapeHtml).join(', ')}` : ''}`
+      : 'Exposure data not loaded yet';
+
+    const lines: string[] = [];
+    lines.push(`<div class="font-bold">${escapeHtml(ipAddress)} — ${escapeHtml(ipTypeLabel)}${countryName ? ` (${escapeHtml(countryName)})` : ''}${topReverseDnsHostname ? ` — reverse-dns: ${escapeHtml(topReverseDnsHostname)}` : ''}</div>`);
+    lines.push(`<div class="mt-2 rounded p-1.5 text-xs" style="background:${escapeHtml(asnColor)};color:white">`);
+    lines.push(`<div><span class="font-semibold">ASN status:</span> ${escapeHtml(asnDiagnostic)}</div>`);
+    if (asnRecord?.asn) {
+      lines.push(`<div><span class="font-semibold">ASN neighborhood:</span> ${escapeHtml(getAsnSummaryLabel(asnRecord))}</div>`);
+      if (asnRecord.country) lines.push(`<div>ASN country: ${escapeHtml(asnRecord.country)}</div>`);
+      if (asnRecord.registry) lines.push(`<div>Registry: ${escapeHtml(asnRecord.registry)}</div>`);
+      if (asnRecord.source) lines.push(`<div>Source: ${escapeHtml(asnRecord.source)}</div>`);
+    } else if (isAsnLoading[ipAddress]) {
+      lines.push('<div>Waiting for /api/asn response...</div>');
+    } else if (asnRecord?.error) {
+      lines.push(`<div>Problem: ${escapeHtml(asnRecord.error)}</div>`);
+    } else {
+      lines.push('<div>No ASN record is currently present for this IP.</div>');
+    }
+    lines.push('</div>');
+
+    if (rdapRecord?.org || rdapRecord?.networkName || rdapRecord?.country) {
+      lines.push('<div class="mt-2 space-y-1">');
+      if (rdapRecord.org) lines.push(`<div><span class="font-semibold">RDAP org:</span> ${escapeHtml(rdapRecord.org)}</div>`);
+      if (rdapRecord.networkName) lines.push(`<div><span class="font-semibold">Network:</span> ${escapeHtml(rdapRecord.networkName)}</div>`);
+      if (rdapRecord.country) lines.push(`<div><span class="font-semibold">RDAP country:</span> ${escapeHtml(rdapRecord.country)}</div>`);
+      lines.push('</div>');
+    } else if (rdapRecord?.error) {
+      lines.push(`<div class="text-red-700 mt-2">RDAP error: ${escapeHtml(rdapRecord.error)}</div>`);
+    }
+
+    lines.push(`<div class="mt-2"><span class="font-semibold">Exposure:</span> ${serviceSummary}</div>`);
+
+    return lines.join('');
+  }, [
+    hoveredLookupAddress,
+    rdapInfo,
+    reverseDnsInfo,
+    exposureInfo,
+    asnInfo,
+    isAsnLoading,
+  ]);
+
+  useEffect(() => {
+    if (onHoverInfoHtml) {
+      onHoverInfoHtml(hoverInfoHtml);
+    }
+  }, [hoverInfoHtml, onHoverInfoHtml]);
 
   const createStreetGrid = () => {
     const items = [];
@@ -760,6 +1093,11 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
         const xPos = x * spacing - offset;
         const zPos = y * spacing - offset;
 
+        const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
+        const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
+        const asnLotColor = asnRecord?.asn ? getAsnColor(asnRecord.asn) : blockOutlineColor;
+        const asnLotOpacity = asnRecord?.asn ? 0.32 : 0.14;
+
         items.push(
           <mesh
             key={`lot-outline-${x}-${y}`}
@@ -767,7 +1105,7 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
             position={[xPos, groundY + 0.002, zPos]}
           >
             <planeGeometry args={[spacing - 0.18, spacing - 0.18]} />
-            <meshStandardMaterial color={blockOutlineColor} transparent opacity={0.14} />
+            <meshStandardMaterial color={asnLotColor} transparent opacity={asnLotOpacity} />
           </mesh>
         );
       }
@@ -787,30 +1125,33 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
 
   for (let y = 0; y < gridSize; y += 1) {
     for (let x = 0; x < gridSize; x += 1) {
-      const { ipAddress, label } = getLookupAddress(zoomLevel, currentPosition, x, y);
+      const {
+        ipAddress,
+        label,
+        displayLabel,
+        firstOctetValue,
+        secondOctetValue,
+        thirdOctetValue,
+        fourthOctetValue,
+      } = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
       const exposureRecord = exposureInfo[ipAddress] ?? exposureCache[ipAddress];
       const serviceCount = exposureRecord?.serviceCount ?? 0;
       const buildingHeight = getHeightFromServiceCount(cubeSize, serviceCount);
-      const firstOctetValue = zoomLevel === 0 ? label : currentPosition.firstOctet;
-      const secondOctetValue = zoomLevel >= 1 ? (zoomLevel === 1 ? label : currentPosition.secondOctet) : 0;
       const ipTypeLabel = getIpTypeLabel(firstOctetValue, secondOctetValue);
-      const color = getIPColor(
-        firstOctetValue,
-        secondOctetValue,
-        zoomLevel >= 2 ? (zoomLevel === 2 ? label : currentPosition.thirdOctet) : 0,
-        zoomLevel === 3 ? label : 0
-      );
+      const color = getIPColor(firstOctetValue, secondOctetValue, thirdOctetValue, fourthOctetValue);
       const xPos = x * spacing - offset;
       const zPos = y * spacing - offset;
       const cubeId = `cube-${x}-${y}`;
       const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
+      const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
+      const asnColor = getAsnColor(asnRecord?.asn);
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
       const flagImageUrl = getFlagImageUrl(rdapRecord?.country);
       const countryCodeLabel = getCountryCode(rdapRecord?.country)?.toUpperCase() ?? '';
       const countryName = flagImageUrl ? getCountryName(rdapRecord?.country) : null;
-      const visiblePorts = [...new Set((exposureRecord?.topPorts ?? [])
+      const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
         .map((portLabel) => parseTopPortNumber(portLabel))
         .filter((port): port is number => typeof port === 'number'))];
       const hasHttp = visiblePorts.includes(80);
@@ -832,10 +1173,11 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
               : 'block';
       const seed =
         label +
-        currentPosition.firstOctet * 1000 +
-        currentPosition.secondOctet * 100 +
-        currentPosition.thirdOctet * 10 +
-        zoomLevel * 10000;
+        firstOctetValue * 1000000 +
+        secondOctetValue * 10000 +
+        thirdOctetValue * 100 +
+        fourthOctetValue +
+        (gridSystemMode === 'grid2' ? 2000000 : zoomLevel * 10000);
 
       const widthJitter = 0.72 + pseudoRandom(seed) * 0.18;
       const depthJitter = 0.72 + pseudoRandom(seed + 1) * 0.18;
@@ -1480,6 +1822,10 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
                       buildingHeight,
                       flagImageUrl,
                       countryCodeLabel,
+                      asn: asnRecord?.asn,
+                      asnName: asnRecord?.asnName,
+                      route: asnRecord?.route,
+                      asnColor,
                     });
                   }}
                   style={{
@@ -1522,6 +1868,10 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
                       buildingHeight,
                       flagImageUrl: null,
                       countryCodeLabel,
+                      asn: asnRecord?.asn,
+                      asnName: asnRecord?.asnName,
+                      route: asnRecord?.route,
+                      asnColor,
                     });
                   }}
                   style={{
@@ -1551,14 +1901,14 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
               anchorY="middle"
               rotation={[-Math.PI / 2, 0, 0]}
             >
-              {label}
+              {displayLabel}
             </Text>
           </group>
 
           {hoveredCube === cubeId && (
             <Html fullscreen>
               <div data-info-panel="true" style={{ display: 'none' }}>
-                <div className="font-bold">{ipAddress} — {ipTypeLabel}{countryName ? ` (${countryName})` : ""}{topReverseDnsHostname ? ` — reverse-dns: ${topReverseDnsHostname}` : ""}</div>
+                <div className="font-bold">{ipAddress} — {ipTypeLabel}{countryName ? ` (${countryName})` : ""}{asnRecord?.asn ? ` — ${normalizeAsn(asnRecord.asn)}` : ""}{topReverseDnsHostname ? ` — reverse-dns: ${topReverseDnsHostname}` : ""}</div>
 
                 {lookupMode === 'rdap' && isRdapLoading[ipAddress] && (
                   <div className="text-blue-700 mt-2">Fetching live RDAP record...</div>
@@ -1566,6 +1916,22 @@ function IPGrid({ zoomLevel, currentPosition, getIPColor, handleGridClick, onFla
 
                 {lookupMode === 'ptr' && isReverseLoading[ipAddress] && (
                   <div className="text-blue-700 mt-2">Fetching hostname data...</div>
+                )}
+
+                {isAsnLoading[ipAddress] && (
+                  <div className="text-blue-700 mt-2">Fetching ASN neighborhood data...</div>
+                )}
+
+                {!isAsnLoading[ipAddress] && asnRecord?.asn && (
+                  <div className="mt-2 rounded p-1.5 text-xs" style={{ background: asnColor, color: 'white' }}>
+                    <div><span className="font-semibold">ASN neighborhood:</span> {getAsnSummaryLabel(asnRecord)}</div>
+                    {asnRecord.country && <div>Country: {asnRecord.country}</div>}
+                    {asnRecord.registry && <div>Registry: {asnRecord.registry}</div>}
+                  </div>
+                )}
+
+                {!isAsnLoading[ipAddress] && asnRecord?.error && (
+                  <div className="text-gray-600 mt-2 text-xs">ASN lookup unavailable: {asnRecord.error}</div>
                 )}
 
                 {lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord?.error && (
