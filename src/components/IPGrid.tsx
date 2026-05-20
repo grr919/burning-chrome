@@ -2195,98 +2195,11 @@ function IPGrid({
 
           {hoveredCube === cubeId && (
             <Html fullscreen>
-              <div data-info-panel="true" style={{ display: 'none' }}>
-                <div className="font-bold">{ipAddress} — {ipTypeLabel}{countryName ? ` (${countryName})` : ""}{asnRecord?.asn ? ` — ${normalizeAsn(asnRecord.asn)}` : ""}{topReverseDnsHostname ? ` — reverse-dns: ${topReverseDnsHostname}` : ""}</div>
-
-                {lookupMode === 'rdap' && isRdapLoading[ipAddress] && (
-                  <div className="text-blue-700 mt-2">Fetching live RDAP record...</div>
-                )}
-
-                {lookupMode === 'ptr' && isReverseLoading[ipAddress] && (
-                  <div className="text-blue-700 mt-2">Fetching hostname data...</div>
-                )}
-
-                {isAsnLoading[ipAddress] && (
-                  <div className="text-blue-700 mt-2">Fetching ASN neighborhood data...</div>
-                )}
-
-                {!isAsnLoading[ipAddress] && asnRecord?.asn && (
-                  <div className="mt-2 rounded p-1.5 text-xs" style={{ background: asnColor, color: 'white' }}>
-                    <div><span className="font-semibold">ASN neighborhood:</span> {getAsnSummaryLabel(asnRecord)}</div>
-                    {asnRecord.country && <div>Country: {asnRecord.country}</div>}
-                    {asnRecord.registry && <div>Registry: {asnRecord.registry}</div>}
-                  </div>
-                )}
-
-                {!isAsnLoading[ipAddress] && asnRecord?.error && (
-                  <div className="text-gray-600 mt-2 text-xs">ASN lookup unavailable: {asnRecord.error}</div>
-                )}
-
-                {lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord?.error && (
-                  <div className="text-red-700 mt-2">{rdapRecord.error}</div>
-                )}
-
-                {lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord?.error && (
-                  <div className="text-red-700 mt-2">{dnsRecord.error}</div>
-                )}
-
-                {lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord && !rdapRecord.error && (
-                  <div className="mt-2 space-y-1">
-                    {rdapRecord.org && (
-                      <div>
-                        <span className="text-gray-600">Organization:</span> {rdapRecord.org}
-                      </div>
-                    )}
-                    {rdapRecord.networkName && (
-                      <div>
-                        <span className="text-gray-600">Network:</span> {rdapRecord.networkName}
-                      </div>
-                    )}
-                    {visibleEntities.length > 0 && (
-                      <div className="pt-1">
-                        <div className="text-gray-600">Contacts:</div>
-                        <div className="space-y-1 mt-1">
-                          {visibleEntities.map((entity, index) => (
-                            <div key={`${ipAddress}-entity-${index}`} className="text-xs bg-gray-100 rounded p-1.5">
-                              {entity.name && <div>{entity.name}</div>}
-                              {entity.roles.length > 0 && <div className="text-gray-600">{entity.roles.join(', ')}</div>}
-                              {entity.email && <div>{entity.email}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord && !dnsRecord.error && (
-                  <div className="mt-2 space-y-1">
-                    <div className="text-gray-600">Hostnames:</div>
-                    {dnsRecord.hostnames.length > 0 ? (
-                      <div className="space-y-1 mt-1">
-                        {dnsRecord.ptrHostnames.length > 0 && (
-                          <div className="text-xs text-gray-600">PTR / reverse DNS</div>
-                        )}
-                        {dnsRecord.ptrHostnames.map((hostname) => (
-                          <div key={`ptr-${hostname}`} className="text-xs bg-gray-100 rounded p-1.5 break-all">
-                            {hostname}
-                          </div>
-                        ))}
-                        {dnsRecord.fallbackHostnames.length > 0 && (
-                          <div className="text-xs text-gray-600 mt-2">Public scan data fallback</div>
-                        )}
-                        {dnsRecord.fallbackHostnames.map((hostname) => (
-                          <div key={`fallback-${hostname}`} className="text-xs bg-gray-100 rounded p-1.5 break-all">
-                            {hostname}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-700">No hostname was found for this address.</div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <div
+                data-info-panel="true"
+                style={{ display: 'none' }}
+                dangerouslySetInnerHTML={{ __html: hoverInfoHtml }}
+              />
             </Html>
           )}
         </group>
