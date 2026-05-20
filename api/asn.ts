@@ -1,5 +1,3 @@
-import dns from 'node:dns/promises';
-
 type AsnRecord = {
   ipAddress: string;
   asn?: string;
@@ -7,82 +5,237 @@ type AsnRecord = {
   route?: string;
   country?: string;
   registry?: string;
-  allocated?: string;
   source?: string;
   error?: string;
 };
 
-function reverseIpv4(ipAddress: string): string {
-  const parts = ipAddress.split('.');
-  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part) || Number(part) < 0 || Number(part) > 255)) {
-    throw new Error(`Only IPv4 addresses are supported by this example route: ${ipAddress}`);
+type VercelRequest = {
+  method?: string;
+  body?: unknown;
+  query?: Record<string, unknown>;
+};
+
+type VercelResponse = {
+  setHeader?: (name: string, value: string | string[]) => void;
+  status: (code: number) => VercelResponse;
+  json: (body: unknown) => void;
+};
+
+type GoogleDnsAnswer = {
+  data?: string;
+};
+
+type GoogleDnsResponse = {
+  Status?: number;
+  Answer?: GoogleDnsAnswer[];
+  Comment?: string;
+};
+
+const MAX_IPS_PER_REQUEST = 256;
+
+function normalizeIp(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
   }
-  return parts.reverse().join('.');
+
+  const text = value.trim();
+  const parts = text.split('.');
+
+  if (parts.length !== 4) {
+    return null;
+  }
+
+  const octets = parts.map((part) => {
+    if (!/^\d+$/.test(part)) {
+      return Number.NaN;
+    }
+    return Number.parseInt(part, 10);
+  });
+
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null;
+  }
+
+  return octets.join('.');
 }
 
-function firstTxtRecord(records: string[][]): string | null {
-  return records[0]?.join('') ?? null;
+function isPrivateOrReserved(ipAddress: string): boolean {
+  const [first, second] = ipAddress.split('.').map((part) => Number.parseInt(part, 10));
+
+  if (first === 0) return true;
+  if (first === 10) return true;
+  if (first === 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first >= 224) return true;
+
+  return false;
 }
 
-async function lookupAsnName(asn: string): Promise<string | undefined> {
-  try {
-    const numericAsn = asn.replace(/^AS/i, '');
-    const txt = firstTxtRecord(await dns.resolveTxt(`AS${numericAsn}.asn.cymru.com`));
-    if (!txt) return undefined;
-    const parts = txt.split('|').map((part) => part.trim());
-    return parts[4] || undefined;
-  } catch {
-    return undefined;
+function normalizeRequestBody(body: unknown): Record<string, unknown> {
+  if (!body) {
+    return {};
   }
+
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof body === 'object') {
+    return body as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function extractIpAddresses(req: VercelRequest): string[] {
+  const body = normalizeRequestBody(req.body);
+  const bodyIps = body.ipAddresses;
+  const bodyIp = body.ip;
+  const queryIp = req.query?.ip;
+
+  const rawValues: unknown[] = [];
+
+  if (Array.isArray(bodyIps)) {
+    rawValues.push(...bodyIps);
+  }
+
+  if (bodyIp) {
+    rawValues.push(bodyIp);
+  }
+
+  if (Array.isArray(queryIp)) {
+    rawValues.push(...queryIp);
+  } else if (queryIp) {
+    rawValues.push(queryIp);
+  }
+
+  const normalized = rawValues
+    .map((value) => normalizeIp(value))
+    .filter((value): value is string => Boolean(value));
+
+  return [...new Set(normalized)].slice(0, MAX_IPS_PER_REQUEST);
+}
+
+function cleanTxtRecord(value: string): string {
+  return value
+    .replace(/^"+|"+$/g, '')
+    .replace(/\\"/g, '"')
+    .trim();
+}
+
+function parseTeamCymruRecord(ipAddress: string, txtRecord: string): AsnRecord {
+  const clean = cleanTxtRecord(txtRecord);
+  const parts = clean.split('|').map((part) => part.trim());
+
+  const [asnRaw, route, country, registry, , ...nameParts] = parts;
+  const asn = asnRaw && asnRaw !== 'NA' ? `AS${asnRaw.replace(/^AS/i, '')}` : undefined;
+  const asnName = nameParts.join(' | ').trim() || undefined;
+
+  if (!asn) {
+    return {
+      ipAddress,
+      source: 'team-cymru-google-doh',
+      error: `Team Cymru returned no ASN for ${ipAddress}.`,
+    };
+  }
+
+  return {
+    ipAddress,
+    asn,
+    asnName,
+    route: route || undefined,
+    country: country || undefined,
+    registry: registry || undefined,
+    source: 'team-cymru-google-doh',
+  };
 }
 
 async function lookupAsn(ipAddress: string): Promise<AsnRecord> {
-  try {
-    const queryName = `${reverseIpv4(ipAddress)}.origin.asn.cymru.com`;
-    const txt = firstTxtRecord(await dns.resolveTxt(queryName));
-    if (!txt) {
-      return { ipAddress, error: 'No ASN TXT record returned.', source: 'Team Cymru DNS' };
-    }
-
-    const parts = txt.split('|').map((part) => part.trim());
-    const numericAsn = parts[0];
-    const route = parts[1];
-    const country = parts[2];
-    const registry = parts[3];
-    const allocated = parts[4];
-    const asn = numericAsn ? `AS${numericAsn.replace(/^AS/i, '')}` : undefined;
-    const asnName = asn ? await lookupAsnName(asn) : undefined;
-
+  if (isPrivateOrReserved(ipAddress)) {
     return {
       ipAddress,
-      asn,
-      asnName,
-      route,
-      country,
-      registry,
-      allocated,
-      source: 'Team Cymru DNS',
+      source: 'local-validation',
+      error: 'Private, multicast, or reserved IP address; no public ASN is expected.',
     };
+  }
+
+  const reversed = ipAddress.split('.').reverse().join('.');
+  const name = `${reversed}.origin.asn.cymru.com`;
+  const url = `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=TXT`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: 'application/dns-json',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        ipAddress,
+        source: 'team-cymru-google-doh',
+        error: `Google DNS-over-HTTPS returned status ${response.status}.`,
+      };
+    }
+
+    const json = (await response.json()) as GoogleDnsResponse;
+    const txt = json.Answer?.map((answer) => answer.data).find((data): data is string => Boolean(data));
+
+    if (!txt) {
+      return {
+        ipAddress,
+        source: 'team-cymru-google-doh',
+        error: json.Comment || `No ASN TXT record was returned for ${ipAddress}.`,
+      };
+    }
+
+    return parseTeamCymruRecord(ipAddress, txt);
   } catch (error) {
     return {
       ipAddress,
-      source: 'Team Cymru DNS',
-      error: error instanceof Error ? error.message : 'Unknown ASN lookup error',
+      source: 'team-cymru-google-doh',
+      error: error instanceof Error ? error.message : 'Unknown ASN lookup error.',
     };
   }
 }
 
-// Express/Vite server-style handler. Wire this to POST /api/asn.
-export async function handleAsnRoute(req: any, res: any) {
-  const fromBody = Array.isArray(req.body?.ipAddresses) ? req.body.ipAddresses : [];
-  const fromQuery = typeof req.query?.ip === 'string' ? [req.query.ip] : [];
-  const ipAddresses = [...new Set([...fromBody, ...fromQuery].filter((value): value is string => typeof value === 'string'))].slice(0, 256);
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader?.('Content-Type', 'application/json; charset=utf-8');
+
+  if (req.method === 'OPTIONS') {
+    res.setHeader?.('Allow', ['GET', 'POST', 'OPTIONS']);
+    res.status(204).json({});
+    return;
+  }
+
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.setHeader?.('Allow', ['GET', 'POST', 'OPTIONS']);
+    res.status(405).json({
+      error: 'Method not allowed. Use POST with { ipAddresses: [...] } or GET with ?ip=1.1.1.1.',
+    });
+    return;
+  }
+
+  const ipAddresses = extractIpAddresses(req);
 
   if (ipAddresses.length === 0) {
-    res.status(400).json({ error: 'Provide ipAddresses in the POST body, or ip as a query parameter.' });
+    res.status(400).json({
+      error: 'No valid IPv4 addresses were provided.',
+      expectedPostBody: { ipAddresses: ['8.8.8.8', '1.1.1.1'] },
+      expectedGetUrl: '/api/asn?ip=8.8.8.8',
+    });
     return;
   }
 
   const records = await Promise.all(ipAddresses.map((ipAddress) => lookupAsn(ipAddress)));
-  res.json({ records });
+
+  res.status(200).json({
+    records,
+  });
 }
