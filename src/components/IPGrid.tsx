@@ -1174,90 +1174,9 @@ function IPGrid({
       }
     }
 
-    const getAsnKeyForCell = (x: number, y: number): string | null => {
-      if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
-        return null;
-      }
-
-      const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
-      const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
-      return normalizeAsn(asnRecord?.asn) ?? null;
-    };
-
-    for (let y = 0; y < gridSize; y += 1) {
-      for (let x = 0; x < gridSize; x += 1) {
-        const xPos = x * spacing - offset;
-        const zPos = y * spacing - offset;
-
-        const lookupAddress = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
-        const asnRecord = asnInfo[lookupAddress.ipAddress] ?? asnCache[lookupAddress.ipAddress];
-        const asnKey = normalizeAsn(asnRecord?.asn);
-        const asnBorderColor = asnKey ? getAsnColor(asnKey) : blockOutlineColor;
-        const asnFillOpacity = asnKey ? 0.08 : 0.025;
-        const lotSize = spacing - 0.18;
-        const halfLotSize = lotSize / 2;
-        const borderWidth = 0.18;
-        const borderHeight = 0.085;
-        const borderY = groundY + 0.065;
-        const shouldDrawTop = Boolean(asnKey) && getAsnKeyForCell(x, y - 1) !== asnKey;
-        const shouldDrawBottom = Boolean(asnKey) && getAsnKeyForCell(x, y + 1) !== asnKey;
-        const shouldDrawLeft = Boolean(asnKey) && getAsnKeyForCell(x - 1, y) !== asnKey;
-        const shouldDrawRight = Boolean(asnKey) && getAsnKeyForCell(x + 1, y) !== asnKey;
-        const borderMaterial = (
-          <meshStandardMaterial
-            color={asnBorderColor}
-            emissive={asnBorderColor}
-            emissiveIntensity={0.45}
-            transparent
-            opacity={1}
-            depthWrite={false}
-            depthTest={false}
-          />
-        );
-
-        items.push(
-          <group key={`asn-neighborhood-${x}-${y}`} renderOrder={4}>
-            <mesh
-              key={`lot-fill-${x}-${y}`}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[xPos, groundY + 0.006, zPos]}
-              renderOrder={2}
-            >
-              <planeGeometry args={[lotSize, lotSize]} />
-              <meshStandardMaterial color={asnBorderColor} transparent opacity={asnFillOpacity} depthWrite={false} depthTest={false} />
-            </mesh>
-
-            {shouldDrawTop && (
-              <mesh key={`asn-border-top-${x}-${y}`} position={[xPos, borderY, zPos - halfLotSize]} renderOrder={5}>
-                <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
-                {borderMaterial}
-              </mesh>
-            )}
-
-            {shouldDrawBottom && (
-              <mesh key={`asn-border-bottom-${x}-${y}`} position={[xPos, borderY, zPos + halfLotSize]} renderOrder={5}>
-                <boxGeometry args={[lotSize, borderHeight, borderWidth]} />
-                {borderMaterial}
-              </mesh>
-            )}
-
-            {shouldDrawLeft && (
-              <mesh key={`asn-border-left-${x}-${y}`} position={[xPos - halfLotSize, borderY, zPos]} renderOrder={5}>
-                <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
-                {borderMaterial}
-              </mesh>
-            )}
-
-            {shouldDrawRight && (
-              <mesh key={`asn-border-right-${x}-${y}`} position={[xPos + halfLotSize, borderY, zPos]} renderOrder={5}>
-                <boxGeometry args={[borderWidth, borderHeight, lotSize]} />
-                {borderMaterial}
-              </mesh>
-            )}
-          </group>
-        );
-      }
-    }
+    // ASN ownership is now shown directly through each square's base color.
+    // The previous raised outline layer is intentionally omitted so same-ASN
+    // neighborhoods read as solid colored land parcels rather than bordered cells.
 
     return (
       <>
@@ -1293,6 +1212,8 @@ function IPGrid({
       const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
       const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
       const asnColor = getAsnColor(asnRecord?.asn);
+      const squareBaseColor = asnRecord?.asn ? asnColor : '#9a9a9a';
+      const buildingBodyColor = '#111827';
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
@@ -1379,8 +1300,8 @@ function IPGrid({
             ? cubeSize / 2 + 0.035
             : cubeSize / 2 + 0.045;
 
-      const trimColor = shadeColor(color, -30);
-      const roofColor = shadeColor(color, -55);
+      const trimColor = '#1f2937';
+      const roofColor = '#030712';
       const windowColor = '#dfe8ff';
 
       const headerParts = [
@@ -1574,12 +1495,12 @@ function IPGrid({
         <group key={cubeId} position={[xPos, groundY, zPos]}>
           <mesh position={[0, 0.035, 0]} receiveShadow>
             <boxGeometry args={[spacing - sidewalkInset, 0.07, spacing - sidewalkInset]} />
-            <meshStandardMaterial color="#9a9a9a" />
+            <meshStandardMaterial color={squareBaseColor} />
           </mesh>
 
           <mesh position={[0, 0.07, 0]} receiveShadow>
             <boxGeometry args={[cubeSize + 0.1, 0.04, cubeSize + 0.1]} />
-            <meshStandardMaterial color="#7f7f7f" />
+            <meshStandardMaterial color="#111827" />
           </mesh>
 
           <mesh
@@ -1641,7 +1562,7 @@ function IPGrid({
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
                       <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.98]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
                       <boxGeometry args={[cubeSize * 0.9, 0.06, cubeSize * 0.9]} />
@@ -1654,7 +1575,7 @@ function IPGrid({
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
                       <cylinderGeometry args={[cubeSize * 0.5, cubeSize * 0.5, buildingHeight, 28]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
                       <cylinderGeometry args={[cubeSize * 0.46, cubeSize * 0.46, 0.06, 28]} />
@@ -1667,7 +1588,7 @@ function IPGrid({
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
                       <cylinderGeometry args={[cubeSize * 0.54, cubeSize * 0.54, buildingHeight, 6]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
                       <cylinderGeometry args={[cubeSize * 0.5, cubeSize * 0.5, 0.06, 6]} />
@@ -1680,19 +1601,19 @@ function IPGrid({
                   <>
                     <mesh position={[0, blockBaseHeight, cubeSize * 0.34]} castShadow receiveShadow>
                       <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.3]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockBaseHeight, -cubeSize * 0.34]} castShadow receiveShadow>
                       <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.3]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[-cubeSize * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
                       <boxGeometry args={[cubeSize * 0.3, buildingHeight, cubeSize * 0.38]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[cubeSize * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
                       <boxGeometry args={[cubeSize * 0.3, buildingHeight, cubeSize * 0.38]} />
-                      <meshStandardMaterial color={color} />
+                      <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, cubeSize * 0.34]} castShadow>
                       <boxGeometry args={[cubeSize * 0.9, 0.06, cubeSize * 0.22]} />
@@ -1933,7 +1854,7 @@ function IPGrid({
                 </mesh>
                 <mesh position={[0, towerUpperHeight + 0.06, 0]} castShadow receiveShadow>
                   <boxGeometry args={[towerWidth * 0.74, towerOnlyHeight * 1.1, towerDepth * 0.74]} />
-                  <meshStandardMaterial color={color} />
+                  <meshStandardMaterial color={buildingBodyColor} />
                 </mesh>
                 <mesh position={[0, towerRoofTopY - 0.03, 0]} castShadow>
                   <boxGeometry args={[towerWidth * 0.9, 0.06, towerDepth * 0.9]} />
@@ -1950,11 +1871,11 @@ function IPGrid({
                 </mesh>
                 <mesh position={[0, 0.07 + steppedLowerHeight + steppedMidHeight / 2 + 0.03, 0]} castShadow receiveShadow>
                   <boxGeometry args={[cubeSize * 0.62, steppedMidHeight * 1.08, cubeSize * 0.62]} />
-                  <meshStandardMaterial color={color} />
+                  <meshStandardMaterial color={buildingBodyColor} />
                 </mesh>
                 <mesh position={[0, 0.07 + steppedLowerHeight + steppedMidHeight + steppedTopHeight / 2 + 0.06, 0]} castShadow receiveShadow>
                   <boxGeometry args={[cubeSize * 0.34, steppedTopHeight * 1.15, cubeSize * 0.34]} />
-                  <meshStandardMaterial color={shadeColor(color, 20)} />
+                  <meshStandardMaterial color={shadeColor(buildingBodyColor, 20)} />
                 </mesh>
                 <mesh position={[0, steppedRoofTopY - 0.03, 0]} castShadow>
                   <boxGeometry args={[cubeSize * 0.44, 0.06, cubeSize * 0.44]} />
@@ -1971,7 +1892,7 @@ function IPGrid({
                 </mesh>
                 <mesh position={[0, 0.07 + fortWallHeight + keepHeight / 2 + 0.08, 0]} castShadow receiveShadow>
                   <boxGeometry args={[cubeSize * 0.42, keepHeight * 1.12, cubeSize * 0.42]} />
-                  <meshStandardMaterial color={color} />
+                  <meshStandardMaterial color={buildingBodyColor} />
                 </mesh>
                 {[
                   [-cubeSize * 0.42, -cubeSize * 0.42],
