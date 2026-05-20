@@ -50,7 +50,6 @@ type IPGridProps = {
   lookupMode: LookupMode;
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
-  onHoverInfoHtml?: (html: string) => void;
 };
 
 type RdapEntity = {
@@ -560,7 +559,6 @@ function IPGrid({
   lookupMode,
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
-  onHoverInfoHtml,
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -938,76 +936,6 @@ function IPGrid({
       void performReverseDnsLookup(hoveredIpAddress);
     }
   }, [hoveredIpAddress, lookupMode]);
-
-  const hoveredLookupAddress = useMemo(
-    () => visibleLookupAddresses.find((item) => item.ipAddress === hoveredIpAddress) ?? null,
-    [visibleLookupAddresses, hoveredIpAddress]
-  );
-
-  const hoverInfoHtml = useMemo(() => {
-    if (!hoveredLookupAddress) {
-      return '';
-    }
-
-    const ipAddress = hoveredLookupAddress.ipAddress;
-    const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
-    const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
-    const exposureRecord = exposureInfo[ipAddress] ?? exposureCache[ipAddress];
-    const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
-    const asnColor = getAsnColor(asnRecord?.asn);
-    const countryName = rdapRecord?.country ? getCountryName(rdapRecord.country) : null;
-    const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
-    const ipTypeLabel = getIpTypeLabel(hoveredLookupAddress.firstOctetValue, hoveredLookupAddress.secondOctetValue);
-    const asnDiagnostic = getAsnDiagnosticLabel(asnRecord, Boolean(isAsnLoading[ipAddress]));
-    const serviceSummary = exposureRecord
-      ? `${exposureRecord.openPortCount ?? 0} open ports; ${exposureRecord.serviceCount ?? 0} services${exposureRecord.topPorts?.length ? `; top ports: ${exposureRecord.topPorts.slice(0, 6).map(escapeHtml).join(', ')}` : ''}`
-      : 'Exposure data not loaded yet';
-
-    const lines: string[] = [];
-    lines.push(`<div class="font-bold">${escapeHtml(ipAddress)} — ${escapeHtml(ipTypeLabel)}${countryName ? ` (${escapeHtml(countryName)})` : ''}${topReverseDnsHostname ? ` — reverse-dns: ${escapeHtml(topReverseDnsHostname)}` : ''}</div>`);
-    lines.push(`<div class="mt-2 rounded p-1.5 text-xs" style="background:${escapeHtml(asnColor)};color:white">`);
-    lines.push(`<div><span class="font-semibold">ASN status:</span> ${escapeHtml(asnDiagnostic)}</div>`);
-    if (asnRecord?.asn) {
-      lines.push(`<div><span class="font-semibold">ASN neighborhood:</span> ${escapeHtml(getAsnSummaryLabel(asnRecord))}</div>`);
-      if (asnRecord.country) lines.push(`<div>ASN country: ${escapeHtml(asnRecord.country)}</div>`);
-      if (asnRecord.registry) lines.push(`<div>Registry: ${escapeHtml(asnRecord.registry)}</div>`);
-      if (asnRecord.source) lines.push(`<div>Source: ${escapeHtml(asnRecord.source)}</div>`);
-    } else if (isAsnLoading[ipAddress]) {
-      lines.push('<div>Waiting for /api/asn response...</div>');
-    } else if (asnRecord?.error) {
-      lines.push(`<div>Problem: ${escapeHtml(asnRecord.error)}</div>`);
-    } else {
-      lines.push('<div>No ASN record is currently present for this IP.</div>');
-    }
-    lines.push('</div>');
-
-    if (rdapRecord?.org || rdapRecord?.networkName || rdapRecord?.country) {
-      lines.push('<div class="mt-2 space-y-1">');
-      if (rdapRecord.org) lines.push(`<div><span class="font-semibold">RDAP org:</span> ${escapeHtml(rdapRecord.org)}</div>`);
-      if (rdapRecord.networkName) lines.push(`<div><span class="font-semibold">Network:</span> ${escapeHtml(rdapRecord.networkName)}</div>`);
-      if (rdapRecord.country) lines.push(`<div><span class="font-semibold">RDAP country:</span> ${escapeHtml(rdapRecord.country)}</div>`);
-      lines.push('</div>');
-    } else if (rdapRecord?.error) {
-      lines.push(`<div class="text-red-700 mt-2">RDAP error: ${escapeHtml(rdapRecord.error)}</div>`);
-    }
-
-    lines.push(`<div class="mt-2"><span class="font-semibold">Exposure:</span> ${serviceSummary}</div>`);
-
-    return lines.join('');
-  }, [
-    hoveredLookupAddress,
-    rdapInfo,
-    reverseDnsInfo,
-    exposureInfo,
-    asnInfo,
-    isAsnLoading,
-  ]);
-
-  useEffect(() => {
-    if (onHoverInfoHtml) {
-      onHoverInfoHtml(hoverInfoHtml);
-    }
-  }, [hoverInfoHtml, onHoverInfoHtml]);
 
   const createStreetGrid = () => {
     const items = [];
