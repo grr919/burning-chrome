@@ -1518,8 +1518,6 @@ function IPGrid({
             onPointerOut={() => {
               document.body.style.cursor = 'auto';
               setHoveredCube(null);
-              setHoveredIpAddress(null);
-              onHoverInfoHtml?.('');
             }}
           >
             <boxGeometry args={[spacing - 0.08, 0.06, spacing - 0.08]} />
@@ -1542,9 +1540,7 @@ function IPGrid({
               onPointerOut={() => {
                 document.body.style.cursor = 'auto';
                 setHoveredCube(null);
-                setHoveredIpAddress(null);
-                onHoverInfoHtml?.('');
-              }}
+                  }}
             >
               <boxGeometry
                 args={[
