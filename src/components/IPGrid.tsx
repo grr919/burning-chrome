@@ -1317,6 +1317,9 @@ function IPGrid({
               : towerRoofTopY;
 
       const hitboxHeight = roofTopY + 0.08;
+      const cellHitboxHeight = Math.max(1.2, roofTopY + 0.28);
+      const cellX = x;
+      const cellY = y;
       const hoverScale = hoveredCube === cubeId ? 1.03 : 1;
       const blockDoorWidth = 0.14 + pseudoRandom(seed + 201) * 0.08;
       const blockDoorHeight = 0.18 + pseudoRandom(seed + 202) * 0.08;
@@ -1550,23 +1553,25 @@ function IPGrid({
           </mesh>
 
           <mesh
-            position={[0, 0.13, 0]}
+            position={[0, cellHitboxHeight / 2, 0]}
             onClick={(event) => {
               event.stopPropagation();
-              handleGridClick(x, y);
+              handleGridClick(cellX, cellY);
             }}
-            onPointerOver={() => {
+            onPointerOver={(event) => {
+              event.stopPropagation();
               document.body.style.cursor = 'pointer';
               setHoveredCube(cubeId);
               setHoveredIpAddress(ipAddress);
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
-            onPointerOut={() => {
+            onPointerOut={(event) => {
+              event.stopPropagation();
               document.body.style.cursor = 'auto';
               setHoveredCube(null);
             }}
           >
-            <boxGeometry args={[spacing - 0.08, 0.06, spacing - 0.08]} />
+            <boxGeometry args={[spacing - 0.08, cellHitboxHeight, spacing - 0.08]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
 
@@ -1575,7 +1580,7 @@ function IPGrid({
               position={[0, hitboxHeight / 2, 0]}
               onClick={(event) => {
                 event.stopPropagation();
-                handleGridClick(x, y);
+                handleGridClick(cellX, cellY);
               }}
               onPointerOver={() => {
                 document.body.style.cursor = 'pointer';
