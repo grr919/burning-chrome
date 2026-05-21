@@ -327,6 +327,41 @@ function escapeHtml(value?: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+
+
+function makeExternalLink(href: string, label: string): string {
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline decoration-blue-400 underline-offset-2">${escapeHtml(label)}</a>`;
+}
+
+function linkifyText(value?: unknown): string {
+  const text = valueToDisplayText(value);
+  if (!text) {
+    return '';
+  }
+
+  const pattern = /(https?:\/\/[^\s<>"']+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/gi;
+  let cursor = 0;
+  let output = '';
+
+  for (const match of text.matchAll(pattern)) {
+    const rawMatch = match[0];
+    const start = match.index ?? 0;
+    output += escapeHtml(text.slice(cursor, start));
+
+    const trailingMatch = rawMatch.match(/[),.;:!?]+$/);
+    const trailing = trailingMatch ? trailingMatch[0] : '';
+    const core = trailing ? rawMatch.slice(0, -trailing.length) : rawMatch;
+    const href = core.toLowerCase().startsWith('http') ? core : `mailto:${core}`;
+
+    output += makeExternalLink(href, core);
+    output += escapeHtml(trailing);
+    cursor = start + rawMatch.length;
+  }
+
+  output += escapeHtml(text.slice(cursor));
+  return output;
+}
+
 function getAsnApiErrorMessage(...values: unknown[]): string {
   for (const value of values) {
     const text = valueToDisplayText(value).trim();
@@ -1321,15 +1356,15 @@ function IPGrid({
       } else if (asnRecord?.asn) {
         hoverInfoLines.push(
           `<div class="mt-2 rounded p-1.5 text-xs" style="background:${escapeHtml(asnColor)};color:white">` +
-          `<div><span class="font-semibold">ASN neighborhood:</span> ${escapeHtml(getAsnSummaryLabel(asnRecord))}</div>` +
-          `${asnRecord.country ? `<div>Country: ${escapeHtml(asnRecord.country)}</div>` : ''}` +
-          `${asnRecord.registry ? `<div>Registry: ${escapeHtml(asnRecord.registry)}</div>` : ''}` +
+          `<div><span class="font-semibold">ASN neighborhood:</span> ${linkifyText(getAsnSummaryLabel(asnRecord))}</div>` +
+          `${asnRecord.country ? `<div>Country: ${linkifyText(asnRecord.country)}</div>` : ''}` +
+          `${asnRecord.registry ? `<div>Registry: ${linkifyText(asnRecord.registry)}</div>` : ''}` +
           '</div>'
         );
       } else if (asnRecord?.error) {
-        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN lookup unavailable: ${escapeHtml(asnRecord.error)}</div>`);
+        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN lookup unavailable: ${linkifyText(asnRecord.error)}</div>`);
       } else {
-        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN status: ${escapeHtml(getAsnDiagnosticLabel(asnRecord, Boolean(isAsnLoading[ipAddress])))}</div>`);
+        hoverInfoLines.push(`<div class="text-gray-600 mt-2 text-xs">ASN status: ${linkifyText(getAsnDiagnosticLabel(asnRecord, Boolean(isAsnLoading[ipAddress])))}</div>`);
       }
 
       if (lookupMode === 'rdap' && isRdapLoading[ipAddress]) {
@@ -1341,27 +1376,27 @@ function IPGrid({
       }
 
       if (lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord?.error) {
-        hoverInfoLines.push(`<div class="text-red-700 mt-2">${escapeHtml(rdapRecord.error)}</div>`);
+        hoverInfoLines.push(`<div class="text-red-700 mt-2">${linkifyText(rdapRecord.error)}</div>`);
       }
 
       if (lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord?.error) {
-        hoverInfoLines.push(`<div class="text-red-700 mt-2">${escapeHtml(dnsRecord.error)}</div>`);
+        hoverInfoLines.push(`<div class="text-red-700 mt-2">${linkifyText(dnsRecord.error)}</div>`);
       }
 
       if (lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord && !rdapRecord.error) {
         const rdapLines: string[] = [];
         if (rdapRecord.org) {
-          rdapLines.push(`<div><span class="text-gray-600">Organization:</span> ${escapeHtml(rdapRecord.org)}</div>`);
+          rdapLines.push(`<div><span class="text-gray-600">Organization:</span> ${linkifyText(rdapRecord.org)}</div>`);
         }
         if (rdapRecord.networkName) {
-          rdapLines.push(`<div><span class="text-gray-600">Network:</span> ${escapeHtml(rdapRecord.networkName)}</div>`);
+          rdapLines.push(`<div><span class="text-gray-600">Network:</span> ${linkifyText(rdapRecord.networkName)}</div>`);
         }
         if (visibleEntities.length > 0) {
           const entityHtml = visibleEntities.map((entity, index) =>
             `<div class="text-xs bg-gray-100 rounded p-1.5" data-entity-index="${index}">` +
-            `${entity.name ? `<div>${escapeHtml(entity.name)}</div>` : ''}` +
-            `${entity.roles.length > 0 ? `<div class="text-gray-600">${escapeHtml(entity.roles.join(', '))}</div>` : ''}` +
-            `${entity.email ? `<div>${escapeHtml(entity.email)}</div>` : ''}` +
+            `${entity.name ? `<div>${linkifyText(entity.name)}</div>` : ''}` +
+            `${entity.roles.length > 0 ? `<div class="text-gray-600">${linkifyText(entity.roles.join(', '))}</div>` : ''}` +
+            `${entity.email ? `<div>${linkifyText(entity.email)}</div>` : ''}` +
             '</div>'
           ).join('');
           rdapLines.push(`<div class="pt-1"><div class="text-gray-600">Contacts:</div><div class="space-y-1 mt-1">${entityHtml}</div></div>`);
@@ -1373,8 +1408,8 @@ function IPGrid({
 
       if (lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord && !dnsRecord.error) {
         if (dnsRecord.hostnames.length > 0) {
-          const ptrLines = dnsRecord.ptrHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${escapeHtml(hostname)}</div>`).join('');
-          const fallbackLines = dnsRecord.fallbackHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${escapeHtml(hostname)}</div>`).join('');
+          const ptrLines = dnsRecord.ptrHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${linkifyText(hostname)}</div>`).join('');
+          const fallbackLines = dnsRecord.fallbackHostnames.map((hostname) => `<div class="text-xs bg-gray-100 rounded p-1.5 break-all">${linkifyText(hostname)}</div>`).join('');
           hoverInfoLines.push(
             '<div class="mt-2 space-y-1"><div class="text-gray-600">Hostnames:</div><div class="space-y-1 mt-1">' +
             `${dnsRecord.ptrHostnames.length > 0 ? '<div class="text-xs text-gray-600">PTR / reverse DNS</div>' : ''}` +
@@ -1389,35 +1424,46 @@ function IPGrid({
       }
 
       const structuredHoverInfoHtml = hoverInfoLines.join('');
-      const proseHoverParagraphs = [
-        `<div class="font-bold">${escapeHtml(ipAddress)}</div>`,
-        `<p>${escapeHtml(joinSentenceParts([
-          `This square represents ${ipAddress}.`,
-          `The address is classified as ${ipTypeLabel.toLowerCase()}.`,
-          countryName ? `The registration country currently shown is ${countryName}.` : null,
-          describeIpPurpose(ipTypeLabel),
-        ]))}</p>`,
-        `<p>${escapeHtml(getAsnPhrase(asnRecord, Boolean(isAsnLoading[ipAddress])))}</p>`,
-        `<p>${escapeHtml(getExposurePhrase(exposureRecord))}</p>`,
-        `<p>${escapeHtml(getHostnamePhrase(dnsRecord, topReverseDnsHostname, Boolean(isReverseLoading[ipAddress])))}</p>`,
+      const proseSentences = [
+        `This square represents ${ipAddress}.`,
+        `The address is classified as ${ipTypeLabel.toLowerCase()}.`,
+        countryName ? `The registration country currently shown is ${countryName}.` : null,
+        describeIpPurpose(ipTypeLabel),
+        getAsnPhrase(asnRecord, Boolean(isAsnLoading[ipAddress])),
+        getExposurePhrase(exposureRecord),
+        getHostnamePhrase(dnsRecord, topReverseDnsHostname, Boolean(isReverseLoading[ipAddress])),
       ];
 
       if (lookupMode === 'rdap') {
         if (isRdapLoading[ipAddress]) {
-          proseHoverParagraphs.push('<p class="text-blue-700">RDAP registration data is still loading.</p>');
+          proseSentences.push('RDAP registration data is still loading.');
         } else if (rdapRecord?.error) {
-          proseHoverParagraphs.push(`<p class="text-red-700">RDAP lookup is unavailable: ${escapeHtml(rdapRecord.error)}</p>`);
+          proseSentences.push(`RDAP lookup is unavailable: ${valueToDisplayText(rdapRecord.error)}`);
         } else if (rdapRecord) {
-          proseHoverParagraphs.push(`<p>${escapeHtml(joinSentenceParts([
+          proseSentences.push(joinSentenceParts([
             rdapRecord.org ? `RDAP identifies the organization as ${rdapRecord.org}.` : null,
             rdapRecord.networkName ? `The network name is ${rdapRecord.networkName}.` : null,
             rdapRecord.cidr ? `The CIDR block is ${rdapRecord.cidr}.` : null,
             rdapRecord.startAddress && rdapRecord.endAddress ? `The registered range runs from ${rdapRecord.startAddress} to ${rdapRecord.endAddress}.` : null,
-          ]) || 'No additional RDAP ownership details were returned for this address.')}</p>`);
+          ]) || 'No additional RDAP ownership details were returned for this address.');
+
+          if (visibleEntities.length > 0) {
+            const contactSentences = visibleEntities
+              .map((entity) => joinSentenceParts([
+                entity.name ? `Contact: ${entity.name}.` : null,
+                entity.roles.length > 0 ? `Roles: ${entity.roles.join(', ')}.` : null,
+                entity.email ? `Email: ${entity.email}.` : null,
+              ]))
+              .filter(Boolean);
+            if (contactSentences.length > 0) {
+              proseSentences.push(contactSentences.join(' '));
+            }
+          }
         }
       }
 
-      const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverParagraphs.join('') : structuredHoverInfoHtml;
+      const proseHoverHtml = `<p><span class="font-bold">${escapeHtml(ipAddress)}</span>. ${linkifyText(joinSentenceParts(proseSentences))}</p>`;
+      const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverHtml : structuredHoverInfoHtml;
 
       const windowBands = [];
       {
