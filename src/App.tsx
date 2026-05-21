@@ -1431,9 +1431,9 @@ function App() {
                 <button
                   onClick={() => setInfoDisplayMode((prev) => (prev === 'structured' ? 'prose' : 'structured'))}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${infoDisplayMode === 'prose' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Toggle the bottom hover information between the current structured format and a prose description"
+                  title="Toggle the bottom hover information between Data Mode and Prose Mode"
                 >
-                  {infoDisplayMode === 'prose' ? 'Prose description' : 'Current format'}
+                  {infoDisplayMode === 'prose' ? 'Prose Mode' : 'Data Mode'}
                 </button>
               </div>
 
