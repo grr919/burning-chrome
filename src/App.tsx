@@ -915,6 +915,7 @@ function App() {
 
   const handleReset = () => {
     setLayoutMode('grid');
+    setBuildingView(null);
     setZoomLevel(0);
     setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
     setGrid2Position(DEFAULT_GRID2_POSITION);
@@ -1335,13 +1336,13 @@ function App() {
     }
 
     if (gridSystemMode === 'grid2') {
-      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Click a building to select that exact IP; click a building flag for close-up building view.';
+      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Single-click a building or square for building view; double-click to select that exact IP.';
     }
 
     if (zoomLevel === 0) {
       return lookupMode === 'rdap'
-        ? 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data. Click a building flag for close-up building view.'
-        : 'Click a building to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent. Click a building flag for close-up building view.';
+        ? 'Single-click a building or square for building view; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data.'
+        : 'Single-click a building or square for building view; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent.';
     }
 
     if (zoomLevel === 1) {
@@ -1353,8 +1354,8 @@ function App() {
     }
 
     return lookupMode === 'rdap'
-      ? `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Hover a building to fetch live RDAP ownership and registration data. Click a building flag for close-up building view.`
-      : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Hover a building to fetch hostname data. Click a building flag for close-up building view.`;
+      ? `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for building view. Hover a building to fetch live RDAP ownership and registration data.`
+      : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for building view. Hover a building to fetch hostname data.`;
   };
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
@@ -1620,11 +1621,18 @@ function App() {
             <div className="lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-4 overflow-auto">
               <div className="font-bold text-lg">Building view: {buildingView.ipAddress}</div>
               <div className="text-sm text-gray-600 mt-1">
-                Click the building flag to return to grid view.
+                Use Return to grid to leave building view.
               </div>
 
               <div className="mt-3 flex flex-col gap-2">
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleExitBuildingView}
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                  >
+                    Return to grid
+                  </button>
+
                   <button
                     onClick={handleLaunchSsh}
                     disabled={sshLaunchLoadingIp === buildingView.ipAddress}
