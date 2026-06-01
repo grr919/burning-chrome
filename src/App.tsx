@@ -1365,10 +1365,7 @@ function App() {
         <header className="bg-white text-black p-4 rounded-lg">
           <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold">Cyberspace Visualization</h1>
-              <p className="text-gray-700">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
-              <p className="text-sm italic text-gray-700 mt-2">{getCurrentRangeLabel()}</p>
-              <p className="text-sm italic text-gray-700">{getInstructionText()}</p>
+              <h1 className="text-2xl font-bold">Cyberspace</h1>
             </div>
 
             <div className="flex flex-col items-start lg:items-end gap-3">
@@ -1415,11 +1412,21 @@ function App() {
                 >
                   {infoDisplayMode === 'prose' ? 'Prose Mode' : 'Data Mode'}
                 </button>
-              </div>
-
-              <div className="text-xs lg:text-right">
-                <p className="text-gray-900 mt-1">Current height source: Shodan InternetDB</p>
-                <p className="text-gray-900 mt-1">Selected routing target: {activeTargetIp}</p>
+                <div className="relative group">
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                  >
+                    More Info
+                  </button>
+                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
+                    <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
+                    <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
+                    <p className="mt-2">{getInstructionText()}</p>
+                    <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
+                    <p className="mt-1 text-xs text-gray-700">Selected routing target: {activeTargetIp}</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
