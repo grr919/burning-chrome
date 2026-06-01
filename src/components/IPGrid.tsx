@@ -2065,7 +2065,7 @@ function IPGrid({
               );
             })}
 
-            {flagImageUrl ? (
+            {flagImageUrl && (
               <Html position={[0, facadeFlagY, facadeFlagZ]} transform sprite distanceFactor={8}>
                 <button
                   onClick={(event) => {
@@ -2110,40 +2110,6 @@ function IPGrid({
                     }}
                   />
                 </button>
-              </Html>
-            ) : (
-              <Html position={[0, facadeFlagY, facadeFlagZ]} transform sprite distanceFactor={8}>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onFlagClick({
-                      ipAddress,
-                      label,
-                      color,
-                      buildingFamily,
-                      buildingHeight,
-                      flagImageUrl: null,
-                      countryCodeLabel,
-                      asn: asnRecord?.asn,
-                      asnName: asnRecord?.asnName,
-                      route: asnRecord?.route,
-                      asnColor,
-                    });
-                  }}
-                  style={{
-                    width: '20px',
-                    height: '14px',
-                    padding: 0,
-                    border: '1px solid rgba(255,255,255,0.5)',
-                    borderRadius: '1px',
-                    background: '#ffffff',
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
-                    userSelect: 'none',
-                    pointerEvents: 'auto',
-                    cursor: 'pointer',
-                  }}
-                  title="Open building view"
-                />
               </Html>
             )}
 
