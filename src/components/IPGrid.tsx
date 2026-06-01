@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 type GridPosition = {
@@ -989,6 +989,15 @@ function IPGrid({
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
+  const clickTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current !== null) {
+        window.clearTimeout(clickTimerRef.current);
+      }
+    };
+  }, []);
 
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
@@ -1779,6 +1788,42 @@ function IPGrid({
         }
       }
 
+      const openBuildingView = () => {
+        onFlagClick({
+          ipAddress,
+          label,
+          color,
+          buildingFamily,
+          buildingHeight,
+          flagImageUrl,
+          countryCodeLabel,
+          asn: asnRecord?.asn,
+          asnName: asnRecord?.asnName,
+          route: asnRecord?.route,
+          asnColor,
+        });
+      };
+
+      const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+        }
+        clickTimerRef.current = window.setTimeout(() => {
+          openBuildingView();
+          clickTimerRef.current = null;
+        }, 220);
+      };
+
+      const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+        }
+        handleGridClick(cellX, cellY);
+      };
+
       cubes.push(
         <group key={cubeId} position={[xPos, groundY, zPos]}>
           <mesh position={[0, 0.035, 0]} receiveShadow>
@@ -1793,10 +1838,8 @@ function IPGrid({
 
           <mesh
             position={[0, cellHitboxHeight / 2, 0]}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleGridClick(cellX, cellY);
-            }}
+            onClick={handleBuildingSingleClick}
+            onDoubleClick={handleBuildingDoubleClick}
             onPointerOver={(event) => {
               event.stopPropagation();
               document.body.style.cursor = 'pointer';
@@ -1817,10 +1860,8 @@ function IPGrid({
           <group scale={[hoverScale, hoverScale, hoverScale]}>
             <mesh
               position={[0, hitboxHeight / 2, 0]}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleGridClick(cellX, cellY);
-              }}
+              onClick={handleBuildingSingleClick}
+              onDoubleClick={handleBuildingDoubleClick}
               onPointerOver={() => {
                 document.body.style.cursor = 'pointer';
                 setHoveredCube(cubeId);
@@ -2412,19 +2453,21 @@ function IPGrid({
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
-                    onFlagClick({
-                      ipAddress,
-                      label,
-                      color,
-                      buildingFamily,
-                      buildingHeight,
-                      flagImageUrl,
-                      countryCodeLabel,
-                      asn: asnRecord?.asn,
-                      asnName: asnRecord?.asnName,
-                      route: asnRecord?.route,
-                      asnColor,
-                    });
+                    if (clickTimerRef.current !== null) {
+                      window.clearTimeout(clickTimerRef.current);
+                    }
+                    clickTimerRef.current = window.setTimeout(() => {
+                      openBuildingView();
+                      clickTimerRef.current = null;
+                    }, 220);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    if (clickTimerRef.current !== null) {
+                      window.clearTimeout(clickTimerRef.current);
+                      clickTimerRef.current = null;
+                    }
+                    handleGridClick(cellX, cellY);
                   }}
                   style={{
                     width: '20px',
