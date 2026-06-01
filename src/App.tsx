@@ -329,7 +329,7 @@ function BuildingDetailScene({
         <meshStandardMaterial color="#374151" />
       </mesh>
 
-      {building.flagImageUrl ? (
+      {building.flagImageUrl && (
         <Html position={[0, flagY, 1.78]} transform sprite distanceFactor={8}>
           <button
             onClick={(event) => {
@@ -360,26 +360,6 @@ function BuildingDetailScene({
               }}
             />
           </button>
-        </Html>
-      ) : (
-        <Html position={[0, flagY, 1.78]} transform sprite distanceFactor={8}>
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onExit();
-            }}
-            style={{
-              width: '36px',
-              height: '24px',
-              padding: 0,
-              border: '1px solid rgba(255,255,255,0.55)',
-              borderRadius: '2px',
-              background: '#ffffff',
-              cursor: 'pointer',
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
-            }}
-            title="Return to grid view"
-          />
         </Html>
       )}
 
