@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Home, ArrowLeft, RotateCcw } from 'lucide-react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -782,6 +781,7 @@ function App() {
   const [streetExposureLoading, setStreetExposureLoading] = useState<boolean>(false);
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -1370,48 +1370,106 @@ function App() {
 
             <div className="flex flex-col items-start lg:items-end gap-3">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
-                <button
-                  onClick={handleBack}
-                  disabled={isBackDisabled}
-                  className={`p-2 rounded ${isBackDisabled ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Go back one level"
+                <div
+                  className="relative"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setIsOptionsOpen(false);
+                    }
+                  }}
                 >
-                  <ArrowLeft size={20} />
-                </button>
-                <button onClick={handleReset} className="px-3 py-2 rounded-md bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400" title="Reset to top view">
-                  <Home size={20} />
-                </button>
-                <button onClick={handleResetView} className="px-3 py-2 rounded-md bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400" title="Reset camera view">
-                  <RotateCcw size={20} />
-                </button>
-                <button
-                  onClick={() => handleGridSystemChange('grid1')}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${gridSystemMode === 'grid1' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Use the original four-level 16 by 16 grid"
-                >
-                  Grid 1
-                </button>
-                <button
-                  onClick={() => handleGridSystemChange('grid2')}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${gridSystemMode === 'grid2' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Use one outer 256 by 256 grid with a movable local inner neighborhood"
-                >
-                  Grid 2
-                </button>
-                <button
-                  onClick={handleEnterStreetView}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${layoutMode === 'street' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Enter street level view"
-                >
-                  Street level
-                </button>
-                <button
-                  onClick={() => setInfoDisplayMode((prev) => (prev === 'structured' ? 'prose' : 'structured'))}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${infoDisplayMode === 'prose' ? 'bg-gray-400 text-black border border-gray-500 shadow-sm' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                  title="Toggle the bottom hover information between Data Mode and Prose Mode"
-                >
-                  {infoDisplayMode === 'prose' ? 'Prose Mode' : 'Data Mode'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsOptionsOpen((open) => !open)}
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                    aria-expanded={isOptionsOpen}
+                    aria-haspopup="menu"
+                  >
+                    Options
+                  </button>
+                  {isOptionsOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleBack();
+                          setIsOptionsOpen(false);
+                        }}
+                        disabled={isBackDisabled}
+                        className={`block w-full px-3 py-2 text-left ${isBackDisabled ? 'cursor-not-allowed text-gray-400' : 'hover:bg-gray-100 active:bg-gray-200'}`}
+                        role="menuitem"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleReset();
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleResetView();
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        Reset camera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleGridSystemChange('grid1');
+                          setIsOptionsOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${gridSystemMode === 'grid1' ? 'font-semibold' : ''}`}
+                        role="menuitem"
+                      >
+                        Grid 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleGridSystemChange('grid2');
+                          setIsOptionsOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${gridSystemMode === 'grid2' ? 'font-semibold' : ''}`}
+                        role="menuitem"
+                      >
+                        Grid 2
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleEnterStreetView();
+                          setIsOptionsOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${layoutMode === 'street' ? 'font-semibold' : ''}`}
+                        role="menuitem"
+                      >
+                        Street level
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInfoDisplayMode((prev) => (prev === 'structured' ? 'prose' : 'structured'));
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        {infoDisplayMode === 'prose' ? 'Prose Mode' : 'Data Mode'}
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="relative group">
                   <button
                     type="button"
