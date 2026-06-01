@@ -227,6 +227,30 @@ function shadeColor(hex: string, amount: number): string {
   return `#${((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1)}`;
 }
 
+function mixHexColors(baseHex: string, tintHex: string, tintAmount: number): string {
+  const base = baseHex.replace('#', '');
+  const tint = tintHex.replace('#', '');
+  const baseNumber = Number.parseInt(base, 16);
+  const tintNumber = Number.parseInt(tint, 16);
+
+  if (Number.isNaN(baseNumber) || Number.isNaN(tintNumber)) {
+    return baseHex;
+  }
+
+  const amount = Math.max(0, Math.min(1, tintAmount));
+  const baseRed = baseNumber >> 16;
+  const baseGreen = (baseNumber >> 8) & 0xff;
+  const baseBlue = baseNumber & 0xff;
+  const tintRed = tintNumber >> 16;
+  const tintGreen = (tintNumber >> 8) & 0xff;
+  const tintBlue = tintNumber & 0xff;
+  const red = Math.round(baseRed * (1 - amount) + tintRed * amount);
+  const green = Math.round(baseGreen * (1 - amount) + tintGreen * amount);
+  const blue = Math.round(baseBlue * (1 - amount) + tintBlue * amount);
+
+  return `#${((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1)}`;
+}
+
 function pseudoRandom(seed: number): number {
   const value = Math.sin(seed * 12.9898) * 43758.5453;
   return value - Math.floor(value);
@@ -503,6 +527,215 @@ function getCountryName(countryCode?: string): string | null {
   } catch {
     return null;
   }
+}
+
+type OrganizationCategory = 'cloud' | 'telecom' | 'education' | 'government' | 'residential' | 'security' | 'commercial' | 'unknown';
+
+type BuildingVisualStyle = {
+  category: OrganizationCategory;
+  bodyColor: string;
+  trimColor: string;
+  roofColor: string;
+  windowColor: string;
+  windowOpacity: number;
+  windowEmissiveIntensity: number;
+  accentColor: string;
+  footprintScale: number;
+  roofLift: number;
+  metalness: number;
+  roughness: number;
+};
+
+type BaseBuildingVisualStyle = Omit<BuildingVisualStyle, 'category' | 'bodyColor' | 'trimColor' | 'roofColor' | 'accentColor'> & {
+  bodyBase: string;
+  trimBase: string;
+  roofBase: string;
+  accentBase: string;
+};
+
+function includesAny(value: string, terms: string[]): boolean {
+  return terms.some((term) => value.includes(term));
+}
+
+function getOrganizationCategory(
+  rdapRecord: RdapRecord | undefined,
+  asnRecord: AsnRecord | undefined,
+  dnsRecord: ReverseDnsRecord | undefined,
+  exposureRecord: ExposureRecord | undefined,
+  ipTypeLabel: string
+): OrganizationCategory {
+  if (ipTypeLabel !== 'Public') {
+    return 'unknown';
+  }
+
+  const corpus = [
+    rdapRecord?.org,
+    rdapRecord?.networkName,
+    rdapRecord?.handle,
+    asnRecord?.asnName,
+    asnRecord?.route,
+    ...(dnsRecord?.hostnames ?? []),
+    ...(exposureRecord?.serviceNames ?? []),
+    ...(exposureRecord?.labels ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (!corpus) {
+    return 'unknown';
+  }
+
+  if (includesAny(corpus, ['security', 'firewall', 'vpn', 'proxy', 'waf', 'secure', 'scanner', 'threat'])) {
+    return 'security';
+  }
+
+  if (includesAny(corpus, ['university', 'college', 'school', '.edu', 'research', 'academy', 'institute'])) {
+    return 'education';
+  }
+
+  if (includesAny(corpus, ['government', 'gov', 'military', 'defense', 'department', 'army', 'navy', 'air force', 'state of'])) {
+    return 'government';
+  }
+
+  if (includesAny(corpus, ['dynamic', 'dhcp', 'pool', 'pppoe', 'residential', 'broadband', 'dsl', 'cable modem', 'customer'])) {
+    return 'residential';
+  }
+
+  if (includesAny(corpus, ['telecom', 'communications', 'wireless', 'cellular', 'broadband', 'cable', 'spectrum', 'comcast', 'verizon', 'at&t', 'charter', 'isp'])) {
+    return 'telecom';
+  }
+
+  if (includesAny(corpus, ['cloud', 'hosting', 'hosted', 'cdn', 'edge', 'compute', 'amazon', 'aws', 'google', 'microsoft', 'azure', 'cloudflare', 'akamai', 'fastly', 'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner'])) {
+    return 'cloud';
+  }
+
+  return rdapRecord?.org || asnRecord?.asnName ? 'commercial' : 'unknown';
+}
+
+function getBuildingVisualStyle(category: OrganizationCategory, asnColor: string, seed: number): BuildingVisualStyle {
+  const jitter = Math.round((pseudoRandom(seed + 811) - 0.5) * 24);
+  const baseStyles: Record<OrganizationCategory, BaseBuildingVisualStyle> = {
+    cloud: {
+      bodyBase: '#1e3a8a',
+      trimBase: '#0f172a',
+      roofBase: '#082f49',
+      accentBase: '#38bdf8',
+      windowColor: '#dbeafe',
+      windowOpacity: 0.52,
+      windowEmissiveIntensity: 0.4,
+      footprintScale: 0.94,
+      roofLift: 0.06,
+      metalness: 0.35,
+      roughness: 0.32,
+    },
+    telecom: {
+      bodyBase: '#0f766e',
+      trimBase: '#134e4a',
+      roofBase: '#042f2e',
+      accentBase: '#facc15',
+      windowColor: '#ccfbf1',
+      windowOpacity: 0.42,
+      windowEmissiveIntensity: 0.3,
+      footprintScale: 0.88,
+      roofLift: 0.12,
+      metalness: 0.22,
+      roughness: 0.5,
+    },
+    education: {
+      bodyBase: '#475569',
+      trimBase: '#334155',
+      roofBase: '#14532d',
+      accentBase: '#86efac',
+      windowColor: '#fef9c3',
+      windowOpacity: 0.38,
+      windowEmissiveIntensity: 0.22,
+      footprintScale: 1.06,
+      roofLift: 0.02,
+      metalness: 0.05,
+      roughness: 0.78,
+    },
+    government: {
+      bodyBase: '#6b7280',
+      trimBase: '#374151',
+      roofBase: '#1f2937',
+      accentBase: '#e5e7eb',
+      windowColor: '#e0f2fe',
+      windowOpacity: 0.32,
+      windowEmissiveIntensity: 0.18,
+      footprintScale: 1.02,
+      roofLift: 0.04,
+      metalness: 0.08,
+      roughness: 0.86,
+    },
+    residential: {
+      bodyBase: '#52525b',
+      trimBase: '#3f3f46',
+      roofBase: '#713f12',
+      accentBase: '#fb923c',
+      windowColor: '#fde68a',
+      windowOpacity: 0.36,
+      windowEmissiveIntensity: 0.24,
+      footprintScale: 0.78,
+      roofLift: 0,
+      metalness: 0.02,
+      roughness: 0.9,
+    },
+    security: {
+      bodyBase: '#7f1d1d',
+      trimBase: '#450a0a',
+      roofBase: '#111827',
+      accentBase: '#f87171',
+      windowColor: '#fee2e2',
+      windowOpacity: 0.3,
+      windowEmissiveIntensity: 0.2,
+      footprintScale: 0.96,
+      roofLift: 0.08,
+      metalness: 0.18,
+      roughness: 0.55,
+    },
+    commercial: {
+      bodyBase: '#1f2937',
+      trimBase: '#111827',
+      roofBase: '#030712',
+      accentBase: '#a78bfa',
+      windowColor: '#dfe8ff',
+      windowOpacity: 0.42,
+      windowEmissiveIntensity: 0.28,
+      footprintScale: 0.92,
+      roofLift: 0.04,
+      metalness: 0.2,
+      roughness: 0.52,
+    },
+    unknown: {
+      bodyBase: '#111827',
+      trimBase: '#1f2937',
+      roofBase: '#030712',
+      accentBase: '#9ca3af',
+      windowColor: '#dfe8ff',
+      windowOpacity: 0.26,
+      windowEmissiveIntensity: 0.12,
+      footprintScale: 0.86,
+      roofLift: 0,
+      metalness: 0.06,
+      roughness: 0.82,
+    },
+  };
+
+  const base = baseStyles[category];
+  const accentColor = mixHexColors(base.accentBase, asnColor, category === 'unknown' ? 0.08 : 0.24);
+
+  return {
+    category,
+    bodyColor: shadeColor(mixHexColors(base.bodyBase, asnColor, category === 'unknown' ? 0.05 : 0.18), jitter),
+    trimColor: shadeColor(mixHexColors(base.trimBase, asnColor, category === 'unknown' ? 0.04 : 0.12), Math.round(jitter * 0.5)),
+    roofColor: shadeColor(mixHexColors(base.roofBase, asnColor, category === 'unknown' ? 0.03 : 0.1), Math.round(jitter * 0.35)),
+    windowColor: base.windowColor,
+    windowOpacity: base.windowOpacity,
+    windowEmissiveIntensity: base.windowEmissiveIntensity,
+    accentColor,
+    footprintScale: base.footprintScale,
+    roofLift: base.roofLift,
+    metalness: base.metalness,
+    roughness: base.roughness,
+  };
 }
 
 function parseTopPortNumber(portLabel: string): number | null {
@@ -1244,12 +1477,22 @@ function IPGrid({
       const xPos = x * spacing - offset;
       const zPos = y * spacing - offset;
       const cubeId = `cube-${x}-${y}`;
+      const seed =
+        label +
+        firstOctetValue * 1000000 +
+        secondOctetValue * 10000 +
+        thirdOctetValue * 100 +
+        fourthOctetValue +
+        (gridSystemMode === 'grid2' ? 2000000 : zoomLevel * 10000);
       const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
       const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
       const asnColor = getAsnColor(asnRecord?.asn);
-      const squareBaseColor = asnRecord?.asn ? asnColor : '#9a9a9a';
-      const buildingBodyColor = '#111827';
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
+      const organizationCategory = getOrganizationCategory(rdapRecord, asnRecord, dnsRecord, exposureRecord, ipTypeLabel);
+      const visualStyle = getBuildingVisualStyle(organizationCategory, asnColor, seed);
+      const squareBaseColor = asnRecord?.asn
+        ? mixHexColors(asnColor, visualStyle.bodyColor, 0.18)
+        : mixHexColors('#9a9a9a', visualStyle.bodyColor, 0.12);
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
       const flagImageUrl = getFlagImageUrl(rdapRecord?.country);
@@ -1275,16 +1518,8 @@ function IPGrid({
             : hasHttp || hasSsh || openPortCount >= 2 || visiblePorts.length >= 1
               ? 'tower'
               : 'block';
-      const seed =
-        label +
-        firstOctetValue * 1000000 +
-        secondOctetValue * 10000 +
-        thirdOctetValue * 100 +
-        fourthOctetValue +
-        (gridSystemMode === 'grid2' ? 2000000 : zoomLevel * 10000);
-
-      const widthJitter = 0.72 + pseudoRandom(seed) * 0.18;
-      const depthJitter = 0.72 + pseudoRandom(seed + 1) * 0.18;
+      const widthJitter = (0.68 + pseudoRandom(seed) * 0.26) * visualStyle.footprintScale;
+      const depthJitter = (0.68 + pseudoRandom(seed + 1) * 0.26) * visualStyle.footprintScale;
       const towerWidth = cubeSize * widthJitter;
       const towerDepth = cubeSize * depthJitter;
       const podiumHeight = Math.max(0.14, buildingHeight * 0.18);
@@ -1337,16 +1572,20 @@ function IPGrid({
           : buildingFamily === 'block'
             ? cubeSize / 2 + 0.035
             : cubeSize / 2 + 0.045;
+      const facadeWidth = buildingFamily === 'tower' ? towerWidth : cubeSize;
+      const facadeDepth = buildingFamily === 'tower' ? towerDepth : cubeSize;
 
-      const trimColor = '#1f2937';
-      const roofColor = '#030712';
-      const windowColor = '#dfe8ff';
+      const buildingBodyColor = visualStyle.bodyColor;
+      const trimColor = visualStyle.trimColor;
+      const roofColor = visualStyle.roofColor;
+      const windowColor = visualStyle.windowColor;
 
       const headerParts = [
         ipAddress,
         ipTypeLabel,
         countryName ? `(${countryName})` : '',
         asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? '' : '',
+        organizationCategory !== 'unknown' ? `${organizationCategory} style` : '',
         topReverseDnsHostname ? `reverse-dns: ${topReverseDnsHostname}` : '',
       ].filter(Boolean);
 
@@ -1516,25 +1755,25 @@ function IPGrid({
           windowBands.push(
             <mesh key={`${cubeId}-win-front-${level}`} position={[0, bandY, faceDepth / 2 + 0.01]}>
               <planeGeometry args={[faceWidth * 0.68, 0.075]} />
-              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={0.28} transparent opacity={0.42} />
+              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity} transparent opacity={visualStyle.windowOpacity} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-back-${level}`} position={[0, bandY, -faceDepth / 2 - 0.01]} rotation={[0, Math.PI, 0]}>
               <planeGeometry args={[faceWidth * 0.68, 0.075]} />
-              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={0.22} transparent opacity={0.3} />
+              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-left-${level}`} position={[-faceWidth / 2 - 0.01, bandY, 0]} rotation={[0, -Math.PI / 2, 0]}>
               <planeGeometry args={[faceDepth * 0.68, 0.075]} />
-              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={0.22} transparent opacity={0.3} />
+              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-right-${level}`} position={[faceWidth / 2 + 0.01, bandY, 0]} rotation={[0, Math.PI / 2, 0]}>
               <planeGeometry args={[faceDepth * 0.68, 0.075]} />
-              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={0.22} transparent opacity={0.3} />
+              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
         }
@@ -1982,6 +2221,109 @@ function IPGrid({
                   </mesh>
                 ))}
               </>
+            )}
+
+            {organizationCategory === 'cloud' && (
+              <>
+                {[-0.28, 0, 0.28].map((xOffset, podIndex) => (
+                  <mesh key={`${cubeId}-cloud-roof-pod-${podIndex}`} position={[xOffset * facadeWidth, roofTopY + 0.08 + podIndex * 0.015, -facadeDepth * 0.12]} castShadow>
+                    <boxGeometry args={[facadeWidth * 0.16, 0.12, facadeDepth * 0.16]} />
+                    <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.24} metalness={0.35} roughness={0.28} />
+                  </mesh>
+                ))}
+                {[-0.34, 0.34].map((xOffset, stripIndex) => (
+                  <mesh key={`${cubeId}-cloud-light-strip-${stripIndex}`} position={[xOffset * facadeWidth, Math.max(0.28, roofTopY * 0.48), facadeDepth / 2 + 0.055]}>
+                    <planeGeometry args={[0.045, Math.max(0.28, roofTopY * 0.62)]} />
+                    <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.5} transparent opacity={0.72} />
+                  </mesh>
+                ))}
+              </>
+            )}
+
+            {organizationCategory === 'telecom' && (
+              <>
+                <mesh position={[0, roofTopY + 0.32, 0]} castShadow>
+                  <cylinderGeometry args={[0.018, 0.026, 0.64 + visualStyle.roofLift, 10]} />
+                  <meshStandardMaterial color="#d1d5db" metalness={0.65} roughness={0.28} />
+                </mesh>
+                {[0, 1, 2].map((dishIndex) => {
+                  const angle = -0.75 + dishIndex * 0.75;
+                  return (
+                    <mesh key={`${cubeId}-telecom-dish-${dishIndex}`} position={[Math.sin(angle) * 0.16, roofTopY + 0.38 + dishIndex * 0.08, Math.cos(angle) * 0.16]} rotation={[0, angle, 0]} castShadow>
+                      <cylinderGeometry args={[0.075, 0.04, 0.035, 16]} />
+                      <meshStandardMaterial color={visualStyle.accentColor} metalness={0.5} roughness={0.34} />
+                    </mesh>
+                  );
+                })}
+              </>
+            )}
+
+            {organizationCategory === 'education' && (
+              <>
+                <mesh position={[0, 0.092, facadeDepth / 2 + 0.12]} receiveShadow>
+                  <boxGeometry args={[facadeWidth * 0.68, 0.025, 0.16]} />
+                  <meshStandardMaterial color="#166534" roughness={0.95} />
+                </mesh>
+                {[-0.36, -0.12, 0.12, 0.36].map((xOffset, columnIndex) => (
+                  <mesh key={`${cubeId}-campus-column-${columnIndex}`} position={[xOffset * facadeWidth, 0.25, facadeDepth / 2 + 0.055]} castShadow>
+                    <cylinderGeometry args={[0.025, 0.025, 0.34, 10]} />
+                    <meshStandardMaterial color={shadeColor(trimColor, 24)} roughness={0.8} />
+                  </mesh>
+                ))}
+              </>
+            )}
+
+            {organizationCategory === 'government' && (
+              <>
+                <mesh position={[0, 0.42, facadeDepth / 2 + 0.06]} castShadow>
+                  <boxGeometry args={[facadeWidth * 0.72, 0.08, 0.08]} />
+                  <meshStandardMaterial color={shadeColor(trimColor, 18)} roughness={0.86} />
+                </mesh>
+                {[-0.32, -0.1, 0.1, 0.32].map((xOffset, columnIndex) => (
+                  <mesh key={`${cubeId}-civic-column-${columnIndex}`} position={[xOffset * facadeWidth, 0.26, facadeDepth / 2 + 0.06]} castShadow>
+                    <cylinderGeometry args={[0.028, 0.032, 0.36, 12]} />
+                    <meshStandardMaterial color={visualStyle.accentColor} roughness={0.84} />
+                  </mesh>
+                ))}
+              </>
+            )}
+
+            {organizationCategory === 'residential' && (
+              <>
+                {Array.from({ length: Math.min(4, Math.max(2, Math.floor(roofTopY / 0.24))) }).map((_, balconyIndex) => (
+                  <mesh key={`${cubeId}-balcony-${balconyIndex}`} position={[0, 0.28 + balconyIndex * 0.22, facadeDepth / 2 + 0.07]} castShadow>
+                    <boxGeometry args={[facadeWidth * 0.62, 0.035, 0.1]} />
+                    <meshStandardMaterial color={visualStyle.accentColor} metalness={0.08} roughness={0.66} />
+                  </mesh>
+                ))}
+              </>
+            )}
+
+            {organizationCategory === 'security' && (
+              <>
+                {[
+                  [-0.52, -0.52],
+                  [0.52, -0.52],
+                  [-0.52, 0.52],
+                  [0.52, 0.52],
+                ].map((offsets, postIndex) => (
+                  <mesh key={`${cubeId}-security-post-${postIndex}`} position={[offsets[0] * cubeSize, 0.24, offsets[1] * cubeSize]} castShadow>
+                    <boxGeometry args={[0.045, 0.34, 0.045]} />
+                    <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.18} />
+                  </mesh>
+                ))}
+                <mesh position={[0, roofTopY + 0.1, 0]} castShadow>
+                  <sphereGeometry args={[0.08, 12, 12]} />
+                  <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.55} />
+                </mesh>
+              </>
+            )}
+
+            {organizationCategory === 'commercial' && (
+              <mesh position={[0, Math.min(roofTopY - 0.08, 0.36), facadeDepth / 2 + 0.055]} castShadow>
+                <boxGeometry args={[facadeWidth * 0.58, 0.09, 0.06]} />
+                <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.2} />
+              </mesh>
             )}
 
             {buildingFamily === 'tower' && genericPortFeatureCount > 0 && Array.from({ length: genericPortFeatureCount }).map((_, portIndex) => {
