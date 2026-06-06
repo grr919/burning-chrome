@@ -1372,10 +1372,26 @@ function IPGrid({
     }
   }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, asnInfo, isRdapLoading, isReverseLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml]);
 
+  const getColumnPerimeterLabel = (column: number): string => {
+    if (gridSystemMode === 'grid2') {
+      return `${clampOctet(grid2Position.innerFourthStart + column)}`;
+    }
+
+    return `+${column}`;
+  };
+
+  const getRowPerimeterLabel = (row: number): string => {
+    if (gridSystemMode === 'grid2') {
+      return `${clampOctet(grid2Position.innerThirdStart + row)}`;
+    }
+
+    return `${row * gridSize}`;
+  };
+
   const createStreetGrid = () => {
     const items = [];
     const laneMarkings = [];
-    const blockOutlineColor = '#8f8f8f';
+    const perimeterLabels = [];
 
     items.push(
       <mesh
@@ -1451,6 +1467,50 @@ function IPGrid({
       }
     }
 
+    const labelY = groundY + 0.006;
+    const labelColor = '#f9fafb';
+    const labelOutlineColor = '#111827';
+    const labelFontSize = gridSystemMode === 'grid2' ? 0.34 : 0.44;
+    const perimeterRoadCenter = -offset - spacing / 2;
+    const columnLabelZ = perimeterRoadCenter;
+    const rowLabelX = perimeterRoadCenter;
+
+    for (let column = 0; column < gridSize; column += 1) {
+      perimeterLabels.push(
+        <Text
+          key={`column-label-${column}`}
+          position={[column * spacing - offset, labelY, columnLabelZ]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={labelFontSize}
+          color={labelColor}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.025}
+          outlineColor={labelOutlineColor}
+        >
+          {getColumnPerimeterLabel(column)}
+        </Text>
+      );
+    }
+
+    for (let row = 0; row < gridSize; row += 1) {
+      perimeterLabels.push(
+        <Text
+          key={`row-label-${row}`}
+          position={[rowLabelX, labelY, row * spacing - offset]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={labelFontSize}
+          color={labelColor}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.025}
+          outlineColor={labelOutlineColor}
+        >
+          {getRowPerimeterLabel(row)}
+        </Text>
+      );
+    }
+
     // ASN ownership is now shown directly through each square's base color.
     // The previous raised outline layer is intentionally omitted so same-ASN
     // neighborhoods read as solid colored land parcels rather than bordered cells.
@@ -1459,6 +1519,7 @@ function IPGrid({
       <>
         {items}
         {laneMarkings}
+        {perimeterLabels}
         <StreetTrafficLayer gridSize={gridSize} spacing={spacing} offset={offset} groundY={groundY} />
         <StreetSceneryLayer gridSize={gridSize} spacing={spacing} offset={offset} groundY={groundY} />
       </>
