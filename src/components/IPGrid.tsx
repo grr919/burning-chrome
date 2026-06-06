@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
 type GridPosition = {
   firstOctet: number;
@@ -52,7 +53,9 @@ type IPGridProps = {
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
   onHoverInfoHtml?: (html: string) => void;
+  onHoverCellChange?: (cell: { x: number; y: number; ipAddress: string }) => void;
   infoDisplayMode?: InfoDisplayMode;
+  remoteUsers?: MultiplayerPresence[];
 };
 
 type RdapEntity = {
@@ -302,7 +305,7 @@ function getAsnSummaryLabel(record?: AsnRecord | null): string {
   if (!record?.asn) {
     return 'ASN not loaded';
   }
-  return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
+  return `${normalizeAsn(record.asn)}${record.asnName ? ` - ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
 }
 
 function valueToDisplayText(value: unknown): string {
@@ -968,7 +971,9 @@ function IPGrid({
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
   onHoverInfoHtml,
+  onHoverCellChange,
   infoDisplayMode = 'structured',
+  remoteUsers = [],
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -1684,7 +1689,7 @@ function IPGrid({
       ].filter(Boolean);
 
       const hoverInfoLines: string[] = [
-        `<div class="font-bold">${escapeHtml(headerParts.join(' — '))}</div>`,
+        `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
       ];
 
       if (isAsnLoading[ipAddress]) {
@@ -1930,6 +1935,7 @@ function IPGrid({
               document.body.style.cursor = 'pointer';
               setHoveredCube(cubeId);
               setHoveredIpAddress(ipAddress);
+              onHoverCellChange?.({ x: cellX, y: cellY, ipAddress });
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
             onPointerOut={(event) => {
@@ -1951,6 +1957,7 @@ function IPGrid({
                 document.body.style.cursor = 'pointer';
                 setHoveredCube(cubeId);
                 setHoveredIpAddress(ipAddress);
+                onHoverCellChange?.({ x: cellX, y: cellY, ipAddress });
                 onHoverInfoHtml?.(hoverInfoHtml);
               }}
               onPointerOut={() => {
@@ -2611,10 +2618,79 @@ function IPGrid({
     }
   }
 
+  const avatarCellCounts = new Map<string, number>();
+  const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
+    const selectedCellIndex = user.selectedIp
+      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === user.selectedIp)
+      : -1;
+    const cell = user.hoveredCell && user.hoveredCell.x >= 0 && user.hoveredCell.x < gridSize && user.hoveredCell.y >= 0 && user.hoveredCell.y < gridSize
+      ? user.hoveredCell
+      : selectedCellIndex >= 0
+        ? {
+          x: selectedCellIndex % gridSize,
+          y: Math.floor(selectedCellIndex / gridSize),
+          ipAddress: visibleLookupAddresses[selectedCellIndex].ipAddress,
+        }
+        : undefined;
+
+    if (!cell) {
+      return [];
+    }
+
+    const cellKey = `${cell.x}-${cell.y}`;
+    const stackIndex = avatarCellCounts.get(cellKey) ?? 0;
+    avatarCellCounts.set(cellKey, stackIndex + 1);
+    const angle = stackIndex * 1.9;
+    const spread = Math.min(0.42, stackIndex * 0.12);
+    const xOffset = Math.cos(angle) * spread;
+    const zOffset = Math.sin(angle) * spread;
+
+    return [
+      <group
+        key={`remote-user-${user.userId}`}
+        position={[
+          cell.x * spacing - offset + xOffset,
+          groundY + 3.05 + stackIndex * 0.18,
+          cell.y * spacing - offset + zOffset,
+        ]}
+      >
+        <mesh castShadow>
+          <sphereGeometry args={[0.18, 16, 16]} />
+          <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.28} />
+        </mesh>
+        <mesh position={[0, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.22, 0.32, 24]} />
+          <meshBasicMaterial color={user.color} transparent opacity={0.42} />
+        </mesh>
+        <Html position={[0, 0.34, 0]} center distanceFactor={10} style={{ pointerEvents: 'none' }}>
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.92)',
+              border: `1px solid ${user.color}`,
+              borderRadius: '4px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+              color: '#111827',
+              fontSize: '10px',
+              maxWidth: '96px',
+              overflow: 'hidden',
+              padding: '2px 5px',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={`${user.displayName} at ${cell.ipAddress}`}
+          >
+            {user.displayName}
+          </div>
+        </Html>
+      </group>,
+    ];
+  });
+
   return (
     <>
       {createStreetGrid()}
       {cubes}
+      {remoteAvatarMarkers}
     </>
   );
 }

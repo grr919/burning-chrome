@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid from './components/IPGrid';
+import {
+  getMultiplayerRoomKey,
+  useMultiplayerPresence,
+  type MultiplayerCell,
+} from './hooks/useMultiplayerPresence';
 
 type GridPosition = {
   firstOctet: number;
@@ -421,7 +426,7 @@ function BuildingDetailScene({
           <div className="font-semibold">{building.ipAddress}</div>
           {building.asn && (
             <div className="text-xs rounded px-1.5 py-0.5 text-white" style={{ background: building.asnColor ?? '#4b5563' }}>
-              {building.asn}{building.asnName ? ` — ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
+              {building.asn}{building.asnName ? ` - ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
             </div>
           )}
         </div>
@@ -882,6 +887,8 @@ function App() {
   const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
   const [sshLaunchLoadingIp, setSshLaunchLoadingIp] = useState<string | null>(null);
   const [sshLaunchResult, setSshLaunchResult] = useState<SshLaunchResponse | null>(null);
+  const [multiplayerHoverCell, setMultiplayerHoverCell] = useState<MultiplayerCell | undefined>(undefined);
+  const [chatDraft, setChatDraft] = useState('');
 
   const ipColors = {
     reserved: '#2C3E50',
@@ -919,6 +926,22 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
+  const multiplayerRoomKey = useMemo(
+    () => getMultiplayerRoomKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
+    [gridSystemMode, zoomLevel, currentPosition, grid2Position]
+  );
+  const multiplayer = useMultiplayerPresence({
+    roomKey: multiplayerRoomKey,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    hoveredCell: multiplayerHoverCell,
+    selectedIp: activeTargetIp,
+  });
+  useEffect(() => {
+    setMultiplayerHoverCell(undefined);
+  }, [multiplayerRoomKey]);
   const websiteCandidate = useMemo(
     () => getWebsiteCandidate(exposureResult, certificateResult),
     [exposureResult, certificateResult]
@@ -1413,7 +1436,7 @@ function App() {
     if (gridSystemMode === 'grid2') {
       const thirdEnd = grid2Position.innerThirdStart + GRID2_WINDOW_SIZE - 1;
       const fourthEnd = grid2Position.innerFourthStart + GRID2_WINDOW_SIZE - 1;
-      return `Grid 2: outer point ${grid2Position.outerFirstOctet}.${grid2Position.outerSecondOctet}; inner neighborhood n3=${grid2Position.innerThirdStart}–${thirdEnd}, n4=${grid2Position.innerFourthStart}–${fourthEnd}`;
+      return `Grid 2: outer point ${grid2Position.outerFirstOctet}.${grid2Position.outerSecondOctet}; inner neighborhood n3=${grid2Position.innerThirdStart}-${thirdEnd}, n4=${grid2Position.innerFourthStart}-${fourthEnd}`;
     }
 
     if (zoomLevel === 0) return 'Grid 1: Top-level View';
@@ -1451,6 +1474,11 @@ function App() {
   };
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
+  const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    multiplayer.sendMessage(chatDraft);
+    setChatDraft('');
+  };
 
   return (
     <div className="min-h-screen bg-white text-black flex flex-col">
@@ -1583,6 +1611,73 @@ function App() {
           </div>
         </header>
 
+        <div className="bg-white text-black border border-gray-300 rounded-lg shadow-sm p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${
+                  multiplayer.status === 'online'
+                    ? 'bg-green-500'
+                    : multiplayer.status === 'connecting'
+                      ? 'bg-amber-500'
+                      : 'bg-gray-400'
+                }`} />
+                <span className="font-semibold">Multiplayer</span>
+                <span className="text-gray-700">
+                  {multiplayer.isConfigured
+                    ? multiplayer.status
+                    : 'offline'}
+                </span>
+                <span className="text-gray-500">|</span>
+                <span className="truncate text-gray-700">
+                  {multiplayer.currentUser.displayName}
+                </span>
+                <span className="text-gray-500">|</span>
+                <span className="text-gray-700">
+                  {multiplayer.others.length} nearby
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 break-all">{multiplayerRoomKey}</div>
+            </div>
+
+            <div className="w-full lg:max-w-xl">
+              <div className="max-h-24 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
+                {multiplayer.messages.length > 0 ? (
+                  multiplayer.messages.map((message) => (
+                    <div key={message.id} className="flex gap-1 py-0.5">
+                      <span className="font-semibold" style={{ color: message.color }}>
+                        {message.displayName}:
+                      </span>
+                      <span className="break-words text-gray-800">{message.body}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-500">
+                    {multiplayer.isConfigured ? 'No room messages yet.' : 'Supabase env vars not configured.'}
+                  </div>
+                )}
+              </div>
+              <form onSubmit={handleSendChat} className="mt-2 flex gap-2">
+                <input
+                  value={chatDraft}
+                  onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
+                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  maxLength={300}
+                  className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                  placeholder={multiplayer.isConfigured ? 'Message this location' : 'Multiplayer offline'}
+                />
+                <button
+                  type="submit"
+                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
         {layoutMode === 'grid' && gridSystemMode === 'grid2' && !buildingView && (
           <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
             <div className="flex flex-wrap gap-3 items-end">
@@ -1637,13 +1732,13 @@ function App() {
 
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-sm font-medium">Move neighborhood:</span>
-              <button onClick={() => moveGrid2Window(-16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 −16</button>
+              <button onClick={() => moveGrid2Window(-16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 ?16</button>
               <button onClick={() => moveGrid2Window(16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +16</button>
-              <button onClick={() => moveGrid2Window(0, -16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 −16</button>
+              <button onClick={() => moveGrid2Window(0, -16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 ?16</button>
               <button onClick={() => moveGrid2Window(0, 16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +16</button>
-              <button onClick={() => moveGrid2Window(-1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 −1</button>
+              <button onClick={() => moveGrid2Window(-1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 ?1</button>
               <button onClick={() => moveGrid2Window(1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +1</button>
-              <button onClick={() => moveGrid2Window(0, -1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 −1</button>
+              <button onClick={() => moveGrid2Window(0, -1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 ?1</button>
               <button onClick={() => moveGrid2Window(0, 1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +1</button>
             </div>
 
@@ -1674,7 +1769,7 @@ function App() {
               <button onClick={() => setStreetIndex((prev) => Math.max(0, prev - 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Previous</button>
               <span className="text-sm">{streetIndex + 1} / 16</span>
               <button onClick={() => setStreetIndex((prev) => Math.min(15, prev + 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Next</button>
-              {streetExposureLoading && <span className="text-sm text-blue-700">Loading street data…</span>}
+              {streetExposureLoading && <span className="text-sm text-blue-700">Loading street data.</span>}
             </div>
 
             <div className="flex flex-wrap gap-2 items-center">
@@ -1735,7 +1830,7 @@ function App() {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${sshLaunchLoadingIp === buildingView.ipAddress ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
                     title="Open the local SSH client"
                   >
-                    {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH…' : 'Open SSH client'}
+                    {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH.' : 'Open SSH client'}
                   </button>
 
                   {websiteCandidate && (
@@ -1937,7 +2032,9 @@ function App() {
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
                   onHoverInfoHtml={setBottomInfoHtml}
+                  onHoverCellChange={setMultiplayerHoverCell}
                   infoDisplayMode={infoDisplayMode}
+                  remoteUsers={multiplayer.others}
                 />
                 <OrbitControls
                   ref={controlsRef}
