@@ -1467,15 +1467,28 @@ function IPGrid({
       }
     }
 
-    const labelY = groundY + 0.006;
+    const labelY = groundY + 0.024;
+    const labelPlateY = groundY + 0.004;
     const labelColor = '#f9fafb';
-    const labelOutlineColor = '#111827';
-    const labelFontSize = gridSystemMode === 'grid2' ? 0.34 : 0.44;
-    const perimeterRoadCenter = -offset - spacing / 2;
-    const columnLabelZ = perimeterRoadCenter;
-    const rowLabelX = perimeterRoadCenter;
+    const labelOutlineColor = '#000000';
+    const labelPlateColor = '#4b5563';
+    const labelFontSize = gridSystemMode === 'grid2' ? 0.38 : 0.48;
+    const outerMarginCenter = -offset - spacing * 1.35;
+    const columnLabelZ = outerMarginCenter;
+    const rowLabelX = outerMarginCenter;
 
     for (let column = 0; column < gridSize; column += 1) {
+      perimeterLabels.push(
+        <mesh
+          key={`column-label-plate-${column}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[column * spacing - offset, labelPlateY, columnLabelZ]}
+          receiveShadow
+        >
+          <planeGeometry args={[1.25, 0.76]} />
+          <meshStandardMaterial color={labelPlateColor} />
+        </mesh>
+      );
       perimeterLabels.push(
         <Text
           key={`column-label-${column}`}
@@ -1485,7 +1498,7 @@ function IPGrid({
           color={labelColor}
           anchorX="center"
           anchorY="middle"
-          outlineWidth={0.025}
+          outlineWidth={0.04}
           outlineColor={labelOutlineColor}
         >
           {getColumnPerimeterLabel(column)}
@@ -1495,6 +1508,17 @@ function IPGrid({
 
     for (let row = 0; row < gridSize; row += 1) {
       perimeterLabels.push(
+        <mesh
+          key={`row-label-plate-${row}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[rowLabelX, labelPlateY, row * spacing - offset]}
+          receiveShadow
+        >
+          <planeGeometry args={[1.35, 0.76]} />
+          <meshStandardMaterial color={labelPlateColor} />
+        </mesh>
+      );
+      perimeterLabels.push(
         <Text
           key={`row-label-${row}`}
           position={[rowLabelX, labelY, row * spacing - offset]}
@@ -1503,7 +1527,7 @@ function IPGrid({
           color={labelColor}
           anchorX="center"
           anchorY="middle"
-          outlineWidth={0.025}
+          outlineWidth={0.04}
           outlineColor={labelOutlineColor}
         >
           {getRowPerimeterLabel(row)}
