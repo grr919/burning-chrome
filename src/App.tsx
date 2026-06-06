@@ -73,6 +73,11 @@ type BuildingViewState = {
   asnColor?: string;
 };
 
+type DirectoryEntry = {
+  hostname: string;
+  url: string;
+};
+
 type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetOrientation = 'row' | 'column';
@@ -171,9 +176,11 @@ function getRepresentativeTarget(gridSystemMode: GridSystemMode, zoomLevel: numb
 
 function BuildingDetailScene({
   building,
+  directoryEntries,
   onExit,
 }: {
   building: BuildingViewState;
+  directoryEntries: DirectoryEntry[];
   onExit: () => void;
 }) {
   const windowColor = '#dfe8ff';
@@ -327,6 +334,53 @@ function BuildingDetailScene({
         <boxGeometry args={[0.72, 0.9, 0.08]} />
         <meshStandardMaterial color="#374151" />
       </mesh>
+
+      <Html position={[1.45, 0.86, 1.78]} transform sprite distanceFactor={8}>
+        <div
+          style={{
+            width: '156px',
+            maxHeight: '172px',
+            overflow: 'hidden',
+            border: '1px solid rgba(17,24,39,0.75)',
+            borderRadius: '4px',
+            background: 'rgba(255,255,255,0.94)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            color: '#111827',
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            fontSize: '10px',
+            lineHeight: 1.25,
+            padding: '6px',
+            pointerEvents: 'auto',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '4px' }}>Directory</div>
+          {directoryEntries.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {directoryEntries.map((entry) => (
+                <a
+                  key={entry.hostname}
+                  href={entry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={entry.hostname}
+                  style={{
+                    color: '#1d4ed8',
+                    display: 'block',
+                    overflow: 'hidden',
+                    textDecoration: 'underline',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {entry.hostname}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#4b5563' }}>No websites identified.</div>
+          )}
+        </div>
+      </Html>
 
       {building.flagImageUrl && (
         <Html position={[0, flagY, 1.78]} transform sprite distanceFactor={8}>
@@ -497,6 +551,40 @@ function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: Https
     primaryUrl: `${hasHttps ? 'https' : 'http'}://${hostname}`,
     secondaryUrl: hasHttp && hasHttps ? `http://${hostname}` : null,
   };
+}
+
+function getBuildingDirectoryEntries(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null): DirectoryEntry[] {
+  const ports = extractPortNumbers(exposure);
+  const hasHttp = ports.has(80);
+  const hasHttps = ports.has(443) || certificate?.status === 'ready';
+  const protocol = hasHttps ? 'https' : hasHttp ? 'http' : 'https';
+  const candidates = [
+    ...(exposure?.hostnames ?? []),
+    ...(certificate?.subjectAltNames ?? []),
+    certificate?.subjectCn ?? '',
+    certificate?.host ?? '',
+  ];
+  const seen = new Set<string>();
+  const entries: DirectoryEntry[] = [];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeHostnameCandidate(candidate);
+    if (!normalized || normalized.startsWith('*.') || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    entries.push({
+      hostname: normalized,
+      url: `${protocol}://${normalized}`,
+    });
+
+    if (entries.length >= 8) {
+      break;
+    }
+  }
+
+  return entries;
 }
 
 function pseudoRandom(seed: number): number {
@@ -833,6 +921,10 @@ function App() {
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
   const websiteCandidate = useMemo(
     () => getWebsiteCandidate(exposureResult, certificateResult),
+    [exposureResult, certificateResult]
+  );
+  const buildingDirectoryEntries = useMemo(
+    () => getBuildingDirectoryEntries(exposureResult, certificateResult),
     [exposureResult, certificateResult]
   );
   const streetBuildings = useMemo(
@@ -1604,7 +1696,11 @@ function App() {
                 camera={{ position: [0, 3.6, 8.5], fov: 42 }}
                 shadows
               >
-                <BuildingDetailScene building={buildingView} onExit={handleExitBuildingView} />
+                <BuildingDetailScene
+                  building={buildingView}
+                  directoryEntries={buildingDirectoryEntries}
+                  onExit={handleExitBuildingView}
+                />
                 <OrbitControls
                   enablePan={false}
                   enableZoom
