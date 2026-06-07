@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -936,6 +936,7 @@ function App() {
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const gridTouchStartYRef = useRef<number | null>(null);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
@@ -1026,6 +1027,7 @@ function App() {
     currentPosition,
     grid2Position,
   ]);
+
   const websiteCandidate = useMemo(
     () => getWebsiteCandidate(exposureResult, certificateResult),
     [exposureResult, certificateResult]
@@ -1155,9 +1157,9 @@ function App() {
     setPlayerLocation(nextPlayerLocation);
   };
 
-  const movePlayerLocationByCellDelta = (delta: number) => {
+  const moveGrid1PlayerByScrollDirection = useCallback((direction: 1 | -1) => {
     const cell = getPlayerCell(playerLocation);
-    const nextIndex = Math.max(0, Math.min(255, cell.y * 16 + cell.x + delta));
+    const nextIndex = Math.max(0, Math.min(255, cell.y * 16 + cell.x + direction));
     const nextX = nextIndex % 16;
     const nextY = Math.floor(nextIndex / 16);
     const nextPlayerLocation = getPlayerLocationForGridCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, nextX, nextY);
@@ -1165,7 +1167,125 @@ function App() {
       setSelectedTargetIp(nextPlayerLocation.ipAddress);
     }
     setPlayerLocation(nextPlayerLocation);
-  };
+  }, [currentPosition, grid2Position, gridSystemMode, playerLocation, zoomLevel]);
+
+  const moveGrid2PlayerByScrollDirection = useCallback((direction: 1 | -1) => {
+    const cell = getPlayerCell(playerLocation);
+    const absoluteThird = grid2Position.innerThirdStart + cell.y;
+    const absoluteFourth = grid2Position.innerFourthStart + cell.x;
+    const nextIndex = Math.max(0, Math.min(255 * 256 + 255, absoluteThird * 256 + absoluteFourth + direction));
+    const nextThird = Math.floor(nextIndex / 256);
+    const nextFourth = nextIndex % 256;
+    let nextThirdStart = grid2Position.innerThirdStart;
+    let nextFourthStart = grid2Position.innerFourthStart;
+
+    if (nextThird < nextThirdStart) {
+      nextThirdStart = clampGrid2WindowStart(nextThird);
+    } else if (nextThird > nextThirdStart + 15) {
+      nextThirdStart = clampGrid2WindowStart(nextThird - 15);
+    }
+
+    if (nextFourth < nextFourthStart) {
+      nextFourthStart = clampGrid2WindowStart(nextFourth);
+    } else if (nextFourth > nextFourthStart + 15) {
+      nextFourthStart = clampGrid2WindowStart(nextFourth - 15);
+    }
+
+    const nextGrid2Position = {
+      ...grid2Position,
+      innerThirdStart: nextThirdStart,
+      innerFourthStart: nextFourthStart,
+    };
+    const nextPlayerLocation = getPlayerLocationForGridCell(
+      'grid2',
+      zoomLevel,
+      currentPosition,
+      nextGrid2Position,
+      nextFourth - nextFourthStart,
+      nextThird - nextThirdStart
+    );
+
+    setGrid2Position(nextGrid2Position);
+    if (nextPlayerLocation.kind === 'ip') {
+      setSelectedTargetIp(nextPlayerLocation.ipAddress);
+    }
+    setPlayerLocation(nextPlayerLocation);
+    setBottomInfoHtml('');
+  }, [currentPosition, grid2Position, playerLocation, zoomLevel]);
+
+  const movePlayerByScrollDirection = useCallback((direction: 1 | -1) => {
+    if (gridSystemMode === 'grid2') {
+      moveGrid2PlayerByScrollDirection(direction);
+      return;
+    }
+
+    moveGrid1PlayerByScrollDirection(direction);
+  }, [gridSystemMode, moveGrid1PlayerByScrollDirection, moveGrid2PlayerByScrollDirection]);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (layoutMode !== 'grid' || buildingView) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      movePlayerByScrollDirection(event.deltaY > 0 ? 1 : -1);
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (layoutMode !== 'grid' || buildingView || event.touches.length !== 1) {
+        gridTouchStartYRef.current = null;
+        return;
+      }
+
+      gridTouchStartYRef.current = event.touches[0].clientY;
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (gridTouchStartYRef.current !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      const startY = gridTouchStartYRef.current;
+      gridTouchStartYRef.current = null;
+
+      if (layoutMode !== 'grid' || buildingView || startY === null || event.changedTouches.length === 0) {
+        return;
+      }
+
+      const deltaY = startY - event.changedTouches[0].clientY;
+      if (Math.abs(deltaY) < 32) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      movePlayerByScrollDirection(deltaY > 0 ? 1 : -1);
+    };
+
+    const listenerOptions = { capture: true, passive: false };
+    const cleanupOptions = { capture: true };
+    container.addEventListener('wheel', handleWheel, listenerOptions);
+    container.addEventListener('touchstart', handleTouchStart, listenerOptions);
+    container.addEventListener('touchmove', handleTouchMove, listenerOptions);
+    container.addEventListener('touchend', handleTouchEnd, listenerOptions);
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel, cleanupOptions);
+      container.removeEventListener('touchstart', handleTouchStart, cleanupOptions);
+      container.removeEventListener('touchmove', handleTouchMove, cleanupOptions);
+      container.removeEventListener('touchend', handleTouchEnd, cleanupOptions);
+    };
+  }, [buildingView, layoutMode, movePlayerByScrollDirection]);
 
   const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
     const playerCell = getPlayerCell(playerLocation);
@@ -2056,24 +2176,7 @@ function App() {
             <div
               ref={gridContainerRef}
               className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
-              onWheelCapture={(event) => {
-                if (layoutMode !== 'grid') {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-
-                if (gridSystemMode === 'grid2') {
-                  const direction = event.deltaY > 0 ? 4 : -4;
-                  if (event.shiftKey) {
-                    moveGrid2Window(0, direction);
-                  } else {
-                    moveGrid2Window(direction, 0);
-                  }
-                } else {
-                  movePlayerLocationByCellDelta(event.deltaY > 0 ? 1 : -1);
-                }
-              }}
+              style={{ touchAction: 'none' }}
             >
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
