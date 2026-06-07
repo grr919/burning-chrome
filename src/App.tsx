@@ -94,6 +94,20 @@ type Grid2Position = {
   innerFourthStart: number;
 };
 
+type UserGridLocation =
+  | {
+      kind: 'ip';
+      ipAddress: string;
+      x: number;
+      y: number;
+    }
+  | {
+      kind: 'intersection';
+      x: number;
+      y: number;
+      ipAddresses: string[];
+    };
+
 const GRID2_WINDOW_SIZE = 16;
 const DEFAULT_GRID2_POSITION: Grid2Position = {
   outerFirstOctet: 0,
@@ -873,6 +887,12 @@ function App() {
   const [streetExposureByIp, setStreetExposureByIp] = useState<Record<string, ExposureRecord>>({});
   const [streetExposureLoading, setStreetExposureLoading] = useState<boolean>(false);
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
+  const [userGridLocation, setUserGridLocation] = useState<UserGridLocation>({
+    kind: 'ip',
+    ipAddress: '8.8.8.8',
+    x: 0,
+    y: 0,
+  });
   const [viewResetKey, setViewResetKey] = useState(0);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
@@ -926,6 +946,7 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
+  const multiplayerSelectedIp = userGridLocation.kind === 'ip' ? userGridLocation.ipAddress : activeTargetIp;
   const multiplayerRoomKey = useMemo(
     () => getMultiplayerRoomKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
     [gridSystemMode, zoomLevel, currentPosition, grid2Position]
@@ -937,7 +958,7 @@ function App() {
     currentPosition,
     grid2Position,
     hoveredCell: multiplayerHoverCell,
-    selectedIp: activeTargetIp,
+    selectedIp: multiplayerSelectedIp,
   });
   useEffect(() => {
     setMultiplayerHoverCell(undefined);
@@ -976,6 +997,7 @@ function App() {
     const octetValue = y * 16 + x;
     const clickedIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
     setSelectedTargetIp(clickedIp);
+    setUserGridLocation({ kind: 'ip', ipAddress: clickedIp, x, y });
 
     if (gridSystemMode === 'grid2') {
       return;
@@ -1477,6 +1499,13 @@ function App() {
   const multiplayerStatusLabel = multiplayer.isConfigured
     ? multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
+  const userLocationLabel = userGridLocation.kind === 'ip'
+    ? userGridLocation.ipAddress
+    : `intersection ${userGridLocation.ipAddresses.join(' / ')}`;
+  const handleUserCellChange = (cell: MultiplayerCell) => {
+    setMultiplayerHoverCell(cell);
+    setUserGridLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+  };
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     multiplayer.sendMessage(chatDraft);
@@ -1494,6 +1523,12 @@ function App() {
 
             <div className="flex flex-col items-start lg:items-end gap-3">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+                <div
+                  className="max-w-[min(22rem,calc(100vw-12rem))] truncate self-center text-xs font-medium text-gray-700"
+                  title={`Location: ${userLocationLabel}`}
+                >
+                  Location: {userLocationLabel}
+                </div>
                 <div
                   className="relative"
                   onBlur={(event) => {
@@ -1968,7 +2003,7 @@ function App() {
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
                   onHoverInfoHtml={setBottomInfoHtml}
-                  onHoverCellChange={setMultiplayerHoverCell}
+                  onHoverCellChange={handleUserCellChange}
                   infoDisplayMode={infoDisplayMode}
                   remoteUsers={multiplayer.others}
                 />
