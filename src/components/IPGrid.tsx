@@ -556,6 +556,48 @@ type BaseBuildingVisualStyle = Omit<BuildingVisualStyle, 'category' | 'bodyColor
   accentBase: string;
 };
 
+type BuildingPalette = {
+  body: string;
+  trim: string;
+  roof: string;
+  accent: string;
+};
+
+const UNKNOWN_BUILDING_PALETTE: BuildingPalette = {
+  body: '#6b7280',
+  trim: '#4b5563',
+  roof: '#374151',
+  accent: '#d1d5db',
+};
+
+const BUILDING_PALETTES: BuildingPalette[] = [
+  { body: '#111827', trim: '#374151', roof: '#030712', accent: '#9ca3af' },
+  { body: '#f5f5f4', trim: '#d6d3d1', roof: '#78716c', accent: '#9ca3af' },
+  { body: '#6b7280', trim: '#4b5563', roof: '#374151', accent: '#d1d5db' },
+  { body: '#7c2d12', trim: '#431407', roof: '#292524', accent: '#fed7aa' },
+  { body: '#991b1b', trim: '#450a0a', roof: '#1c1917', accent: '#fecaca' },
+  { body: '#a16207', trim: '#713f12', roof: '#44403c', accent: '#fde68a' },
+  { body: '#334155', trim: '#1e293b', roof: '#0f172a', accent: '#bfdbfe' },
+  { body: '#365314', trim: '#1a2e05', roof: '#111827', accent: '#d9f99d' },
+];
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+}
+
+function getBuildingPaletteForAsn(asn?: string | null): BuildingPalette {
+  const normalized = normalizeAsn(asn);
+  if (!normalized) {
+    return UNKNOWN_BUILDING_PALETTE;
+  }
+
+  return BUILDING_PALETTES[hashString(normalized) % BUILDING_PALETTES.length];
+}
+
 function includesAny(value: string, terms: string[]): boolean {
   return terms.some((term) => value.includes(term));
 }
@@ -613,8 +655,8 @@ function getOrganizationCategory(
   return rdapRecord?.org || asnRecord?.asnName ? 'commercial' : 'unknown';
 }
 
-function getBuildingVisualStyle(category: OrganizationCategory, asnColor: string, seed: number): BuildingVisualStyle {
-  const jitter = Math.round((pseudoRandom(seed + 811) - 0.5) * 24);
+function getBuildingVisualStyle(category: OrganizationCategory, asnColor: string, seed: number, asn?: string | null): BuildingVisualStyle {
+  const jitter = Math.round((pseudoRandom(seed + 811) - 0.5) * 14);
   const baseStyles: Record<OrganizationCategory, BaseBuildingVisualStyle> = {
     cloud: {
       bodyBase: '#1e3a8a',
@@ -723,13 +765,17 @@ function getBuildingVisualStyle(category: OrganizationCategory, asnColor: string
   };
 
   const base = baseStyles[category];
-  const accentColor = mixHexColors(base.accentBase, asnColor, category === 'unknown' ? 0.08 : 0.24);
+  const palette = getBuildingPaletteForAsn(asn);
+  const bodyBase = mixHexColors(palette.body, base.bodyBase, 0.18);
+  const trimBase = mixHexColors(palette.trim, base.trimBase, 0.14);
+  const roofBase = mixHexColors(palette.roof, base.roofBase, 0.12);
+  const accentColor = mixHexColors(palette.accent, base.accentBase, 0.28);
 
   return {
     category,
-    bodyColor: shadeColor(mixHexColors(base.bodyBase, asnColor, category === 'unknown' ? 0.05 : 0.18), jitter),
-    trimColor: shadeColor(mixHexColors(base.trimBase, asnColor, category === 'unknown' ? 0.04 : 0.12), Math.round(jitter * 0.5)),
-    roofColor: shadeColor(mixHexColors(base.roofBase, asnColor, category === 'unknown' ? 0.03 : 0.1), Math.round(jitter * 0.35)),
+    bodyColor: shadeColor(mixHexColors(bodyBase, asnColor, category === 'unknown' ? 0.02 : 0.04), jitter),
+    trimColor: shadeColor(mixHexColors(trimBase, asnColor, category === 'unknown' ? 0.02 : 0.03), Math.round(jitter * 0.5)),
+    roofColor: shadeColor(mixHexColors(roofBase, asnColor, category === 'unknown' ? 0.01 : 0.02), Math.round(jitter * 0.35)),
     windowColor: base.windowColor,
     windowOpacity: base.windowOpacity,
     windowEmissiveIntensity: base.windowEmissiveIntensity,
@@ -1588,7 +1634,7 @@ function IPGrid({
       const asnColor = getAsnColor(asnRecord?.asn);
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const organizationCategory = getOrganizationCategory(rdapRecord, asnRecord, dnsRecord, exposureRecord, ipTypeLabel);
-      const visualStyle = getBuildingVisualStyle(organizationCategory, asnColor, seed);
+      const visualStyle = getBuildingVisualStyle(organizationCategory, asnColor, seed, asnRecord?.asn);
       const squareBaseColor = asnRecord?.asn
         ? mixHexColors(asnColor, visualStyle.bodyColor, 0.18)
         : mixHexColors('#9a9a9a', visualStyle.bodyColor, 0.12);
