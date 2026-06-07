@@ -183,6 +183,20 @@ function getPlayerLocationForGridCell(
   };
 }
 
+function getPlayerCell(playerLocation: PlayerLocation): { x: number; y: number } {
+  if (playerLocation.kind === 'ip') {
+    return {
+      x: Math.max(0, Math.min(15, Math.round(playerLocation.x ?? 7))),
+      y: Math.max(0, Math.min(15, Math.round(playerLocation.y ?? 7))),
+    };
+  }
+
+  return {
+    x: Math.max(0, Math.min(15, Math.round(playerLocation.x))),
+    y: Math.max(0, Math.min(15, Math.round(playerLocation.y))),
+  };
+}
+
 function getPlayerLocationForStreetPosition(
   streetOrientation: StreetOrientation,
   streetIndex: number,
@@ -1141,16 +1155,31 @@ function App() {
     setPlayerLocation(nextPlayerLocation);
   };
 
+  const movePlayerLocationByCellDelta = (delta: number) => {
+    const cell = getPlayerCell(playerLocation);
+    const nextIndex = Math.max(0, Math.min(255, cell.y * 16 + cell.x + delta));
+    const nextX = nextIndex % 16;
+    const nextY = Math.floor(nextIndex / 16);
+    const nextPlayerLocation = getPlayerLocationForGridCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, nextX, nextY);
+    if (nextPlayerLocation.kind === 'ip') {
+      setSelectedTargetIp(nextPlayerLocation.ipAddress);
+    }
+    setPlayerLocation(nextPlayerLocation);
+  };
+
   const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
+    const playerCell = getPlayerCell(playerLocation);
     setGrid2Position((prev) => {
       const next = {
         ...prev,
         innerThirdStart: clampGrid2WindowStart(prev.innerThirdStart + thirdDelta),
         innerFourthStart: clampGrid2WindowStart(prev.innerFourthStart + fourthDelta),
       };
-      const nextTargetIp = getGrid2IpFromCell(next, 0, 0);
-      setSelectedTargetIp(nextTargetIp);
-      setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
+      const nextPlayerLocation = getPlayerLocationForGridCell('grid2', zoomLevel, currentPosition, next, playerCell.x, playerCell.y);
+      if (nextPlayerLocation.kind === 'ip') {
+        setSelectedTargetIp(nextPlayerLocation.ipAddress);
+      }
+      setPlayerLocation(nextPlayerLocation);
       return next;
     });
     setBottomInfoHtml('');
@@ -2028,15 +2057,20 @@ function App() {
               ref={gridContainerRef}
               className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
               onWheel={(event) => {
-                if (gridSystemMode !== 'grid2' || layoutMode !== 'grid') {
+                if (layoutMode !== 'grid') {
                   return;
                 }
                 event.preventDefault();
-                const direction = event.deltaY > 0 ? 4 : -4;
-                if (event.shiftKey) {
-                  moveGrid2Window(0, direction);
+
+                if (gridSystemMode === 'grid2') {
+                  const direction = event.deltaY > 0 ? 4 : -4;
+                  if (event.shiftKey) {
+                    moveGrid2Window(0, direction);
+                  } else {
+                    moveGrid2Window(direction, 0);
+                  }
                 } else {
-                  moveGrid2Window(direction, 0);
+                  movePlayerLocationByCellDelta(event.deltaY > 0 ? 1 : -1);
                 }
               }}
             >
