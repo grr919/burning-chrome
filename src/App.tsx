@@ -1474,6 +1474,9 @@ function App() {
   };
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
+  const multiplayerStatusLabel = multiplayer.isConfigured
+    ? multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
+    : 'Offline';
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     multiplayer.sendMessage(chatDraft);
@@ -1486,7 +1489,7 @@ function App() {
         <header className="bg-white text-black p-4 rounded-lg">
           <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold">Cyberspace</h1>
+              <h1 className="text-2xl font-bold">Burning Chrome</h1>
             </div>
 
             <div className="flex flex-col items-start lg:items-end gap-3">
@@ -1610,73 +1613,6 @@ function App() {
             </div>
           </div>
         </header>
-
-        <div className="bg-white text-black border border-gray-300 rounded-lg shadow-sm p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className={`inline-block h-2.5 w-2.5 rounded-full ${
-                  multiplayer.status === 'online'
-                    ? 'bg-green-500'
-                    : multiplayer.status === 'connecting'
-                      ? 'bg-amber-500'
-                      : 'bg-gray-400'
-                }`} />
-                <span className="font-semibold">Multiplayer</span>
-                <span className="text-gray-700">
-                  {multiplayer.isConfigured
-                    ? multiplayer.status
-                    : 'offline'}
-                </span>
-                <span className="text-gray-500">|</span>
-                <span className="truncate text-gray-700">
-                  {multiplayer.currentUser.displayName}
-                </span>
-                <span className="text-gray-500">|</span>
-                <span className="text-gray-700">
-                  {multiplayer.others.length} nearby
-                </span>
-              </div>
-              <div className="mt-1 text-xs text-gray-500 break-all">{multiplayerRoomKey}</div>
-            </div>
-
-            <div className="w-full lg:max-w-xl">
-              <div className="max-h-24 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
-                {multiplayer.messages.length > 0 ? (
-                  multiplayer.messages.map((message) => (
-                    <div key={message.id} className="flex gap-1 py-0.5">
-                      <span className="font-semibold" style={{ color: message.color }}>
-                        {message.displayName}:
-                      </span>
-                      <span className="break-words text-gray-800">{message.body}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-gray-500">
-                    {multiplayer.isConfigured ? 'No room messages yet.' : 'Supabase env vars not configured.'}
-                  </div>
-                )}
-              </div>
-              <form onSubmit={handleSendChat} className="mt-2 flex gap-2">
-                <input
-                  value={chatDraft}
-                  onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
-                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online'}
-                  maxLength={300}
-                  className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
-                  placeholder={multiplayer.isConfigured ? 'Message this location' : 'Multiplayer offline'}
-                />
-                <button
-                  type="submit"
-                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online'}
-                  className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  Send
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
 
         {layoutMode === 'grid' && gridSystemMode === 'grid2' && !buildingView && (
           <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
@@ -2069,6 +2005,68 @@ function App() {
             </div>
           </div>
         )}
+
+        <div className="bg-white text-black border border-gray-300 rounded-lg shadow-sm p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${
+                  multiplayer.status === 'online'
+                    ? 'bg-green-500'
+                    : multiplayer.status === 'connecting'
+                      ? 'bg-amber-500'
+                      : 'bg-gray-400'
+                }`} />
+                <span className="font-semibold text-gray-700">{multiplayerStatusLabel}</span>
+                <span className="text-gray-500">|</span>
+                <span className="truncate text-gray-700">
+                  {multiplayer.currentUser.displayName}
+                </span>
+                <span className="text-gray-500">|</span>
+                <span className="text-gray-700">
+                  {multiplayer.others.length} nearby
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 break-all">{multiplayerRoomKey}</div>
+            </div>
+
+            <div className="w-full lg:max-w-xl">
+              <div className="max-h-24 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
+                {multiplayer.messages.length > 0 ? (
+                  multiplayer.messages.map((message) => (
+                    <div key={message.id} className="flex gap-1 py-0.5">
+                      <span className="font-semibold" style={{ color: message.color }}>
+                        {message.displayName}:
+                      </span>
+                      <span className="break-words text-gray-800">{message.body}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-500">
+                    {multiplayer.isConfigured ? 'No room messages yet.' : 'Supabase env vars not configured.'}
+                  </div>
+                )}
+              </div>
+              <form onSubmit={handleSendChat} className="mt-2 flex gap-2">
+                <input
+                  value={chatDraft}
+                  onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
+                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  maxLength={300}
+                  className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                  placeholder={multiplayer.isConfigured ? 'Message this location' : 'Multiplayer offline'}
+                />
+                <button
+                  type="submit"
+                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
 
         {showHeightLegend && (
           <div className="bg-white text-black border border-gray-300 p-3 rounded-lg">
