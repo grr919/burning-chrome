@@ -165,6 +165,40 @@ function getGridAwareIpFromCell(
   return getIpFromCell(zoomLevel, currentPosition, x, y);
 }
 
+function getPlayerLocationForGridCell(
+  gridSystemMode: GridSystemMode,
+  zoomLevel: number,
+  currentPosition: GridPosition,
+  grid2Position: Grid2Position,
+  x: number,
+  y: number
+): PlayerLocation {
+  const cellX = Math.max(0, Math.min(15, Math.round(x)));
+  const cellY = Math.max(0, Math.min(15, Math.round(y)));
+  return {
+    kind: 'ip',
+    ipAddress: getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, cellX, cellY),
+    x: cellX,
+    y: cellY,
+  };
+}
+
+function getPlayerLocationForStreetPosition(
+  streetOrientation: StreetOrientation,
+  streetIndex: number,
+  streetStep: number,
+  gridSystemMode: GridSystemMode,
+  zoomLevel: number,
+  currentPosition: GridPosition,
+  grid2Position: Grid2Position
+): PlayerLocation {
+  const streetCellIndex = Math.max(0, Math.min(15, Math.round(streetIndex)));
+  const streetCellStep = Math.max(0, Math.min(15, Math.round(streetStep)));
+  const x = streetOrientation === 'row' ? streetCellStep : streetCellIndex;
+  const y = streetOrientation === 'row' ? streetCellIndex : streetCellStep;
+  return getPlayerLocationForGridCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
+}
+
 function parseIpOctets(ipAddress: string): [number, number, number, number] {
   const [first = 0, second = 0, third = 0, fourth = 0] = ipAddress.split('.').map((part) => Number.parseInt(part, 10));
   return [first, second, third, fourth].map((value) => (Number.isFinite(value) ? clampOctet(value) : 0)) as [number, number, number, number];
@@ -878,7 +912,7 @@ function App() {
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
   const [playerLocation, setPlayerLocation] = useState<PlayerLocation>({
     kind: 'ip',
-    ipAddress: '8.8.8.8',
+    ipAddress: '0.0.0.0',
     x: 0,
     y: 0,
   });
@@ -953,6 +987,31 @@ function App() {
   useEffect(() => {
     setPointerTarget(undefined);
   }, [multiplayerRoomKey]);
+  useEffect(() => {
+    if (layoutMode !== 'street' || buildingView) {
+      return;
+    }
+
+    setPlayerLocation(getPlayerLocationForStreetPosition(
+      streetOrientation,
+      streetIndex,
+      streetStep,
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position
+    ));
+  }, [
+    layoutMode,
+    buildingView,
+    streetOrientation,
+    streetIndex,
+    streetStep,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+  ]);
   const websiteCandidate = useMemo(
     () => getWebsiteCandidate(exposureResult, certificateResult),
     [exposureResult, certificateResult]
@@ -1042,13 +1101,14 @@ function App() {
 
   const handleReset = () => {
     const nextTargetIp = gridSystemMode === 'grid2' ? getGrid2IpFromCell(DEFAULT_GRID2_POSITION, 0, 0) : '8.8.8.8';
+    const nextPlayerLocation = getPlayerLocationForGridCell(gridSystemMode, 0, { firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 }, DEFAULT_GRID2_POSITION, 0, 0);
     setLayoutMode('grid');
     setBuildingView(null);
     setZoomLevel(0);
     setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
     setGrid2Position(DEFAULT_GRID2_POSITION);
     setSelectedTargetIp(nextTargetIp);
-    setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
+    setPlayerLocation(nextPlayerLocation);
     setStreetIndex(0);
     setStreetOrientation('row');
     setStreetStep(7);
@@ -1072,12 +1132,13 @@ function App() {
 
   const handleGridSystemChange = (mode: GridSystemMode) => {
     const nextTargetIp = mode === 'grid2' ? getGrid2IpFromCell(grid2Position, 0, 0) : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position);
+    const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, grid2Position, 0, 0);
     setGridSystemMode(mode);
     setLayoutMode('grid');
     setBuildingView(null);
     setBottomInfoHtml('');
     setSelectedTargetIp(nextTargetIp);
-    setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
+    setPlayerLocation(nextPlayerLocation);
   };
 
   const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
