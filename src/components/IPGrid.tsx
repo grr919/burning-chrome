@@ -2541,7 +2541,7 @@ function IPGrid({
             })}
 
             {flagImageUrl && (
-              <Html position={[0, facadeFlagY, facadeFlagZ]} transform sprite distanceFactor={8}>
+              <Html position={[0, facadeFlagY, facadeFlagZ]} transform distanceFactor={8}>
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
