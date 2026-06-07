@@ -2056,11 +2056,12 @@ function App() {
             <div
               ref={gridContainerRef}
               className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
-              onWheel={(event) => {
+              onWheelCapture={(event) => {
                 if (layoutMode !== 'grid') {
                   return;
                 }
                 event.preventDefault();
+                event.stopPropagation();
 
                 if (gridSystemMode === 'grid2') {
                   const direction = event.deltaY > 0 ? 4 : -4;
