@@ -1484,10 +1484,10 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black flex flex-col">
-      <div className="flex-1 p-4 flex flex-col gap-4">
-        <header className="bg-white text-black p-4 rounded-lg">
-          <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
+    <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
+      <div className="flex-1 min-h-0 p-3 flex flex-col gap-3">
+        <header className="shrink-0 bg-white text-black p-3 rounded-lg">
+          <div className="flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-start">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold">Burning Chrome</h1>
             </div>
@@ -1615,7 +1615,7 @@ function App() {
         </header>
 
         {layoutMode === 'grid' && gridSystemMode === 'grid2' && !buildingView && (
-          <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
+          <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-lg p-2 flex flex-col gap-2">
             <div className="flex flex-wrap gap-3 items-end">
               <label className="text-sm">
                 <span className="block font-medium mb-1">Outer n1</span>
@@ -1685,7 +1685,7 @@ function App() {
         )}
 
         {layoutMode === 'street' && !buildingView && (
-          <div className="bg-white text-black border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col gap-3">
+          <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-lg p-2 flex flex-col gap-2">
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-sm font-medium">Street type:</span>
               <button
@@ -1720,8 +1720,8 @@ function App() {
         )}
 
         {buildingView ? (
-          <div className="flex-1 flex flex-col gap-4 lg:flex-row">
-            <div className="relative h-[560px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
+          <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
               <Canvas
                 key={`building-${buildingView.ipAddress}`}
                 camera={{ position: [0, 3.6, 8.5], fov: 42 }}
@@ -1745,7 +1745,7 @@ function App() {
               </Canvas>
             </div>
 
-            <div className="lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-4 overflow-auto">
+            <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
               <div className="font-bold text-lg">Building view: {buildingView.ipAddress}</div>
               <div className="text-sm text-gray-600 mt-1">
                 Use Return to grid to leave building view.
@@ -1915,8 +1915,8 @@ function App() {
             </div>
           </div>
         ) : layoutMode === 'street' ? (
-          <div className="flex-1 flex justify-center">
-            <div className="relative w-full h-[560px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
+          <div className="flex-1 min-h-0 flex justify-center">
+            <div className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
               <Canvas camera={{ position: [0, 2.1, -56], fov: 62 }} shadows>
                 <StreetScene
                   streetBuildings={streetBuildings}
@@ -1929,10 +1929,10 @@ function App() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 min-h-0 flex justify-center">
             <div
               ref={gridContainerRef}
-              className="relative w-full h-[560px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+              className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
               onWheel={(event) => {
                 if (gridSystemMode !== 'grid2' || layoutMode !== 'grid') {
                   return;
@@ -1988,10 +1988,10 @@ function App() {
 
         {layoutMode === 'grid' && !buildingView && (
           <div
-            className="rounded-lg shadow-lg border border-gray-300 min-h-[220px] px-4 py-3"
+            className="shrink-0 rounded-lg shadow-lg border border-gray-300 min-h-[96px] max-h-[18vh] px-3 py-2"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
-            <div className="min-h-[188px]">
+            <div className="max-h-[calc(18vh-1rem)] overflow-auto">
               {bottomInfoHtml ? (
                 <div
                   className={infoDisplayMode === 'prose'
@@ -2006,8 +2006,8 @@ function App() {
           </div>
         )}
 
-        <div className="bg-white text-black border border-gray-300 rounded-lg shadow-sm p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-sm p-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={`inline-block h-2.5 w-2.5 rounded-full ${
@@ -2031,7 +2031,7 @@ function App() {
             </div>
 
             <div className="w-full lg:max-w-xl">
-              <div className="max-h-24 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
+              <div className="max-h-16 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
                 {multiplayer.messages.length > 0 ? (
                   multiplayer.messages.map((message) => (
                     <div key={message.id} className="flex gap-1 py-0.5">
@@ -2069,7 +2069,7 @@ function App() {
         </div>
 
         {showHeightLegend && (
-          <div className="bg-white text-black border border-gray-300 p-3 rounded-lg">
+          <div className="shrink-0 max-h-[16vh] overflow-auto bg-white text-black border border-gray-300 p-2 rounded-lg">
             {layoutMode === 'grid' ? (
               <>
                 <h3 className="font-semibold mb-2">Building Height = public service exposure</h3>
