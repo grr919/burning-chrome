@@ -24,6 +24,20 @@ export type MultiplayerCell = {
   ipAddress: string;
 };
 
+export type MultiplayerPlayerLocation =
+  | {
+      kind: 'ip';
+      ipAddress: string;
+      x?: number;
+      y?: number;
+    }
+  | {
+      kind: 'intersection';
+      x: number;
+      y: number;
+      ipAddresses: string[];
+    };
+
 export type MultiplayerPresence = {
   userId: string;
   displayName: string;
@@ -32,6 +46,8 @@ export type MultiplayerPresence = {
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
   grid2Position: MultiplayerGrid2Position;
+  playerLocation?: MultiplayerPlayerLocation;
+  pointerTarget?: MultiplayerCell;
   hoveredCell?: MultiplayerCell;
   selectedIp?: string;
   lastSeenAt: string;
@@ -52,7 +68,8 @@ type UseMultiplayerPresenceInput = {
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
   grid2Position: MultiplayerGrid2Position;
-  hoveredCell?: MultiplayerCell;
+  pointerTarget?: MultiplayerCell;
+  playerLocation?: MultiplayerPlayerLocation;
   selectedIp?: string;
 };
 
@@ -134,7 +151,8 @@ export function useMultiplayerPresence({
   zoomLevel,
   currentPosition,
   grid2Position,
-  hoveredCell,
+  pointerTarget,
+  playerLocation,
   selectedIp,
 }: UseMultiplayerPresenceInput) {
   const identity = useMemo(() => getOrCreateIdentity(), []);
@@ -152,10 +170,12 @@ export function useMultiplayerPresence({
     zoomLevel,
     currentPosition,
     grid2Position,
-    hoveredCell,
+    playerLocation,
+    pointerTarget,
+    hoveredCell: pointerTarget,
     selectedIp,
     lastSeenAt: new Date().toISOString(),
-  }), [identity, gridSystemMode, zoomLevel, currentPosition, grid2Position, hoveredCell, selectedIp]);
+  }), [identity, gridSystemMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp]);
 
   useEffect(() => {
     setMessages([]);

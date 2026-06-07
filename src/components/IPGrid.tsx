@@ -2620,18 +2620,34 @@ function IPGrid({
 
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
-    const selectedCellIndex = user.selectedIp
-      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === user.selectedIp)
+    const playerLocation = user.playerLocation;
+    const playerIp = playerLocation?.kind === 'ip' ? playerLocation.ipAddress : user.selectedIp;
+    const selectedCellIndex = playerIp
+      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === playerIp)
       : -1;
-    const cell = user.hoveredCell && user.hoveredCell.x >= 0 && user.hoveredCell.x < gridSize && user.hoveredCell.y >= 0 && user.hoveredCell.y < gridSize
-      ? user.hoveredCell
-      : selectedCellIndex >= 0
-        ? {
-          x: selectedCellIndex % gridSize,
-          y: Math.floor(selectedCellIndex / gridSize),
-          ipAddress: visibleLookupAddresses[selectedCellIndex].ipAddress,
-        }
-        : undefined;
+    let cell: { x: number; y: number; ipAddress: string } | undefined;
+    if (
+      playerLocation?.kind === 'ip' &&
+      typeof playerLocation.x === 'number' &&
+      typeof playerLocation.y === 'number' &&
+      playerLocation.x >= 0 &&
+      playerLocation.x < gridSize &&
+      playerLocation.y >= 0 &&
+      playerLocation.y < gridSize &&
+      visibleLookupAddresses[playerLocation.y * gridSize + playerLocation.x]?.ipAddress === playerLocation.ipAddress
+    ) {
+      cell = {
+        x: playerLocation.x,
+        y: playerLocation.y,
+        ipAddress: playerLocation.ipAddress,
+      };
+    } else if (selectedCellIndex >= 0) {
+      cell = {
+        x: selectedCellIndex % gridSize,
+        y: Math.floor(selectedCellIndex / gridSize),
+        ipAddress: visibleLookupAddresses[selectedCellIndex].ipAddress,
+      };
+    }
 
     if (!cell) {
       return [];

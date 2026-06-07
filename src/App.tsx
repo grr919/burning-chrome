@@ -7,6 +7,7 @@ import {
   getMultiplayerRoomKey,
   useMultiplayerPresence,
   type MultiplayerCell,
+  type MultiplayerPlayerLocation,
 } from './hooks/useMultiplayerPresence';
 
 type GridPosition = {
@@ -94,19 +95,7 @@ type Grid2Position = {
   innerFourthStart: number;
 };
 
-type UserGridLocation =
-  | {
-      kind: 'ip';
-      ipAddress: string;
-      x: number;
-      y: number;
-    }
-  | {
-      kind: 'intersection';
-      x: number;
-      y: number;
-      ipAddresses: string[];
-    };
+type PlayerLocation = MultiplayerPlayerLocation;
 
 const GRID2_WINDOW_SIZE = 16;
 const DEFAULT_GRID2_POSITION: Grid2Position = {
@@ -887,7 +876,7 @@ function App() {
   const [streetExposureByIp, setStreetExposureByIp] = useState<Record<string, ExposureRecord>>({});
   const [streetExposureLoading, setStreetExposureLoading] = useState<boolean>(false);
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
-  const [userGridLocation, setUserGridLocation] = useState<UserGridLocation>({
+  const [playerLocation, setPlayerLocation] = useState<PlayerLocation>({
     kind: 'ip',
     ipAddress: '8.8.8.8',
     x: 0,
@@ -907,7 +896,7 @@ function App() {
   const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
   const [sshLaunchLoadingIp, setSshLaunchLoadingIp] = useState<string | null>(null);
   const [sshLaunchResult, setSshLaunchResult] = useState<SshLaunchResponse | null>(null);
-  const [multiplayerHoverCell, setMultiplayerHoverCell] = useState<MultiplayerCell | undefined>(undefined);
+  const [pointerTarget, setPointerTarget] = useState<MultiplayerCell | undefined>(undefined);
   const [chatDraft, setChatDraft] = useState('');
 
   const ipColors = {
@@ -946,7 +935,7 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
-  const multiplayerSelectedIp = userGridLocation.kind === 'ip' ? userGridLocation.ipAddress : activeTargetIp;
+  const playerLocationIp = playerLocation.kind === 'ip' ? playerLocation.ipAddress : activeTargetIp;
   const multiplayerRoomKey = useMemo(
     () => getMultiplayerRoomKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
     [gridSystemMode, zoomLevel, currentPosition, grid2Position]
@@ -957,11 +946,12 @@ function App() {
     zoomLevel,
     currentPosition,
     grid2Position,
-    hoveredCell: multiplayerHoverCell,
-    selectedIp: multiplayerSelectedIp,
+    pointerTarget,
+    playerLocation,
+    selectedIp: playerLocationIp,
   });
   useEffect(() => {
-    setMultiplayerHoverCell(undefined);
+    setPointerTarget(undefined);
   }, [multiplayerRoomKey]);
   const websiteCandidate = useMemo(
     () => getWebsiteCandidate(exposureResult, certificateResult),
@@ -997,7 +987,7 @@ function App() {
     const octetValue = y * 16 + x;
     const clickedIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
     setSelectedTargetIp(clickedIp);
-    setUserGridLocation({ kind: 'ip', ipAddress: clickedIp, x, y });
+    setPlayerLocation({ kind: 'ip', ipAddress: clickedIp, x, y });
 
     if (gridSystemMode === 'grid2') {
       return;
@@ -1051,12 +1041,14 @@ function App() {
   };
 
   const handleReset = () => {
+    const nextTargetIp = gridSystemMode === 'grid2' ? getGrid2IpFromCell(DEFAULT_GRID2_POSITION, 0, 0) : '8.8.8.8';
     setLayoutMode('grid');
     setBuildingView(null);
     setZoomLevel(0);
     setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
     setGrid2Position(DEFAULT_GRID2_POSITION);
-    setSelectedTargetIp(gridSystemMode === 'grid2' ? getGrid2IpFromCell(DEFAULT_GRID2_POSITION, 0, 0) : '8.8.8.8');
+    setSelectedTargetIp(nextTargetIp);
+    setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
     setStreetIndex(0);
     setStreetOrientation('row');
     setStreetStep(7);
@@ -1079,11 +1071,13 @@ function App() {
   };
 
   const handleGridSystemChange = (mode: GridSystemMode) => {
+    const nextTargetIp = mode === 'grid2' ? getGrid2IpFromCell(grid2Position, 0, 0) : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position);
     setGridSystemMode(mode);
     setLayoutMode('grid');
     setBuildingView(null);
     setBottomInfoHtml('');
-    setSelectedTargetIp(mode === 'grid2' ? getGrid2IpFromCell(grid2Position, 0, 0) : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position));
+    setSelectedTargetIp(nextTargetIp);
+    setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
   };
 
   const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
@@ -1093,7 +1087,9 @@ function App() {
         innerThirdStart: clampGrid2WindowStart(prev.innerThirdStart + thirdDelta),
         innerFourthStart: clampGrid2WindowStart(prev.innerFourthStart + fourthDelta),
       };
-      setSelectedTargetIp(getGrid2IpFromCell(next, 0, 0));
+      const nextTargetIp = getGrid2IpFromCell(next, 0, 0);
+      setSelectedTargetIp(nextTargetIp);
+      setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
       return next;
     });
     setBottomInfoHtml('');
@@ -1112,7 +1108,9 @@ function App() {
           ? clampGrid2WindowStart(parsed)
           : clampOctet(parsed),
       };
-      setSelectedTargetIp(getGrid2IpFromCell(next, 0, 0));
+      const nextTargetIp = getGrid2IpFromCell(next, 0, 0);
+      setSelectedTargetIp(nextTargetIp);
+      setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
       return next;
     });
     setBottomInfoHtml('');
@@ -1287,6 +1285,7 @@ function App() {
   const handleFlagClick = (building: BuildingViewState) => {
     setBuildingView(building);
     setSelectedTargetIp(building.ipAddress);
+    setPlayerLocation({ kind: 'ip', ipAddress: building.ipAddress });
     setCertificateLoadingIp(building.ipAddress);
     setExposureLoadingIp(building.ipAddress);
     setCertificateResult(null);
@@ -1499,12 +1498,11 @@ function App() {
   const multiplayerStatusLabel = multiplayer.isConfigured
     ? multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const userLocationLabel = userGridLocation.kind === 'ip'
-    ? userGridLocation.ipAddress
-    : `intersection ${userGridLocation.ipAddresses.join(' / ')}`;
-  const handleUserCellChange = (cell: MultiplayerCell) => {
-    setMultiplayerHoverCell(cell);
-    setUserGridLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+  const userLocationLabel = playerLocation.kind === 'ip'
+    ? playerLocation.ipAddress
+    : `intersection ${playerLocation.ipAddresses.join(' / ')}`;
+  const handlePointerTargetChange = (cell: MultiplayerCell) => {
+    setPointerTarget(cell);
   };
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2003,7 +2001,7 @@ function App() {
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
                   onHoverInfoHtml={setBottomInfoHtml}
-                  onHoverCellChange={handleUserCellChange}
+                  onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
                   remoteUsers={multiplayer.others}
                 />
