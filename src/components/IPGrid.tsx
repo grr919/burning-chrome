@@ -1040,15 +1040,6 @@ function IPGrid({
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
-  const clickTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (clickTimerRef.current !== null) {
-        window.clearTimeout(clickTimerRef.current);
-      }
-    };
-  }, []);
 
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
@@ -1942,22 +1933,12 @@ function IPGrid({
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        if (clickTimerRef.current !== null) {
-          window.clearTimeout(clickTimerRef.current);
-        }
-        clickTimerRef.current = window.setTimeout(() => {
-          openBuildingView();
-          clickTimerRef.current = null;
-        }, 220);
+        handleGridClick(cellX, cellY);
       };
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        if (clickTimerRef.current !== null) {
-          window.clearTimeout(clickTimerRef.current);
-          clickTimerRef.current = null;
-        }
-        handleGridClick(cellX, cellY);
+        openBuildingView();
       };
 
       cubes.push(
@@ -2591,21 +2572,11 @@ function IPGrid({
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (clickTimerRef.current !== null) {
-                      window.clearTimeout(clickTimerRef.current);
-                    }
-                    clickTimerRef.current = window.setTimeout(() => {
-                      openBuildingView();
-                      clickTimerRef.current = null;
-                    }, 220);
+                    handleGridClick(cellX, cellY);
                   }}
                   onDoubleClick={(event) => {
                     event.stopPropagation();
-                    if (clickTimerRef.current !== null) {
-                      window.clearTimeout(clickTimerRef.current);
-                      clickTimerRef.current = null;
-                    }
-                    handleGridClick(cellX, cellY);
+                    openBuildingView();
                   }}
                   style={{
                     width: '20px',
