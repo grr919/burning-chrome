@@ -565,13 +565,23 @@ type BaseBuildingVisualStyle = Omit<BuildingVisualStyle, 'category' | 'bodyColor
 };
 
 type BuildingPalette = {
+  name: string;
   body: string;
   trim: string;
   roof: string;
   accent: string;
 };
 
+type BuildingFootprint = {
+  widthScale: number;
+  depthScale: number;
+};
+
+type RoofVariant = 'flat' | 'cap' | 'parapet' | 'penthouse' | 'antenna' | 'water-tower' | 'green' | 'solar';
+type WindowPattern = 'bands' | 'grid' | 'vertical' | 'sparse' | 'lobby';
+
 const UNKNOWN_BUILDING_PALETTE: BuildingPalette = {
+  name: 'neutral gray',
   body: '#6b7280',
   trim: '#4b5563',
   roof: '#374151',
@@ -579,14 +589,14 @@ const UNKNOWN_BUILDING_PALETTE: BuildingPalette = {
 };
 
 const BUILDING_PALETTES: BuildingPalette[] = [
-  { body: '#111827', trim: '#374151', roof: '#030712', accent: '#9ca3af' },
-  { body: '#f5f5f4', trim: '#d6d3d1', roof: '#78716c', accent: '#9ca3af' },
-  { body: '#6b7280', trim: '#4b5563', roof: '#374151', accent: '#d1d5db' },
-  { body: '#7c2d12', trim: '#431407', roof: '#292524', accent: '#fed7aa' },
-  { body: '#991b1b', trim: '#450a0a', roof: '#1c1917', accent: '#fecaca' },
-  { body: '#a16207', trim: '#713f12', roof: '#44403c', accent: '#fde68a' },
-  { body: '#334155', trim: '#1e293b', roof: '#0f172a', accent: '#bfdbfe' },
-  { body: '#365314', trim: '#1a2e05', roof: '#111827', accent: '#d9f99d' },
+  { name: 'charcoal', body: '#111827', trim: '#374151', roof: '#030712', accent: '#9ca3af' },
+  { name: 'light stone', body: '#f5f5f4', trim: '#d6d3d1', roof: '#78716c', accent: '#9ca3af' },
+  { name: 'gray concrete', body: '#6b7280', trim: '#4b5563', roof: '#374151', accent: '#d1d5db' },
+  { name: 'brown brick', body: '#7c2d12', trim: '#431407', roof: '#292524', accent: '#fed7aa' },
+  { name: 'red brick', body: '#991b1b', trim: '#450a0a', roof: '#1c1917', accent: '#fecaca' },
+  { name: 'tan sandstone', body: '#a16207', trim: '#713f12', roof: '#44403c', accent: '#fde68a' },
+  { name: 'blue gray glass', body: '#334155', trim: '#1e293b', roof: '#0f172a', accent: '#bfdbfe' },
+  { name: 'green gray', body: '#365314', trim: '#1a2e05', roof: '#111827', accent: '#d9f99d' },
 ];
 
 function hashString(value: string): number {
@@ -604,6 +614,70 @@ function getBuildingPaletteForAsn(asn?: string | null): BuildingPalette {
   }
 
   return BUILDING_PALETTES[hashString(normalized) % BUILDING_PALETTES.length];
+}
+
+function getBuildingFootprint(seed: number, category: OrganizationCategory): BuildingFootprint {
+  const categoryBias: Record<OrganizationCategory, BuildingFootprint> = {
+    cloud: { widthScale: 0.98, depthScale: 0.94 },
+    telecom: { widthScale: 0.86, depthScale: 0.88 },
+    education: { widthScale: 1.06, depthScale: 1.02 },
+    government: { widthScale: 1.04, depthScale: 1.04 },
+    residential: { widthScale: 0.82, depthScale: 0.9 },
+    security: { widthScale: 1, depthScale: 1 },
+    commercial: { widthScale: 0.96, depthScale: 0.94 },
+    unknown: { widthScale: 0.88, depthScale: 0.88 },
+  };
+  const bias = categoryBias[category];
+  const widthScale = Math.min(1.1, Math.max(0.75, bias.widthScale * (0.88 + pseudoRandom(seed + 17) * 0.24)));
+  const depthScale = Math.min(1.1, Math.max(0.75, bias.depthScale * (0.88 + pseudoRandom(seed + 23) * 0.24)));
+  return { widthScale, depthScale };
+}
+
+function getHeightVariation(seed: number, serviceCount: number): number {
+  const variation = 0.88 + pseudoRandom(seed + 31) * 0.28;
+  return serviceCount === 0 ? Math.min(variation, 1.04) : variation;
+}
+
+function getRoofVariant(seed: number, category: OrganizationCategory, exposureRecord?: ExposureRecord): RoofVariant {
+  const ports = new Set(
+    (exposureRecord?.topPorts ?? [])
+      .map((portLabel) => parseTopPortNumber(portLabel))
+      .filter((port): port is number => typeof port === 'number')
+  );
+  const openPortCount = exposureRecord?.openPortCount ?? 0;
+  const roll = pseudoRandom(seed + 43);
+
+  if (category === 'telecom' || ports.has(53) || ports.has(22)) {
+    return roll > 0.28 ? 'antenna' : 'penthouse';
+  }
+  if (category === 'education' || category === 'residential') {
+    return roll > 0.52 ? 'green' : roll > 0.26 ? 'penthouse' : 'parapet';
+  }
+  if (ports.has(80) || ports.has(443) || category === 'cloud') {
+    return roll > 0.58 ? 'solar' : roll > 0.24 ? 'penthouse' : 'cap';
+  }
+  if (openPortCount >= 5 || category === 'security') {
+    return roll > 0.45 ? 'parapet' : 'antenna';
+  }
+  if (roll > 0.82) return 'water-tower';
+  if (roll > 0.62) return 'solar';
+  if (roll > 0.32) return 'parapet';
+  return 'cap';
+}
+
+function getWindowPattern(seed: number, category: OrganizationCategory): WindowPattern {
+  const categoryPatterns: Record<OrganizationCategory, WindowPattern[]> = {
+    cloud: ['vertical', 'bands', 'lobby'],
+    telecom: ['sparse', 'vertical', 'bands'],
+    education: ['grid', 'bands', 'lobby'],
+    government: ['grid', 'bands', 'sparse'],
+    residential: ['grid', 'sparse', 'bands'],
+    security: ['sparse', 'vertical', 'bands'],
+    commercial: ['bands', 'vertical', 'lobby'],
+    unknown: ['sparse', 'bands', 'grid'],
+  };
+  const patterns = categoryPatterns[category];
+  return patterns[Math.floor(pseudoRandom(seed + 59) * patterns.length)];
 }
 
 function includesAny(value: string, terms: string[]): boolean {
@@ -774,16 +848,16 @@ function getBuildingVisualStyle(category: OrganizationCategory, asnColor: string
 
   const base = baseStyles[category];
   const palette = getBuildingPaletteForAsn(asn);
-  const bodyBase = mixHexColors(palette.body, base.bodyBase, 0.18);
-  const trimBase = mixHexColors(palette.trim, base.trimBase, 0.14);
-  const roofBase = mixHexColors(palette.roof, base.roofBase, 0.12);
-  const accentColor = mixHexColors(palette.accent, base.accentBase, 0.28);
+  const bodyBase = mixHexColors(palette.body, base.bodyBase, 0.1);
+  const trimBase = mixHexColors(palette.trim, base.trimBase, 0.08);
+  const roofBase = mixHexColors(palette.roof, base.roofBase, 0.08);
+  const accentColor = mixHexColors(palette.accent, base.accentBase, 0.22);
 
   return {
     category,
-    bodyColor: shadeColor(mixHexColors(bodyBase, asnColor, category === 'unknown' ? 0.02 : 0.04), jitter),
-    trimColor: shadeColor(mixHexColors(trimBase, asnColor, category === 'unknown' ? 0.02 : 0.03), Math.round(jitter * 0.5)),
-    roofColor: shadeColor(mixHexColors(roofBase, asnColor, category === 'unknown' ? 0.01 : 0.02), Math.round(jitter * 0.35)),
+    bodyColor: shadeColor(mixHexColors(bodyBase, asnColor, category === 'unknown' ? 0.01 : 0.025), jitter),
+    trimColor: shadeColor(mixHexColors(trimBase, asnColor, category === 'unknown' ? 0.01 : 0.018), Math.round(jitter * 0.5)),
+    roofColor: shadeColor(mixHexColors(roofBase, asnColor, category === 'unknown' ? 0.005 : 0.014), Math.round(jitter * 0.35)),
     windowColor: base.windowColor,
     windowOpacity: base.windowOpacity,
     windowEmissiveIntensity: base.windowEmissiveIntensity,
@@ -1615,7 +1689,7 @@ function IPGrid({
       } = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
       const exposureRecord = exposureInfo[ipAddress] ?? exposureCache[ipAddress];
       const serviceCount = exposureRecord?.serviceCount ?? 0;
-      const buildingHeight = getHeightFromServiceCount(cubeSize, serviceCount);
+      const serviceHeight = getHeightFromServiceCount(cubeSize, serviceCount);
       const ipTypeLabel = getIpTypeLabel(firstOctetValue, secondOctetValue);
       const color = getIPColor(firstOctetValue, secondOctetValue, thirdOctetValue, fourthOctetValue);
       const xPos = x * spacing - offset;
@@ -1634,6 +1708,11 @@ function IPGrid({
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const organizationCategory = getOrganizationCategory(rdapRecord, asnRecord, dnsRecord, exposureRecord, ipTypeLabel);
       const visualStyle = getBuildingVisualStyle(organizationCategory, asnColor, seed, asnRecord?.asn);
+      const heightVariation = getHeightVariation(seed, serviceCount);
+      const buildingHeight = Math.min(cubeSize * 5.4, Math.max(cubeSize * 0.62, serviceHeight * heightVariation));
+      const footprint = getBuildingFootprint(seed, organizationCategory);
+      const roofVariant = getRoofVariant(seed, organizationCategory, exposureRecord);
+      const windowPattern = getWindowPattern(seed, organizationCategory);
       const squareBaseColor = asnRecord?.asn
         ? mixHexColors(asnColor, visualStyle.bodyColor, 0.18)
         : mixHexColors('#9a9a9a', visualStyle.bodyColor, 0.12);
@@ -1662,10 +1741,18 @@ function IPGrid({
             : hasHttp || hasSsh || openPortCount >= 2 || visiblePorts.length >= 1
               ? 'tower'
               : 'block';
-      const widthJitter = (0.68 + pseudoRandom(seed) * 0.26) * visualStyle.footprintScale;
-      const depthJitter = (0.68 + pseudoRandom(seed + 1) * 0.26) * visualStyle.footprintScale;
+      const widthJitter = footprint.widthScale * visualStyle.footprintScale;
+      const depthJitter = footprint.depthScale * visualStyle.footprintScale;
       const towerWidth = cubeSize * widthJitter;
       const towerDepth = cubeSize * depthJitter;
+      const blockWidth = cubeSize * Math.min(1.08, Math.max(0.76, footprint.widthScale));
+      const blockDepth = cubeSize * Math.min(1.08, Math.max(0.76, footprint.depthScale));
+      const blockFaceWidth = blockWidth;
+      const blockFaceDepth = blockDepth;
+      const steppedWidth = cubeSize * Math.min(1.08, Math.max(0.82, footprint.widthScale * 1.02));
+      const steppedDepth = cubeSize * Math.min(1.08, Math.max(0.82, footprint.depthScale * 1.02));
+      const fortWidth = cubeSize * Math.min(1.12, Math.max(0.92, footprint.widthScale * 1.05));
+      const fortDepth = cubeSize * Math.min(1.12, Math.max(0.92, footprint.depthScale * 1.05));
       const podiumHeight = Math.max(0.14, buildingHeight * 0.18);
       const towerOnlyHeight = Math.max(0.32, buildingHeight - podiumHeight);
 
@@ -1713,11 +1800,13 @@ function IPGrid({
       const facadeFlagZ =
         buildingFamily === 'tower'
           ? towerDepth / 2 + 0.035
-          : buildingFamily === 'block'
-            ? cubeSize / 2 + 0.035
-            : cubeSize / 2 + 0.045;
-      const facadeWidth = buildingFamily === 'tower' ? towerWidth : cubeSize;
-      const facadeDepth = buildingFamily === 'tower' ? towerDepth : cubeSize;
+        : buildingFamily === 'block'
+            ? blockDepth / 2 + 0.035
+            : buildingFamily === 'stepped'
+              ? steppedDepth / 2 + 0.045
+              : fortDepth / 2 + 0.045;
+      const facadeWidth = buildingFamily === 'tower' ? towerWidth : buildingFamily === 'block' ? blockWidth : buildingFamily === 'stepped' ? steppedWidth : fortWidth;
+      const facadeDepth = buildingFamily === 'tower' ? towerDepth : buildingFamily === 'block' ? blockDepth : buildingFamily === 'stepped' ? steppedDepth : fortDepth;
 
       const buildingBodyColor = visualStyle.bodyColor;
       const trimColor = visualStyle.trimColor;
@@ -1874,21 +1963,21 @@ function IPGrid({
 
         const faceWidth =
           buildingFamily === 'block'
-            ? cubeSize * 0.88
+            ? blockFaceWidth * 0.88
             : buildingFamily === 'tower'
               ? towerWidth
               : buildingFamily === 'stepped'
-                ? cubeSize * 0.92
-                : cubeSize * 0.94;
+                ? steppedWidth * 0.92
+                : fortWidth * 0.94;
 
         const faceDepth =
           buildingFamily === 'block'
-            ? cubeSize * 0.88
+            ? blockFaceDepth * 0.88
             : buildingFamily === 'tower'
               ? towerDepth
               : buildingFamily === 'stepped'
-                ? cubeSize * 0.92
-                : cubeSize * 0.94;
+                ? steppedDepth * 0.92
+                : fortDepth * 0.94;
 
         const levels = Math.max(1, Math.floor(Math.max(0.22, effectiveHeight - 0.12) / 0.22));
         for (let level = 0; level < levels; level += 1) {
@@ -1896,28 +1985,49 @@ function IPGrid({
           if (bandY >= roofTopY - 0.08) {
             break;
           }
+          if (windowPattern === 'sparse' && pseudoRandom(seed + level * 13) < 0.38) {
+            continue;
+          }
+          const frontWindowWidth =
+            windowPattern === 'vertical'
+              ? faceWidth * 0.12
+              : windowPattern === 'grid'
+                ? faceWidth * 0.48
+                : windowPattern === 'lobby' && level === 0
+                  ? faceWidth * 0.74
+                  : faceWidth * 0.68;
+          const sideWindowWidth =
+            windowPattern === 'vertical'
+              ? faceDepth * 0.12
+              : windowPattern === 'grid'
+                ? faceDepth * 0.48
+                : windowPattern === 'lobby' && level === 0
+                  ? faceDepth * 0.74
+                  : faceDepth * 0.68;
+          const windowHeight = windowPattern === 'lobby' && level === 0 ? 0.13 : windowPattern === 'vertical' ? 0.16 : 0.075;
+          const opacityBoost = windowPattern === 'lobby' && level === 0 ? 0.14 : 0;
 
           windowBands.push(
             <mesh key={`${cubeId}-win-front-${level}`} position={[0, bandY, faceDepth / 2 + 0.01]}>
-              <planeGeometry args={[faceWidth * 0.68, 0.075]} />
-              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity} transparent opacity={visualStyle.windowOpacity} />
+              <planeGeometry args={[frontWindowWidth, windowHeight]} />
+              <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity} transparent opacity={Math.min(0.72, visualStyle.windowOpacity + opacityBoost)} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-back-${level}`} position={[0, bandY, -faceDepth / 2 - 0.01]} rotation={[0, Math.PI, 0]}>
-              <planeGeometry args={[faceWidth * 0.68, 0.075]} />
+              <planeGeometry args={[frontWindowWidth, windowHeight]} />
               <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-left-${level}`} position={[-faceWidth / 2 - 0.01, bandY, 0]} rotation={[0, -Math.PI / 2, 0]}>
-              <planeGeometry args={[faceDepth * 0.68, 0.075]} />
+              <planeGeometry args={[sideWindowWidth, windowHeight]} />
               <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
           windowBands.push(
             <mesh key={`${cubeId}-win-right-${level}`} position={[faceWidth / 2 + 0.01, bandY, 0]} rotation={[0, Math.PI / 2, 0]}>
-              <planeGeometry args={[faceDepth * 0.68, 0.075]} />
+              <planeGeometry args={[sideWindowWidth, windowHeight]} />
               <meshStandardMaterial color={windowColor} emissive={windowColor} emissiveIntensity={visualStyle.windowEmissiveIntensity * 0.75} transparent opacity={visualStyle.windowOpacity * 0.78} />
             </mesh>
           );
@@ -2016,11 +2126,11 @@ function IPGrid({
                 {blockVariant === 'square' && (
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
-                      <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.98]} />
+                      <boxGeometry args={[blockWidth * 0.98, buildingHeight, blockDepth * 0.98]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
-                      <boxGeometry args={[cubeSize * 0.9, 0.06, cubeSize * 0.9]} />
+                      <boxGeometry args={[blockWidth * 0.9, 0.06, blockDepth * 0.9]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
                   </>
@@ -2029,11 +2139,11 @@ function IPGrid({
                 {blockVariant === 'round' && (
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
-                      <cylinderGeometry args={[cubeSize * 0.5, cubeSize * 0.5, buildingHeight, 28]} />
+                      <cylinderGeometry args={[Math.min(blockWidth, blockDepth) * 0.5, Math.min(blockWidth, blockDepth) * 0.5, buildingHeight, 28]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
-                      <cylinderGeometry args={[cubeSize * 0.46, cubeSize * 0.46, 0.06, 28]} />
+                      <cylinderGeometry args={[Math.min(blockWidth, blockDepth) * 0.46, Math.min(blockWidth, blockDepth) * 0.46, 0.06, 28]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
                   </>
@@ -2042,11 +2152,11 @@ function IPGrid({
                 {blockVariant === 'hex' && (
                   <>
                     <mesh position={[0, blockBaseHeight, 0]} castShadow receiveShadow>
-                      <cylinderGeometry args={[cubeSize * 0.54, cubeSize * 0.54, buildingHeight, 6]} />
+                      <cylinderGeometry args={[Math.min(blockWidth, blockDepth) * 0.54, Math.min(blockWidth, blockDepth) * 0.54, buildingHeight, 6]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
                     <mesh position={[0, blockRoofTopY - 0.03, 0]} castShadow>
-                      <cylinderGeometry args={[cubeSize * 0.5, cubeSize * 0.5, 0.06, 6]} />
+                      <cylinderGeometry args={[Math.min(blockWidth, blockDepth) * 0.5, Math.min(blockWidth, blockDepth) * 0.5, 0.06, 6]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
                   </>
@@ -2054,36 +2164,36 @@ function IPGrid({
 
                 {blockVariant === 'courtyard' && (
                   <>
-                    <mesh position={[0, blockBaseHeight, cubeSize * 0.34]} castShadow receiveShadow>
-                      <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.3]} />
+                    <mesh position={[0, blockBaseHeight, blockDepth * 0.34]} castShadow receiveShadow>
+                      <boxGeometry args={[blockWidth * 0.98, buildingHeight, blockDepth * 0.3]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
-                    <mesh position={[0, blockBaseHeight, -cubeSize * 0.34]} castShadow receiveShadow>
-                      <boxGeometry args={[cubeSize * 0.98, buildingHeight, cubeSize * 0.3]} />
+                    <mesh position={[0, blockBaseHeight, -blockDepth * 0.34]} castShadow receiveShadow>
+                      <boxGeometry args={[blockWidth * 0.98, buildingHeight, blockDepth * 0.3]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
-                    <mesh position={[-cubeSize * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
-                      <boxGeometry args={[cubeSize * 0.3, buildingHeight, cubeSize * 0.38]} />
+                    <mesh position={[-blockWidth * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
+                      <boxGeometry args={[blockWidth * 0.3, buildingHeight, blockDepth * 0.38]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
-                    <mesh position={[cubeSize * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
-                      <boxGeometry args={[cubeSize * 0.3, buildingHeight, cubeSize * 0.38]} />
+                    <mesh position={[blockWidth * 0.34, blockBaseHeight, 0]} castShadow receiveShadow>
+                      <boxGeometry args={[blockWidth * 0.3, buildingHeight, blockDepth * 0.38]} />
                       <meshStandardMaterial color={buildingBodyColor} />
                     </mesh>
-                    <mesh position={[0, blockRoofTopY - 0.03, cubeSize * 0.34]} castShadow>
-                      <boxGeometry args={[cubeSize * 0.9, 0.06, cubeSize * 0.22]} />
+                    <mesh position={[0, blockRoofTopY - 0.03, blockDepth * 0.34]} castShadow>
+                      <boxGeometry args={[blockWidth * 0.9, 0.06, blockDepth * 0.22]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
-                    <mesh position={[0, blockRoofTopY - 0.03, -cubeSize * 0.34]} castShadow>
-                      <boxGeometry args={[cubeSize * 0.9, 0.06, cubeSize * 0.22]} />
+                    <mesh position={[0, blockRoofTopY - 0.03, -blockDepth * 0.34]} castShadow>
+                      <boxGeometry args={[blockWidth * 0.9, 0.06, blockDepth * 0.22]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
-                    <mesh position={[-cubeSize * 0.34, blockRoofTopY - 0.03, 0]} castShadow>
-                      <boxGeometry args={[cubeSize * 0.22, 0.06, cubeSize * 0.3]} />
+                    <mesh position={[-blockWidth * 0.34, blockRoofTopY - 0.03, 0]} castShadow>
+                      <boxGeometry args={[blockWidth * 0.22, 0.06, blockDepth * 0.3]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
-                    <mesh position={[cubeSize * 0.34, blockRoofTopY - 0.03, 0]} castShadow>
-                      <boxGeometry args={[cubeSize * 0.22, 0.06, cubeSize * 0.3]} />
+                    <mesh position={[blockWidth * 0.34, blockRoofTopY - 0.03, 0]} castShadow>
+                      <boxGeometry args={[blockWidth * 0.22, 0.06, blockDepth * 0.3]} />
                       <meshStandardMaterial color={roofColor} />
                     </mesh>
                   </>
@@ -2096,7 +2206,7 @@ function IPGrid({
                 {Array.from({ length: blockStairSteps }).map((_, stepIndex) => (
                   <mesh
                     key={`${cubeId}-block-step-${stepIndex}`}
-                    position={[0, 0.075 + stepIndex * 0.025, cubeSize / 2 + 0.06 + stepIndex * 0.035]}
+                    position={[0, 0.075 + stepIndex * 0.025, blockDepth / 2 + 0.06 + stepIndex * 0.035]}
                     castShadow
                     receiveShadow
                   >
@@ -2105,7 +2215,7 @@ function IPGrid({
                   </mesh>
                 ))}
 
-                <mesh position={[0, 0.11 + blockDoorHeight / 2, cubeSize / 2 + 0.02]} castShadow>
+                <mesh position={[0, 0.11 + blockDoorHeight / 2, blockDepth / 2 + 0.02]} castShadow>
                   <boxGeometry args={[blockDoorWidth, blockDoorHeight, 0.05]} />
                   <meshStandardMaterial color={shadeColor(trimColor, -16)} />
                 </mesh>
@@ -2114,12 +2224,12 @@ function IPGrid({
                   Array.from({ length: blockWindowRows }).map((_, rowIndex) =>
                     Array.from({ length: blockWindowColumns }).flatMap((__, colIndex) => {
                       const xOffset =
-                        (colIndex - (blockWindowColumns - 1) / 2) * (cubeSize * 0.22);
+                        (colIndex - (blockWindowColumns - 1) / 2) * (blockWidth * 0.22);
                       const yOffset = 0.22 + rowIndex * 0.18;
                       return [
                         <mesh
                           key={`${cubeId}-block-window-front-${rowIndex}-${colIndex}`}
-                          position={[xOffset, yOffset, cubeSize / 2 + 0.021]}
+                          position={[xOffset, yOffset, blockDepth / 2 + 0.021]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
                           <meshStandardMaterial
@@ -2132,7 +2242,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-block-window-back-${rowIndex}-${colIndex}`}
-                          position={[xOffset, yOffset, -cubeSize / 2 - 0.021]}
+                          position={[xOffset, yOffset, -blockDepth / 2 - 0.021]}
                           rotation={[0, Math.PI, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2146,7 +2256,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-block-window-left-${rowIndex}-${colIndex}`}
-                          position={[-cubeSize / 2 - 0.021, yOffset, xOffset]}
+                          position={[-blockWidth / 2 - 0.021, yOffset, xOffset]}
                           rotation={[0, -Math.PI / 2, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2160,7 +2270,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-block-window-right-${rowIndex}-${colIndex}`}
-                          position={[cubeSize / 2 + 0.021, yOffset, xOffset]}
+                          position={[blockWidth / 2 + 0.021, yOffset, xOffset]}
                           rotation={[0, Math.PI / 2, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2180,7 +2290,7 @@ function IPGrid({
                   Array.from({ length: blockWindowRows + 1 }).map((_, rowIndex) =>
                     Array.from({ length: 8 }).map((__, colIndex) => {
                       const angle = (Math.PI * 2 * colIndex) / 8;
-                      const radius = cubeSize * 0.52;
+                      const radius = Math.min(blockWidth, blockDepth) * 0.52;
                       const yOffset = 0.22 + rowIndex * 0.18;
                       return (
                         <mesh
@@ -2205,7 +2315,7 @@ function IPGrid({
                   Array.from({ length: blockWindowRows + 1 }).map((_, rowIndex) =>
                     Array.from({ length: 6 }).map((__, colIndex) => {
                       const angle = (Math.PI * 2 * colIndex) / 6;
-                      const radius = cubeSize * 0.54;
+                      const radius = Math.min(blockWidth, blockDepth) * 0.54;
                       const yOffset = 0.22 + rowIndex * 0.18;
                       return (
                         <mesh
@@ -2230,12 +2340,12 @@ function IPGrid({
                   Array.from({ length: blockWindowRows }).map((_, rowIndex) =>
                     Array.from({ length: blockWindowColumns }).flatMap((__, colIndex) => {
                       const xOffset =
-                        (colIndex - (blockWindowColumns - 1) / 2) * (cubeSize * 0.22);
+                        (colIndex - (blockWindowColumns - 1) / 2) * (blockWidth * 0.22);
                       const yOffset = 0.22 + rowIndex * 0.18;
                       return [
                         <mesh
                           key={`${cubeId}-court-window-front-${rowIndex}-${colIndex}`}
-                          position={[xOffset, yOffset, cubeSize * 0.49]}
+                          position={[xOffset, yOffset, blockDepth * 0.49]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
                           <meshStandardMaterial
@@ -2248,7 +2358,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-court-window-back-${rowIndex}-${colIndex}`}
-                          position={[xOffset, yOffset, -cubeSize * 0.49]}
+                          position={[xOffset, yOffset, -blockDepth * 0.49]}
                           rotation={[0, Math.PI, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2262,7 +2372,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-court-window-left-${rowIndex}-${colIndex}`}
-                          position={[-cubeSize * 0.49, yOffset, xOffset]}
+                          position={[-blockWidth * 0.49, yOffset, xOffset]}
                           rotation={[0, -Math.PI / 2, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2276,7 +2386,7 @@ function IPGrid({
                         </mesh>,
                         <mesh
                           key={`${cubeId}-court-window-right-${rowIndex}-${colIndex}`}
-                          position={[cubeSize * 0.49, yOffset, xOffset]}
+                          position={[blockWidth * 0.49, yOffset, xOffset]}
                           rotation={[0, Math.PI / 2, 0]}
                         >
                           <planeGeometry args={[0.09, 0.08]} />
@@ -2294,7 +2404,7 @@ function IPGrid({
 
                 {blockVariant !== 'courtyard' && (
                   <mesh position={[0, blockRoofTopY + 0.02, 0]} castShadow>
-                    <boxGeometry args={[cubeSize * 0.18, 0.07, cubeSize * 0.18]} />
+                    <boxGeometry args={[blockWidth * 0.18, 0.07, blockDepth * 0.18]} />
                     <meshStandardMaterial color={shadeColor(roofColor, 8)} />
                   </mesh>
                 )}
@@ -2304,7 +2414,7 @@ function IPGrid({
             {buildingFamily === 'tower' && (
               <>
                 <mesh position={[0, towerBaseHeight, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 0.88, podiumHeight * 0.9, cubeSize * 0.88]} />
+                  <boxGeometry args={[Math.min(cubeSize * 1.02, towerWidth * 1.12), podiumHeight * 0.9, Math.min(cubeSize * 1.02, towerDepth * 1.12)]} />
                   <meshStandardMaterial color={trimColor} />
                 </mesh>
                 <mesh position={[0, towerUpperHeight + 0.06, 0]} castShadow receiveShadow>
@@ -2321,19 +2431,19 @@ function IPGrid({
             {buildingFamily === 'stepped' && (
               <>
                 <mesh position={[0, 0.07 + steppedLowerHeight / 2, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 1.08, steppedLowerHeight * 0.95, cubeSize * 1.08]} />
+                  <boxGeometry args={[steppedWidth, steppedLowerHeight * 0.95, steppedDepth]} />
                   <meshStandardMaterial color={trimColor} />
                 </mesh>
                 <mesh position={[0, 0.07 + steppedLowerHeight + steppedMidHeight / 2 + 0.03, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 0.62, steppedMidHeight * 1.08, cubeSize * 0.62]} />
+                  <boxGeometry args={[steppedWidth * 0.62, steppedMidHeight * 1.08, steppedDepth * 0.62]} />
                   <meshStandardMaterial color={buildingBodyColor} />
                 </mesh>
                 <mesh position={[0, 0.07 + steppedLowerHeight + steppedMidHeight + steppedTopHeight / 2 + 0.06, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 0.34, steppedTopHeight * 1.15, cubeSize * 0.34]} />
+                  <boxGeometry args={[steppedWidth * 0.34, steppedTopHeight * 1.15, steppedDepth * 0.34]} />
                   <meshStandardMaterial color={shadeColor(buildingBodyColor, 20)} />
                 </mesh>
                 <mesh position={[0, steppedRoofTopY - 0.03, 0]} castShadow>
-                  <boxGeometry args={[cubeSize * 0.44, 0.06, cubeSize * 0.44]} />
+                  <boxGeometry args={[steppedWidth * 0.44, 0.06, steppedDepth * 0.44]} />
                   <meshStandardMaterial color={roofColor} />
                 </mesh>
               </>
@@ -2342,18 +2452,18 @@ function IPGrid({
             {buildingFamily === 'fort' && (
               <>
                 <mesh position={[0, 0.07 + fortWallHeight / 2, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 1.16, fortWallHeight * 0.92, cubeSize * 1.16]} />
+                  <boxGeometry args={[fortWidth, fortWallHeight * 0.92, fortDepth]} />
                   <meshStandardMaterial color={trimColor} />
                 </mesh>
                 <mesh position={[0, 0.07 + fortWallHeight + keepHeight / 2 + 0.08, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[cubeSize * 0.42, keepHeight * 1.12, cubeSize * 0.42]} />
+                  <boxGeometry args={[fortWidth * 0.42, keepHeight * 1.12, fortDepth * 0.42]} />
                   <meshStandardMaterial color={buildingBodyColor} />
                 </mesh>
                 {[
-                  [-cubeSize * 0.42, -cubeSize * 0.42],
-                  [cubeSize * 0.42, -cubeSize * 0.42],
-                  [-cubeSize * 0.42, cubeSize * 0.42],
-                  [cubeSize * 0.42, cubeSize * 0.42],
+                  [-fortWidth * 0.36, -fortDepth * 0.36],
+                  [fortWidth * 0.36, -fortDepth * 0.36],
+                  [-fortWidth * 0.36, fortDepth * 0.36],
+                  [fortWidth * 0.36, fortDepth * 0.36],
                 ].map((offsets, turretIndex) => (
                   <mesh
                     key={`${cubeId}-turret-${turretIndex}`}
@@ -2366,13 +2476,13 @@ function IPGrid({
                   </mesh>
                 ))}
                 <mesh position={[0, fortRoofTopY - 0.03, 0]} castShadow>
-                  <boxGeometry args={[cubeSize * 0.56, 0.06, cubeSize * 0.56]} />
+                  <boxGeometry args={[fortWidth * 0.5, 0.06, fortDepth * 0.5]} />
                   <meshStandardMaterial color={roofColor} />
                 </mesh>
                 {[-0.28, -0.09, 0.09, 0.28].map((xOffset, crenelIndex) => (
                   <mesh
                     key={`${cubeId}-crenel-front-${crenelIndex}`}
-                    position={[xOffset, 0.07 + fortWallHeight + 0.05, cubeSize * 0.58]}
+                    position={[xOffset * fortWidth, 0.07 + fortWallHeight + 0.05, fortDepth * 0.5]}
                     castShadow
                   >
                     <boxGeometry args={[0.08, 0.1, 0.08]} />
@@ -2382,11 +2492,83 @@ function IPGrid({
                 {[-0.28, -0.09, 0.09, 0.28].map((xOffset, crenelIndex) => (
                   <mesh
                     key={`${cubeId}-crenel-back-${crenelIndex}`}
-                    position={[xOffset, 0.07 + fortWallHeight + 0.05, -cubeSize * 0.58]}
+                    position={[xOffset * fortWidth, 0.07 + fortWallHeight + 0.05, -fortDepth * 0.5]}
                     castShadow
                   >
                     <boxGeometry args={[0.08, 0.1, 0.08]} />
                     <meshStandardMaterial color={shadeColor(trimColor, 10)} />
+                  </mesh>
+                ))}
+              </>
+            )}
+
+            {roofVariant === 'parapet' && (
+              <>
+                <mesh position={[0, roofTopY + 0.035, facadeDepth * 0.42]} castShadow>
+                  <boxGeometry args={[facadeWidth * 0.9, 0.07, 0.055]} />
+                  <meshStandardMaterial color={shadeColor(roofColor, 8)} />
+                </mesh>
+                <mesh position={[0, roofTopY + 0.035, -facadeDepth * 0.42]} castShadow>
+                  <boxGeometry args={[facadeWidth * 0.9, 0.07, 0.055]} />
+                  <meshStandardMaterial color={shadeColor(roofColor, 8)} />
+                </mesh>
+                <mesh position={[facadeWidth * 0.42, roofTopY + 0.035, 0]} castShadow>
+                  <boxGeometry args={[0.055, 0.07, facadeDepth * 0.9]} />
+                  <meshStandardMaterial color={shadeColor(roofColor, 8)} />
+                </mesh>
+                <mesh position={[-facadeWidth * 0.42, roofTopY + 0.035, 0]} castShadow>
+                  <boxGeometry args={[0.055, 0.07, facadeDepth * 0.9]} />
+                  <meshStandardMaterial color={shadeColor(roofColor, 8)} />
+                </mesh>
+              </>
+            )}
+
+            {roofVariant === 'penthouse' && (
+              <mesh position={[facadeWidth * 0.12, roofTopY + 0.09, -facadeDepth * 0.12]} castShadow receiveShadow>
+                <boxGeometry args={[facadeWidth * 0.28, 0.18, facadeDepth * 0.24]} />
+                <meshStandardMaterial color={shadeColor(trimColor, 12)} metalness={visualStyle.metalness} roughness={visualStyle.roughness} />
+              </mesh>
+            )}
+
+            {roofVariant === 'antenna' && (
+              <>
+                <mesh position={[0, roofTopY + 0.27, 0]} castShadow>
+                  <cylinderGeometry args={[0.014, 0.02, 0.54 + visualStyle.roofLift, 10]} />
+                  <meshStandardMaterial color="#d1d5db" metalness={0.64} roughness={0.3} />
+                </mesh>
+                <mesh position={[0.1, roofTopY + 0.48, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                  <cylinderGeometry args={[0.01, 0.01, 0.32, 8]} />
+                  <meshStandardMaterial color={visualStyle.accentColor} emissive={visualStyle.accentColor} emissiveIntensity={0.22} />
+                </mesh>
+              </>
+            )}
+
+            {roofVariant === 'water-tower' && (
+              <>
+                <mesh position={[facadeWidth * 0.18, roofTopY + 0.14, -facadeDepth * 0.12]} castShadow>
+                  <cylinderGeometry args={[0.075, 0.075, 0.18, 14]} />
+                  <meshStandardMaterial color={shadeColor(visualStyle.accentColor, -8)} metalness={0.18} roughness={0.54} />
+                </mesh>
+                <mesh position={[facadeWidth * 0.18, roofTopY + 0.025, -facadeDepth * 0.12]} castShadow>
+                  <cylinderGeometry args={[0.02, 0.02, 0.14, 8]} />
+                  <meshStandardMaterial color={trimColor} />
+                </mesh>
+              </>
+            )}
+
+            {roofVariant === 'green' && (
+              <mesh position={[0, roofTopY + 0.012, 0]} receiveShadow>
+                <boxGeometry args={[facadeWidth * 0.58, 0.024, facadeDepth * 0.48]} />
+                <meshStandardMaterial color="#166534" roughness={0.96} />
+              </mesh>
+            )}
+
+            {roofVariant === 'solar' && (
+              <>
+                {[-0.18, 0.18].map((xOffset, panelIndex) => (
+                  <mesh key={`${cubeId}-solar-${panelIndex}`} position={[xOffset * facadeWidth, roofTopY + 0.018, -facadeDepth * 0.08]} rotation={[-0.1, 0, 0]} receiveShadow>
+                    <boxGeometry args={[facadeWidth * 0.24, 0.018, facadeDepth * 0.32]} />
+                    <meshStandardMaterial color="#0f172a" emissive="#1e40af" emissiveIntensity={0.12} metalness={0.3} roughness={0.36} />
                   </mesh>
                 ))}
               </>
