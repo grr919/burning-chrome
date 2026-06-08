@@ -136,6 +136,27 @@ function isPresence(value: unknown): value is MultiplayerPresence {
   );
 }
 
+function dedupePresenceByUserId(items: MultiplayerPresence[]): MultiplayerPresence[] {
+  const byUserId = new Map<string, MultiplayerPresence>();
+
+  for (const item of items) {
+    const previous = byUserId.get(item.userId);
+    if (!previous) {
+      byUserId.set(item.userId, item);
+      continue;
+    }
+
+    const previousTime = Date.parse(previous.lastSeenAt || '');
+    const nextTime = Date.parse(item.lastSeenAt || '');
+
+    if (!Number.isFinite(previousTime) || (Number.isFinite(nextTime) && nextTime >= previousTime)) {
+      byUserId.set(item.userId, item);
+    }
+  }
+
+  return [...byUserId.values()];
+}
+
 export function getExactLocationKey(location?: MultiplayerPlayerLocation): string {
   if (!location) return 'unknown';
   if (location.kind === 'ip') return `ip:${location.ipAddress}`;
@@ -212,6 +233,7 @@ export function useMultiplayerPresence({
   useEffect(() => {
     setMessages([]);
     setOthers([]);
+    let isActive = true;
 
     if (!supabase || !isSupabaseConfigured) {
       setStatus('offline');
@@ -229,14 +251,22 @@ export function useMultiplayerPresence({
 
     channel
       .on('presence', { event: 'sync' }, () => {
+        if (!isActive) {
+          return;
+        }
+
         const state = channel.presenceState() as Record<string, unknown[]>;
-        const next = Object.values(state)
+        const raw = Object.values(state)
           .flat()
           .filter(isPresence)
           .filter((presence) => presence.userId !== identity.userId);
-        setOthers(next);
+        setOthers(dedupePresenceByUserId(raw));
       })
       .on('broadcast', { event: 'chat' }, ({ payload: chatPayload }) => {
+        if (!isActive) {
+          return;
+        }
+
         const message = chatPayload as RoomChatMessage;
         if (!message?.id || typeof message.body !== 'string') {
           return;
@@ -247,6 +277,10 @@ export function useMultiplayerPresence({
         setMessages((prev) => [...prev.filter((item) => item.id !== message.id), message].slice(-40));
       })
       .subscribe(async (nextStatus) => {
+        if (!isActive) {
+          return;
+        }
+
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('online');
           await channel.track(payload);
@@ -257,7 +291,10 @@ export function useMultiplayerPresence({
       });
 
     return () => {
-      channelRef.current = null;
+      isActive = false;
+      if (channelRef.current === channel) {
+        channelRef.current = null;
+      }
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
