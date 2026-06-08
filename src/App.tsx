@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid from './components/IPGrid';
@@ -249,6 +249,79 @@ function getRepresentativeTarget(gridSystemMode: GridSystemMode, zoomLevel: numb
   return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.1`;
 }
 
+function WallMountedFlag({
+  flagImageUrl,
+  position,
+  width,
+  height,
+  onClick,
+}: {
+  flagImageUrl?: string | null;
+  position: [number, number, number];
+  width: number;
+  height: number;
+  onClick: (event: ThreeEvent<MouseEvent>) => void;
+}) {
+  const [flagTexture, setFlagTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    setFlagTexture(null);
+
+    if (!flagImageUrl) {
+      return;
+    }
+
+    let isMounted = true;
+    let loadedTexture: THREE.Texture | null = null;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(flagImageUrl, (texture) => {
+      if (!isMounted) {
+        texture.dispose();
+        return;
+      }
+
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      loadedTexture = texture;
+      setFlagTexture(texture);
+    });
+
+    return () => {
+      isMounted = false;
+      if (loadedTexture) {
+        loadedTexture.dispose();
+      }
+    };
+  }, [flagImageUrl]);
+
+  return (
+    <mesh
+      position={position}
+      onClick={onClick}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        document.body.style.cursor = 'auto';
+      }}
+    >
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial
+        map={flagTexture ?? undefined}
+        color={flagTexture ? '#ffffff' : '#f8fafc'}
+        side={THREE.FrontSide}
+        transparent={Boolean(flagTexture)}
+        alphaTest={flagTexture ? 0.08 : 0}
+        depthTest
+        depthWrite
+      />
+    </mesh>
+  );
+}
+
 
 function BuildingDetailScene({
   building,
@@ -459,37 +532,16 @@ function BuildingDetailScene({
       </Html>
 
       {building.flagImageUrl && (
-        <Html position={[0, flagY, 1.78]} transform sprite distanceFactor={8}>
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onExit();
-            }}
-            style={{
-              width: '36px',
-              height: '24px',
-              padding: 0,
-              border: '1px solid rgba(255,255,255,0.55)',
-              borderRadius: '2px',
-              background: 'transparent',
-              cursor: 'pointer',
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
-            }}
-            title="Return to grid view"
-          >
-            <img
-              src={building.flagImageUrl}
-              alt={building.countryCodeLabel ?? building.ipAddress}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: '1px',
-                display: 'block',
-              }}
-            />
-          </button>
-        </Html>
+        <WallMountedFlag
+          flagImageUrl={building.flagImageUrl}
+          position={[0, flagY, 1.786]}
+          width={0.72}
+          height={0.48}
+          onClick={(event) => {
+            event.stopPropagation();
+            onExit();
+          }}
+        />
       )}
 
       <Html position={[0, labelY, 0]} center>

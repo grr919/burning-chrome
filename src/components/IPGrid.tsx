@@ -59,6 +59,103 @@ type IPGridProps = {
   onRemoteUserClick?: (user: MultiplayerPresence) => void;
 };
 
+function WallMountedFlag({
+  flagImageUrl,
+  fallbackLabel,
+  position,
+  rotation = [0, 0, 0],
+  width,
+  height,
+  onClick,
+  onDoubleClick,
+}: {
+  flagImageUrl?: string | null;
+  fallbackLabel?: string;
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  width: number;
+  height: number;
+  onClick: (event: ThreeEvent<MouseEvent>) => void;
+  onDoubleClick?: (event: ThreeEvent<MouseEvent>) => void;
+}) {
+  const [flagTexture, setFlagTexture] = useState<THREE.Texture | null>(null);
+  const [textureFailed, setTextureFailed] = useState(false);
+
+  useEffect(() => {
+    setFlagTexture(null);
+    setTextureFailed(false);
+
+    if (!flagImageUrl) {
+      return;
+    }
+
+    let isMounted = true;
+    let loadedTexture: THREE.Texture | null = null;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      flagImageUrl,
+      (texture) => {
+        if (!isMounted) {
+          texture.dispose();
+          return;
+        }
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 4;
+        loadedTexture = texture;
+        setFlagTexture(texture);
+      },
+      undefined,
+      () => {
+        if (isMounted) {
+          setTextureFailed(true);
+        }
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      if (loadedTexture) {
+        loadedTexture.dispose();
+      }
+    };
+  }, [flagImageUrl]);
+
+  return (
+    <mesh
+      position={position}
+      rotation={rotation}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        document.body.style.cursor = 'auto';
+      }}
+    >
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial
+        map={flagTexture ?? undefined}
+        color={flagTexture && !textureFailed ? '#ffffff' : '#f8fafc'}
+        side={THREE.FrontSide}
+        transparent={Boolean(flagTexture)}
+        alphaTest={flagTexture ? 0.08 : 0}
+        depthTest
+        depthWrite
+      />
+      {!flagTexture && fallbackLabel && (
+        <Text position={[0, 0, 0.002]} fontSize={height * 0.42} color="#111827" anchorX="center" anchorY="middle">
+          {fallbackLabel}
+        </Text>
+      )}
+    </mesh>
+  );
+}
+
 type RdapEntity = {
   roles: string[];
   name?: string;
@@ -2768,43 +2865,21 @@ function IPGrid({
             })}
 
             {flagImageUrl && (
-              <Html position={[0, facadeFlagY, facadeFlagZ]} transform distanceFactor={8}>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleGridClick(cellX, cellY);
-                  }}
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                    openBuildingView();
-                  }}
-                  style={{
-                    width: '20px',
-                    height: '14px',
-                    padding: 0,
-                    border: '1px solid rgba(255,255,255,0.5)',
-                    borderRadius: '1px',
-                    background: 'transparent',
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
-                    userSelect: 'none',
-                    pointerEvents: 'auto',
-                    cursor: 'pointer',
-                  }}
-                  title="Open building view"
-                >
-                  <img
-                    src={flagImageUrl}
-                    alt={countryCodeLabel}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: '1px',
-                      display: 'block',
-                    }}
-                  />
-                </button>
-              </Html>
+              <WallMountedFlag
+                flagImageUrl={flagImageUrl}
+                fallbackLabel={countryCodeLabel}
+                position={[0, facadeFlagY, facadeFlagZ + 0.006]}
+                width={0.28}
+                height={0.196}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleGridClick(cellX, cellY);
+                }}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  openBuildingView();
+                }}
+              />
             )}
 
             {windowBands}
