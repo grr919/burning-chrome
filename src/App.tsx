@@ -4,9 +4,12 @@ import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid from './components/IPGrid';
 import {
+  getExactLocationKey,
   getMultiplayerRoomKey,
+  getPlayerLocationDisplay,
   useMultiplayerPresence,
   type MultiplayerCell,
+  type MultiplayerPresence,
   type MultiplayerPlayerLocation,
 } from './hooks/useMultiplayerPresence';
 
@@ -191,6 +194,10 @@ function getPlayerCell(playerLocation: PlayerLocation): { x: number; y: number }
     };
   }
 
+  if (playerLocation.kind === 'building') {
+    return { x: 7, y: 7 };
+  }
+
   return {
     x: Math.max(0, Math.min(15, Math.round(playerLocation.x))),
     y: Math.max(0, Math.min(15, Math.round(playerLocation.y))),
@@ -210,7 +217,20 @@ function getPlayerLocationForStreetPosition(
   const streetCellStep = Math.max(0, Math.min(15, Math.round(streetStep)));
   const x = streetOrientation === 'row' ? streetCellStep : streetCellIndex;
   const y = streetOrientation === 'row' ? streetCellIndex : streetCellStep;
-  return getPlayerLocationForGridCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
+  const adjacentX = streetOrientation === 'row' ? Math.min(15, x + 1) : Math.min(15, streetCellIndex + 1);
+  const adjacentY = streetOrientation === 'row' ? Math.min(15, streetCellIndex + 1) : Math.min(15, y + 1);
+  const ipAddresses = [
+    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y),
+    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, adjacentX, y),
+    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, adjacentY),
+    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, adjacentX, adjacentY),
+  ];
+  return {
+    kind: 'intersection',
+    x,
+    y,
+    ipAddresses: [...new Set(ipAddresses)].sort(),
+  };
 }
 
 function parseIpOctets(ipAddress: string): [number, number, number, number] {
@@ -983,13 +1003,18 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
-  const playerLocationIp = playerLocation.kind === 'ip' ? playerLocation.ipAddress : activeTargetIp;
+  const playerLocationIp =
+    playerLocation.kind === 'ip' || playerLocation.kind === 'building'
+      ? playerLocation.ipAddress
+      : activeTargetIp;
   const multiplayerRoomKey = useMemo(
     () => getMultiplayerRoomKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
     [gridSystemMode, zoomLevel, currentPosition, grid2Position]
   );
+  const chatLocationKey = useMemo(() => getExactLocationKey(playerLocation), [playerLocation]);
   const multiplayer = useMultiplayerPresence({
     roomKey: multiplayerRoomKey,
+    chatLocationKey,
     gridSystemMode,
     zoomLevel,
     currentPosition,
@@ -1056,6 +1081,67 @@ function App() {
       streetExposureByIp
     ]
   );
+
+  const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip') => {
+    const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
+    setLayoutMode('grid');
+    setBuildingView(null);
+    setSelectedTargetIp(ipAddress);
+
+    if (gridSystemMode === 'grid2') {
+      const nextGrid2Position = {
+        outerFirstOctet: firstOctet,
+        outerSecondOctet: secondOctet,
+        innerThirdStart: clampGrid2WindowStart(Math.floor(thirdOctet / GRID2_WINDOW_SIZE) * GRID2_WINDOW_SIZE),
+        innerFourthStart: clampGrid2WindowStart(Math.floor(fourthOctet / GRID2_WINDOW_SIZE) * GRID2_WINDOW_SIZE),
+      };
+      const x = fourthOctet - nextGrid2Position.innerFourthStart;
+      const y = thirdOctet - nextGrid2Position.innerThirdStart;
+      setGrid2Position(nextGrid2Position);
+      setPlayerLocation(kind === 'building' ? { kind: 'building', ipAddress, outside: true } : { kind: 'ip', ipAddress, x, y });
+      return;
+    }
+
+    setZoomLevel(3);
+    setCurrentPosition({
+      firstOctet,
+      secondOctet,
+      thirdOctet,
+      fourthOctet: 0,
+    });
+    setPlayerLocation(kind === 'building'
+      ? { kind: 'building', ipAddress, outside: true }
+      : {
+          kind: 'ip',
+          ipAddress,
+          x: fourthOctet % 16,
+          y: Math.floor(fourthOctet / 16),
+        });
+  };
+
+  const handleRemoteUserClick = (user: MultiplayerPresence) => {
+    const location = user.playerLocation;
+    if (!location) {
+      return;
+    }
+
+    if (location.kind === 'ip') {
+      moveToIpLocation(location.ipAddress, 'ip');
+      return;
+    }
+
+    if (location.kind === 'building') {
+      moveToIpLocation(location.ipAddress, 'building');
+      return;
+    }
+
+    setLayoutMode('street');
+    setBuildingView(null);
+    setPlayerLocation(location);
+    setSelectedTargetIp(location.ipAddresses[0] ?? activeTargetIp);
+    setStreetIndex(Math.max(0, Math.min(15, Math.round(location.y))));
+    setStreetStep(Math.max(0, Math.min(15, Math.round(location.x))));
+  };
 
   const handleGridClick = (x: number, y: number) => {
     const clickedIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
@@ -1342,7 +1428,7 @@ function App() {
   const handleFlagClick = (building: BuildingViewState) => {
     setBuildingView(building);
     setSelectedTargetIp(building.ipAddress);
-    setPlayerLocation({ kind: 'ip', ipAddress: building.ipAddress });
+    setPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
     setCertificateLoadingIp(building.ipAddress);
     setExposureLoadingIp(building.ipAddress);
     setCertificateResult(null);
@@ -1557,9 +1643,7 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const userLocationLabel = playerLocation.kind === 'ip'
-    ? playerLocation.ipAddress
-    : `intersection ${playerLocation.ipAddresses.join(' / ')}`;
+  const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const handlePointerTargetChange = (cell: MultiplayerCell) => {
     setPointerTarget(cell);
   };
@@ -1580,12 +1664,6 @@ function App() {
 
             <div className="flex flex-col items-start lg:items-end gap-3">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
-                <div
-                  className="max-w-[min(22rem,calc(100vw-12rem))] truncate self-center text-xs font-medium text-gray-700"
-                  title={`Location: ${userLocationLabel}`}
-                >
-                  Location: {userLocationLabel}
-                </div>
                 <div
                   className="relative"
                   onBlur={(event) => {
@@ -2051,6 +2129,7 @@ function App() {
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
                   remoteUsers={multiplayer.others}
+                  onRemoteUserClick={handleRemoteUserClick}
                 />
                 <OrbitControls
                   ref={controlsRef}
@@ -2131,14 +2210,14 @@ function App() {
                 <input
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
-                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online' || chatLocationKey === 'unknown'}
                   maxLength={300}
                   className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   placeholder={multiplayer.isConfigured ? 'Message this location' : 'Multiplayer offline'}
                 />
                 <button
                   type="submit"
-                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online'}
+                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online' || chatLocationKey === 'unknown'}
                   className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   Send

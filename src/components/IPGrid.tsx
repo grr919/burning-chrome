@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { MultiplayerPresence } from '../hooks/useMultiplayerPresence';
+import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
 type GridPosition = {
   firstOctet: number;
@@ -56,6 +56,7 @@ type IPGridProps = {
   onHoverCellChange?: (cell: { x: number; y: number; ipAddress: string }) => void;
   infoDisplayMode?: InfoDisplayMode;
   remoteUsers?: MultiplayerPresence[];
+  onRemoteUserClick?: (user: MultiplayerPresence) => void;
 };
 
 type RdapEntity = {
@@ -100,6 +101,13 @@ type ExposureRecord = {
   warning?: string;
   error?: string;
 };
+
+function getAvatarLocationDisplay(user: MultiplayerPresence): string {
+  if (user.playerLocation?.kind === 'ip') return user.playerLocation.ipAddress;
+  if (user.playerLocation?.kind === 'building') return `Building ${user.playerLocation.ipAddress}`;
+  if (user.playerLocation?.kind === 'intersection') return 'Intersection';
+  return getPlayerLocationDisplay(user.playerLocation);
+}
 
 type AsnRecord = {
   ipAddress: string;
@@ -1102,6 +1110,7 @@ function IPGrid({
   onHoverCellChange,
   infoDisplayMode = 'structured',
   remoteUsers = [],
+  onRemoteUserClick,
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -2829,7 +2838,10 @@ function IPGrid({
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
     const playerLocation = user.playerLocation;
-    const playerIp = playerLocation?.kind === 'ip' ? playerLocation.ipAddress : user.selectedIp;
+    const playerIp =
+      playerLocation?.kind === 'ip' || playerLocation?.kind === 'building'
+        ? playerLocation.ipAddress
+        : user.selectedIp;
     const selectedCellIndex = playerIp
       ? visibleLookupAddresses.findIndex((address) => address.ipAddress === playerIp)
       : -1;
@@ -2868,6 +2880,11 @@ function IPGrid({
     const spread = Math.min(0.42, stackIndex * 0.12);
     const xOffset = Math.cos(angle) * spread;
     const zOffset = Math.sin(angle) * spread;
+    const locationLabel = getAvatarLocationDisplay(user);
+    const handleRemoteAvatarClick = (event: ThreeEvent<MouseEvent>) => {
+      event.stopPropagation();
+      onRemoteUserClick?.(user);
+    };
 
     return [
       <group
@@ -2877,8 +2894,20 @@ function IPGrid({
           groundY + 3.05 + stackIndex * 0.18,
           cell.y * spacing - offset + zOffset,
         ]}
+        onClick={handleRemoteAvatarClick}
       >
-        <mesh castShadow>
+        <mesh
+          castShadow
+          onClick={handleRemoteAvatarClick}
+          onPointerOver={(event) => {
+            event.stopPropagation();
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={(event) => {
+            event.stopPropagation();
+            document.body.style.cursor = 'auto';
+          }}
+        >
           <sphereGeometry args={[0.18, 16, 16]} />
           <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.28} />
         </mesh>
@@ -2899,11 +2928,16 @@ function IPGrid({
               overflow: 'hidden',
               padding: '2px 5px',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'normal',
             }}
-            title={`${user.displayName} at ${cell.ipAddress}`}
+            title={`${user.displayName} at ${locationLabel}`}
           >
-            {user.displayName}
+            <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user.displayName}
+            </div>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {locationLabel}
+            </div>
           </div>
         </Html>
       </group>,

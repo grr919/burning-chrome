@@ -36,6 +36,11 @@ export type MultiplayerPlayerLocation =
       x: number;
       y: number;
       ipAddresses: string[];
+    }
+  | {
+      kind: 'building';
+      ipAddress: string;
+      outside: true;
     };
 
 export type MultiplayerPresence = {
@@ -60,10 +65,12 @@ export type RoomChatMessage = {
   color: string;
   body: string;
   createdAt: string;
+  locationKey?: string;
 };
 
 type UseMultiplayerPresenceInput = {
   roomKey: string;
+  chatLocationKey: string;
   gridSystemMode: MultiplayerGridSystemMode;
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
@@ -129,6 +136,24 @@ function isPresence(value: unknown): value is MultiplayerPresence {
   );
 }
 
+export function getExactLocationKey(location?: MultiplayerPlayerLocation): string {
+  if (!location) return 'unknown';
+  if (location.kind === 'ip') return `ip:${location.ipAddress}`;
+  if (location.kind === 'building') return `building:${location.ipAddress}`;
+  if (location.kind === 'intersection') {
+    return `intersection:${[...location.ipAddresses].sort().join('|')}`;
+  }
+  return 'unknown';
+}
+
+export function getPlayerLocationDisplay(location?: MultiplayerPlayerLocation): string {
+  if (!location) return 'Unknown location';
+  if (location.kind === 'ip') return location.ipAddress;
+  if (location.kind === 'building') return `Building ${location.ipAddress}`;
+  if (location.kind === 'intersection') return `Intersection ${location.ipAddresses.join(' / ')}`;
+  return 'Unknown location';
+}
+
 export function getMultiplayerRoomKey(
   gridSystemMode: MultiplayerGridSystemMode,
   zoomLevel: number,
@@ -147,6 +172,7 @@ export function getMultiplayerRoomKey(
 
 export function useMultiplayerPresence({
   roomKey,
+  chatLocationKey,
   gridSystemMode,
   zoomLevel,
   currentPosition,
@@ -163,6 +189,12 @@ export function useMultiplayerPresence({
   const [messages, setMessages] = useState<RoomChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastTrackRef = useRef(0);
+  const chatLocationKeyRef = useRef(chatLocationKey);
+
+  useEffect(() => {
+    chatLocationKeyRef.current = chatLocationKey;
+    setMessages([]);
+  }, [chatLocationKey]);
 
   const payload = useMemo<MultiplayerPresence>(() => ({
     ...identity,
@@ -207,6 +239,9 @@ export function useMultiplayerPresence({
       .on('broadcast', { event: 'chat' }, ({ payload: chatPayload }) => {
         const message = chatPayload as RoomChatMessage;
         if (!message?.id || typeof message.body !== 'string') {
+          return;
+        }
+        if (message.locationKey !== chatLocationKeyRef.current) {
           return;
         }
         setMessages((prev) => [...prev.filter((item) => item.id !== message.id), message].slice(-40));
@@ -258,10 +293,11 @@ export function useMultiplayerPresence({
       color: identity.color,
       body: trimmed,
       createdAt: new Date().toISOString(),
+      locationKey: chatLocationKey,
     };
     setMessages((prev) => [...prev, message].slice(-40));
     void channel.send({ type: 'broadcast', event: 'chat', payload: message });
-  }, [identity, status]);
+  }, [chatLocationKey, identity, status]);
 
   return {
     isConfigured: isSupabaseConfigured,
