@@ -399,6 +399,14 @@ function getAsnApiErrorMessage(...values: unknown[]): string {
   return 'Unknown ASN lookup error';
 }
 
+function toTitleCaseStyleLabel(value: string): string {
+  return value
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 function getAsnDiagnosticLabel(record: AsnRecord | undefined, loading: boolean): string {
   if (loading) return 'loading';
   if (record?.asn) return 'ok';
@@ -1715,13 +1723,14 @@ function IPGrid({
       const trimColor = visualStyle.trimColor;
       const roofColor = visualStyle.roofColor;
       const windowColor = visualStyle.windowColor;
+      const architecturalStyleLabel = toTitleCaseStyleLabel(`${organizationCategory} style`);
 
       const headerParts = [
-        ipAddress,
+        `Address ${ipAddress}`,
         ipTypeLabel,
         countryName ? `(${countryName})` : '',
         asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? '' : '',
-        organizationCategory !== 'unknown' ? `${organizationCategory} style` : '',
+        organizationCategory !== 'unknown' ? architecturalStyleLabel : '',
         topReverseDnsHostname ? `reverse-dns: ${topReverseDnsHostname}` : '',
       ].filter(Boolean);
 
@@ -1803,7 +1812,7 @@ function IPGrid({
 
       const structuredHoverInfoHtml = hoverInfoLines.join('');
       const proseSentences = [
-        `This square represents ${ipAddress}.`,
+        `This square represents Address ${ipAddress}.`,
         `The address is classified as ${ipTypeLabel.toLowerCase()}.`,
         countryName ? `The registration country currently shown is ${countryName}.` : null,
         describeIpPurpose(ipTypeLabel),
@@ -1840,7 +1849,7 @@ function IPGrid({
         }
       }
 
-      const proseHoverHtml = `<p><span class="font-bold">${escapeHtml(ipAddress)}</span>. ${linkifyText(joinSentenceParts(proseSentences))}</p>`;
+      const proseHoverHtml = `<p><span class="font-bold">Address ${escapeHtml(ipAddress)}</span>. ${linkifyText(joinSentenceParts(proseSentences))}</p>`;
       const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverHtml : structuredHoverInfoHtml;
 
       const windowBands = [];

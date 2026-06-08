@@ -1553,7 +1553,9 @@ function App() {
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
   const multiplayerStatusLabel = multiplayer.isConfigured
-    ? multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
+    ? multiplayer.status === 'error'
+      ? 'Offline'
+      : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
   const userLocationLabel = playerLocation.kind === 'ip'
     ? playerLocation.ipAddress
@@ -1595,7 +1597,7 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setIsOptionsOpen((open) => !open)}
-                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                    className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                     aria-expanded={isOptionsOpen}
                     aria-haspopup="menu"
                   >
@@ -1687,7 +1689,7 @@ function App() {
                 <div className="relative group">
                   <button
                     type="button"
-                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                    className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                   >
                     More Info
                   </button>
@@ -2105,7 +2107,7 @@ function App() {
                   {multiplayer.others.length} nearby
                 </span>
               </div>
-              <div className="mt-1 text-xs text-gray-500 break-all">{multiplayerRoomKey}</div>
+              <div className="mt-1 text-xs text-gray-500 break-all">Location: {userLocationLabel}</div>
             </div>
 
             <div className="w-full lg:max-w-xl">
