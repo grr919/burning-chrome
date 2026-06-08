@@ -141,7 +141,7 @@ function WallMountedFlag({
       <meshBasicMaterial
         map={flagTexture ?? undefined}
         color={flagTexture && !textureFailed ? '#ffffff' : '#f8fafc'}
-        side={THREE.FrontSide}
+        side={THREE.DoubleSide}
         transparent={Boolean(flagTexture)}
         alphaTest={flagTexture ? 0.08 : 0}
         depthTest
@@ -2864,23 +2864,21 @@ function IPGrid({
               );
             })}
 
-            {flagImageUrl && (
-              <WallMountedFlag
-                flagImageUrl={flagImageUrl}
-                fallbackLabel={countryCodeLabel}
-                position={[0, facadeFlagY, facadeFlagZ + 0.006]}
-                width={0.28}
-                height={0.196}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleGridClick(cellX, cellY);
-                }}
-                onDoubleClick={(event) => {
-                  event.stopPropagation();
-                  openBuildingView();
-                }}
-              />
-            )}
+            <WallMountedFlag
+              flagImageUrl={flagImageUrl}
+              fallbackLabel={countryCodeLabel}
+              position={[0, facadeFlagY, facadeFlagZ + 0.006]}
+              width={0.28}
+              height={0.196}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleGridClick(cellX, cellY);
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                openBuildingView();
+              }}
+            />
 
             {windowBands}
 
