@@ -1941,12 +1941,12 @@ function IPGrid({
       const trimColor = visualStyle.trimColor;
       const roofColor = visualStyle.roofColor;
       const windowColor = visualStyle.windowColor;
-      const architecturalStyleLabel = toTitleCaseStyleLabel(`${organizationCategory} style`);
+      const architecturalStyleLabel = toTitleCaseStyleLabel(organizationCategory);
 
       const headerParts = [
         `Address ${ipAddress}`,
         ipTypeLabel,
-        countryName ? `(${countryName})` : '',
+        countryName ? countryName : '',
         asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? '' : '',
         organizationCategory !== 'unknown' ? architecturalStyleLabel : '',
         topReverseDnsHostname ? `reverse-dns: ${topReverseDnsHostname}` : '',

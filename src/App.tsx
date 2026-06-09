@@ -967,7 +967,29 @@ function App() {
     setStreetPlayerY(clampStreetCell(location.y));
   };
 
-  const handleCellClick = (cell: GridCellBuilding) => {
+  const enterStreetAtCell = (cell: GridCellBuilding) => {
+    const x = clampStreetCell(cell.x);
+    const y = clampStreetCell(cell.y);
+    setSelectedTargetIp(cell.ipAddress);
+    setBuildingView(null);
+    setLayoutMode('street');
+    setStreetPlayerX(x);
+    setStreetPlayerY(y);
+    setPlayerLocation(getPlayerLocationForStreetPosition(
+      x,
+      y,
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position
+    ));
+  };
+
+  const handleGridCellClick = (cell: GridCellBuilding) => {
+    enterStreetAtCell(cell);
+  };
+
+  const handleStreetCellClick = (cell: GridCellBuilding) => {
     handleFlagClick(cell);
   };
 
@@ -1365,15 +1387,6 @@ function App() {
     }
   };
 
-  const handleEnterStreetView = () => {
-    const playerCell = getPlayerCell(playerLocation);
-    setLayoutMode('street');
-    setBuildingView(null);
-    setStreetPlayerX(playerCell.x);
-    setStreetPlayerY(playerCell.y);
-    setStreetHeading(0);
-  };
-
   const getCurrentRangeLabel = (): string => {
     if (gridSystemMode === 'grid2') {
       const thirdEnd = grid2Position.innerThirdStart + GRID2_WINDOW_SIZE - 1;
@@ -1393,13 +1406,13 @@ function App() {
     }
 
     if (gridSystemMode === 'grid2') {
-      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Single-click a building or square for building view; double-click to select that exact IP.';
+      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Single-click a building or square for street level; double-click to select that exact IP.';
     }
 
     if (zoomLevel === 0) {
       return lookupMode === 'rdap'
-        ? 'Single-click a building or square for building view; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data.'
-        : 'Single-click a building or square for building view; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent.';
+        ? 'Single-click a building or square for street level; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for live ownership and registration data.'
+        : 'Single-click a building or square for street level; double-click to zoom into a first-octet block. Heights use public service exposure data. Hover for hostname data from reverse DNS, with scan-data fallback when PTR is absent.';
     }
 
     if (zoomLevel === 1) {
@@ -1411,8 +1424,8 @@ function App() {
     }
 
     return lookupMode === 'rdap'
-      ? `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for building view. Hover a building to fetch live RDAP ownership and registration data.`
-      : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for building view. Hover a building to fetch hostname data.`;
+      ? `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for street level. Hover a building to fetch live RDAP ownership and registration data.`
+      : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for street level. Hover a building to fetch hostname data.`;
   };
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
@@ -1528,17 +1541,6 @@ function App() {
                         role="menuitem"
                       >
                         Grid 2
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleEnterStreetView();
-                          setIsOptionsOpen(false);
-                        }}
-                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${layoutMode === 'street' ? 'font-semibold' : ''}`}
-                        role="menuitem"
-                      >
-                        Street level
                       </button>
                       <button
                         type="button"
@@ -1888,8 +1890,8 @@ function App() {
                   zoomLevel={zoomLevel}
                   currentPosition={currentPosition}
                   getIPColor={getIPColor}
-                  onCellClick={handleCellClick}
-                  onCellDoubleClick={handleCellDoubleClick}
+                  onCellClick={handleStreetCellClick}
+                  onCellDoubleClick={handleStreetCellClick}
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
@@ -1924,7 +1926,7 @@ function App() {
                   zoomLevel={zoomLevel}
                   currentPosition={currentPosition}
                   getIPColor={getIPColor}
-                  onCellClick={handleCellClick}
+                  onCellClick={handleGridCellClick}
                   onCellDoubleClick={handleCellDoubleClick}
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
