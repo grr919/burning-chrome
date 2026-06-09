@@ -1011,6 +1011,10 @@ function App() {
     updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
   };
 
+  const turnStreetBy = (delta: -1 | 1) => {
+    setStreetHeading((prev) => ((prev + delta + 4) % 4) as StreetHeading);
+  };
+
   const handleStreetCellClick = (cell: GridCellBuilding) => {
     updateStreetPlayerPosition(cell.x, cell.y, cell.ipAddress);
   };
@@ -1247,7 +1251,7 @@ function App() {
       event.stopPropagation();
 
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        moveStreetByDirection(deltaX > 0 ? 'right' : 'left');
+        turnStreetBy(deltaX > 0 ? 1 : -1);
         return;
       }
 
@@ -1501,7 +1505,7 @@ function App() {
 
   const getInstructionText = (): string => {
     if (layoutMode === 'street') {
-      return 'Hover over a location for information. Click on it to go to that location. Click on a building to enter it.';
+      return 'Hover over a location for information. Click on it to go to that location. Scroll to move forward or backward. Use horizontal or Shift-scroll to move left and right. Swipe left or right to turn. Click a building to enter it.';
     }
 
     if (gridSystemMode === 'grid2') {
