@@ -1460,17 +1460,20 @@ function App() {
     <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
       <div className="flex-1 min-h-0 p-3 flex flex-col gap-3">
         <header className="shrink-0 bg-white text-black p-3 rounded-lg">
-          <div className="flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-start">
-            <div className="min-w-0">
+          <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+            <div className="min-w-0 lg:pr-4">
               <h1 className="text-2xl font-bold">Burning Chrome</h1>
+            </div>
+
+            <div className="min-w-0 lg:px-4 lg:pt-1">
               {gridSystemMode === 'grid1' && (
-                <p className="mt-1 text-xs italic text-gray-600">
+                <p className="text-center text-xs italic text-gray-600">
                   Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.
                 </p>
               )}
             </div>
 
-            <div className="flex flex-col items-start lg:items-end gap-3">
+            <div className="flex flex-col items-start lg:items-end gap-3 lg:pl-4">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
                 <div
                   className="relative"
@@ -1512,7 +1515,7 @@ function App() {
                         className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
                         role="menuitem"
                       >
-                        Reset
+                        Return to Main Level
                       </button>
                       <button
                         type="button"
@@ -1523,7 +1526,7 @@ function App() {
                         className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
                         role="menuitem"
                       >
-                        Reset camera
+                        Re-Center the Camera
                       </button>
                       <button
                         type="button"
@@ -1556,7 +1559,7 @@ function App() {
                         className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
                         role="menuitem"
                       >
-                        {infoDisplayMode === 'prose' ? 'Prose Mode' : 'Data Mode'}
+                        {infoDisplayMode === 'prose' ? 'Switch to Data Mode' : 'Switch to Prose Mode'}
                       </button>
                     </div>
                   )}
