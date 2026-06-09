@@ -981,20 +981,25 @@ function App() {
     enterStreetAtCell(cell);
   };
 
-  const handleStreetCellClick = (cell: GridCellBuilding) => {
-    const x = clampStreetCell(cell.x);
-    const y = clampStreetCell(cell.y);
-    setSelectedTargetIp(cell.ipAddress);
-    setStreetPlayerX(x);
-    setStreetPlayerY(y);
-    setPlayerLocation(getPlayerLocationForStreetPosition(
-      x,
-      y,
+  const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
+    const nextX = clampStreetCell(x);
+    const nextY = clampStreetCell(y);
+    const nextLocation = getPlayerLocationForStreetPosition(
+      nextX,
+      nextY,
       gridSystemMode,
       zoomLevel,
       currentPosition,
       grid2Position
-    ));
+    );
+    setStreetPlayerX(nextX);
+    setStreetPlayerY(nextY);
+    setPlayerLocation(nextLocation);
+    setSelectedTargetIp(ipAddress ?? nextLocation.ipAddresses[0] ?? activeTargetIp);
+  };
+
+  const handleStreetCellClick = (cell: GridCellBuilding) => {
+    updateStreetPlayerPosition(cell.x, cell.y, cell.ipAddress);
   };
 
   const handleStreetBuildingClick = (cell: GridCellBuilding) => {
@@ -1136,6 +1141,59 @@ function App() {
     });
     setBottomInfoHtml('');
   };
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container || layoutMode !== 'street' || buildingView) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const forward = getStreetHeadingVector(streetHeading);
+      const left = { dx: -forward.dy, dy: forward.dx };
+      const right = { dx: forward.dy, dy: -forward.dx };
+      const useSidewaysMovement = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+
+      if (useSidewaysMovement) {
+        const sidewaysDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (sidewaysDelta === 0) {
+          return;
+        }
+        const vector = sidewaysDelta > 0 ? right : left;
+        updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
+        return;
+      }
+
+      if (event.deltaY === 0) {
+        return;
+      }
+
+      const direction = event.deltaY > 0 ? 1 : -1;
+      updateStreetPlayerPosition(
+        streetPlayerX + forward.dx * direction,
+        streetPlayerY + forward.dy * direction
+      );
+    };
+
+    container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel, { capture: true });
+    };
+  }, [
+    layoutMode,
+    buildingView,
+    streetHeading,
+    streetPlayerX,
+    streetPlayerY,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    activeTargetIp,
+  ]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
