@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import IPGrid from './components/IPGrid';
+import IPGrid, { type GridCellBuilding } from './components/IPGrid';
 import {
   getExactLocationKey,
   getMultiplayerRoomKey,
@@ -1199,10 +1199,36 @@ function App() {
     setStreetStep(Math.max(0, Math.min(15, Math.round(location.x))));
   };
 
-  const handleGridClick = (x: number, y: number) => {
-    const clickedIp = getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y);
-    setSelectedTargetIp(clickedIp);
-    setPlayerLocation({ kind: 'ip', ipAddress: clickedIp, x, y });
+  const handleCellClick = (cell: GridCellBuilding) => {
+    handleFlagClick(cell);
+  };
+
+  const handleCellDoubleClick = (cell: GridCellBuilding) => {
+    setSelectedTargetIp(cell.ipAddress);
+
+    if (gridSystemMode === 'grid2') {
+      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+      return;
+    }
+
+    const [firstOctet, secondOctet, thirdOctet] = parseIpOctets(cell.ipAddress);
+    setBuildingView(null);
+
+    if (zoomLevel === 0) {
+      setCurrentPosition({ firstOctet, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
+      setZoomLevel(1);
+      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+    } else if (zoomLevel === 1) {
+      setCurrentPosition((prev) => ({ ...prev, secondOctet, thirdOctet: 0, fourthOctet: 0 }));
+      setZoomLevel(2);
+      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+    } else if (zoomLevel === 2) {
+      setCurrentPosition((prev) => ({ ...prev, thirdOctet, fourthOctet: 0 }));
+      setZoomLevel(3);
+      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+    } else {
+      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+    }
   };
 
 
@@ -2188,8 +2214,8 @@ function App() {
                   zoomLevel={zoomLevel}
                   currentPosition={currentPosition}
                   getIPColor={getIPColor}
-                  handleGridClick={handleGridClick}
-                  onFlagClick={handleFlagClick}
+                  onCellClick={handleCellClick}
+                  onCellDoubleClick={handleCellDoubleClick}
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}

@@ -32,6 +32,22 @@ type LookupAddress = {
   fourthOctetValue: number;
 };
 
+export type GridCellBuilding = {
+  x: number;
+  y: number;
+  ipAddress: string;
+  label: number;
+  color: string;
+  buildingFamily: 'block' | 'tower' | 'stepped' | 'fort';
+  buildingHeight: number;
+  flagImageUrl?: string | null;
+  countryCodeLabel?: string;
+  asn?: string;
+  asnName?: string;
+  route?: string;
+  asnColor?: string;
+};
+
 const DEFAULT_GRID2_POSITION: Grid2Position = {
   outerFirstOctet: 0,
   outerSecondOctet: 0,
@@ -47,8 +63,8 @@ type IPGridProps = {
   zoomLevel: number;
   currentPosition: GridPosition;
   getIPColor: (first: number, second: number, third: number, fourth: number) => string;
-  handleGridClick: (x: number, y: number) => void;
-  onFlagClick: (building: { ipAddress: string; label: number; color: string; buildingFamily: 'block' | 'tower' | 'stepped' | 'fort'; buildingHeight: number; flagImageUrl?: string | null; countryCodeLabel?: string; asn?: string; asnName?: string; route?: string; asnColor?: string }) => void;
+  onCellClick: (cell: GridCellBuilding) => void;
+  onCellDoubleClick: (cell: GridCellBuilding) => void;
   lookupMode: LookupMode;
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
@@ -1198,8 +1214,8 @@ function IPGrid({
   zoomLevel,
   currentPosition,
   getIPColor,
-  handleGridClick,
-  onFlagClick,
+  onCellClick,
+  onCellDoubleClick,
   lookupMode,
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
@@ -1228,6 +1244,13 @@ function IPGrid({
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
+  const clickTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+    }
+  }, []);
 
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
@@ -2140,30 +2163,40 @@ function IPGrid({
         }
       }
 
-      const openBuildingView = () => {
-        onFlagClick({
-          ipAddress,
-          label,
-          color,
-          buildingFamily,
-          buildingHeight,
-          flagImageUrl,
-          countryCodeLabel,
-          asn: asnRecord?.asn,
-          asnName: asnRecord?.asnName,
-          route: asnRecord?.route,
-          asnColor,
-        });
+      const cellBuilding: GridCellBuilding = {
+        x: cellX,
+        y: cellY,
+        ipAddress,
+        label,
+        color,
+        buildingFamily,
+        buildingHeight,
+        flagImageUrl,
+        countryCodeLabel,
+        asn: asnRecord?.asn,
+        asnName: asnRecord?.asnName,
+        route: asnRecord?.route,
+        asnColor,
       };
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        handleGridClick(cellX, cellY);
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+        }
+        clickTimerRef.current = window.setTimeout(() => {
+          onCellClick(cellBuilding);
+          clickTimerRef.current = null;
+        }, 180);
       };
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        openBuildingView();
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+        }
+        onCellDoubleClick(cellBuilding);
       };
 
       cubes.push(
@@ -2870,14 +2903,8 @@ function IPGrid({
               position={[0, facadeFlagY, facadeFlagZ + 0.006]}
               width={0.28}
               height={0.196}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleGridClick(cellX, cellY);
-              }}
-              onDoubleClick={(event) => {
-                event.stopPropagation();
-                openBuildingView();
-              }}
+              onClick={handleBuildingSingleClick}
+              onDoubleClick={handleBuildingDoubleClick}
             />
 
             {windowBands}
