@@ -90,6 +90,7 @@ type DirectoryEntry = {
 type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
+type SwipeDirection = 'up' | 'down' | 'left' | 'right';
 
 type Grid2Position = {
   outerFirstOctet: number;
@@ -998,6 +999,18 @@ function App() {
     setSelectedTargetIp(ipAddress ?? nextLocation.ipAddresses[0] ?? activeTargetIp);
   };
 
+  const moveStreetByDirection = (direction: SwipeDirection) => {
+    const forward = getStreetHeadingVector(streetHeading);
+    const vectors: Record<SwipeDirection, { dx: number; dy: number }> = {
+      up: forward,
+      down: { dx: -forward.dx, dy: -forward.dy },
+      left: { dx: -forward.dy, dy: forward.dx },
+      right: { dx: forward.dy, dy: -forward.dx },
+    };
+    const vector = vectors[direction];
+    updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
+  };
+
   const handleStreetCellClick = (cell: GridCellBuilding) => {
     updateStreetPlayerPosition(cell.x, cell.y, cell.ipAddress);
   };
@@ -1152,9 +1165,6 @@ function App() {
       event.preventDefault();
       event.stopPropagation();
 
-      const forward = getStreetHeadingVector(streetHeading);
-      const left = { dx: -forward.dy, dy: forward.dx };
-      const right = { dx: forward.dy, dy: -forward.dx };
       const useSidewaysMovement = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
 
       if (useSidewaysMovement) {
@@ -1162,8 +1172,7 @@ function App() {
         if (sidewaysDelta === 0) {
           return;
         }
-        const vector = sidewaysDelta > 0 ? right : left;
-        updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
+        moveStreetByDirection(sidewaysDelta > 0 ? 'right' : 'left');
         return;
       }
 
@@ -1171,16 +1180,87 @@ function App() {
         return;
       }
 
-      const direction = event.deltaY > 0 ? 1 : -1;
-      updateStreetPlayerPosition(
-        streetPlayerX + forward.dx * direction,
-        streetPlayerY + forward.dy * direction
-      );
+      moveStreetByDirection(event.deltaY > 0 ? 'up' : 'down');
     };
 
     container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
     return () => {
       container.removeEventListener('wheel', handleWheel, { capture: true });
+    };
+  }, [
+    layoutMode,
+    buildingView,
+    streetHeading,
+    streetPlayerX,
+    streetPlayerY,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    activeTargetIp,
+  ]);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container || layoutMode !== 'street' || buildingView) {
+      return;
+    }
+
+    const swipeThreshold = 32;
+    let touchStart: { x: number; y: number } | null = null;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) {
+        touchStart = null;
+        return;
+      }
+      touchStart = { x: touch.clientX, y: touch.clientY };
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (touchStart) {
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (!touchStart) {
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      if (!touch) {
+        touchStart = null;
+        return;
+      }
+
+      const deltaX = touch.clientX - touchStart.x;
+      const deltaY = touch.clientY - touchStart.y;
+      touchStart = null;
+
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < swipeThreshold) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        moveStreetByDirection(deltaX > 0 ? 'right' : 'left');
+        return;
+      }
+
+      moveStreetByDirection(deltaY < 0 ? 'up' : 'down');
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { capture: true, passive: false });
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart, { capture: true });
+      container.removeEventListener('touchmove', handleTouchMove, { capture: true });
+      container.removeEventListener('touchend', handleTouchEnd, { capture: true });
     };
   }, [
     layoutMode,
@@ -1484,13 +1564,7 @@ function App() {
               <h1 className="text-2xl font-bold">Burning Chrome</h1>
             </div>
 
-            <div className="min-w-0 lg:px-4 lg:pt-1">
-              {gridSystemMode === 'grid1' && (
-                <p className="text-center text-xs italic text-gray-600">
-                  Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.
-                </p>
-              )}
-            </div>
+            <div className="min-w-0 lg:px-4 lg:pt-1" />
 
             <div className="flex flex-col items-start lg:items-end gap-3 lg:pl-4">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
@@ -1588,10 +1662,11 @@ function App() {
                     type="button"
                     className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                   >
-                    More Info
+                    Info and Instructions
                   </button>
                   <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
                     <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
+                    <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
                     <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
                     <p className="mt-2">{getInstructionText()}</p>
                     <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
