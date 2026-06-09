@@ -202,7 +202,7 @@ export function useMultiplayerPresence({
   playerLocation,
   selectedIp,
 }: UseMultiplayerPresenceInput) {
-  const identity = useMemo(() => getOrCreateIdentity(), []);
+  const [identity, setIdentity] = useState(() => getOrCreateIdentity());
   const [status, setStatus] = useState<'offline' | 'connecting' | 'online' | 'error'>(
     isSupabaseConfigured ? 'connecting' : 'offline'
   );
@@ -336,6 +336,17 @@ export function useMultiplayerPresence({
     void channel.send({ type: 'broadcast', event: 'chat', payload: message });
   }, [chatLocationKey, identity, status]);
 
+  const updateDisplayName = useCallback((nextName: string): boolean => {
+    const cleaned = nextName.trim().slice(0, 24);
+    if (!cleaned) {
+      return false;
+    }
+
+    writeStorage(DISPLAY_NAME_KEY, cleaned);
+    setIdentity((current) => ({ ...current, displayName: cleaned }));
+    return true;
+  }, []);
+
   return {
     isConfigured: isSupabaseConfigured,
     status,
@@ -343,5 +354,6 @@ export function useMultiplayerPresence({
     others,
     messages,
     sendMessage,
+    updateDisplayName,
   };
 }

@@ -1018,6 +1018,7 @@ function App() {
   const [sshLaunchResult, setSshLaunchResult] = useState<SshLaunchResponse | null>(null);
   const [pointerTarget, setPointerTarget] = useState<MultiplayerCell | undefined>(undefined);
   const [chatDraft, setChatDraft] = useState('');
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
 
   const ipColors = {
     reserved: '#2C3E50',
@@ -1075,6 +1076,9 @@ function App() {
     playerLocation,
     selectedIp: playerLocationIp,
   });
+  useEffect(() => {
+    setDisplayNameDraft(multiplayer.currentUser.displayName);
+  }, [multiplayer.currentUser.displayName]);
   useEffect(() => {
     setPointerTarget(undefined);
   }, [multiplayerRoomKey]);
@@ -1704,6 +1708,18 @@ function App() {
     multiplayer.sendMessage(chatDraft);
     setChatDraft('');
   };
+  const handleSaveDisplayName = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const cleaned = displayNameDraft.trim().slice(0, 24);
+    if (!cleaned) {
+      setDisplayNameDraft(multiplayer.currentUser.displayName);
+      return;
+    }
+
+    if (multiplayer.updateDisplayName(cleaned)) {
+      setDisplayNameDraft(cleaned);
+    }
+  };
 
   return (
     <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
@@ -2239,6 +2255,25 @@ function App() {
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500 break-all">Location: {userLocationLabel}</div>
+              <form onSubmit={handleSaveDisplayName} className="mt-2 flex max-w-xs items-center gap-2 text-xs">
+                <label className="shrink-0 font-medium text-gray-700" htmlFor="display-name-input">
+                  Name:
+                </label>
+                <input
+                  id="display-name-input"
+                  value={displayNameDraft}
+                  onChange={(event) => setDisplayNameDraft(event.target.value.slice(0, 24))}
+                  maxLength={24}
+                  className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-900"
+                />
+                <button
+                  type="submit"
+                  disabled={!displayNameDraft.trim()}
+                  className="rounded border border-gray-400 bg-gray-200 px-2 py-1 text-xs font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  Save
+                </button>
+              </form>
             </div>
 
             <div className="w-full lg:max-w-xl">
