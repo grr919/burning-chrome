@@ -734,14 +734,6 @@ function getStreetHeadingVector(heading: StreetHeading): { dx: number; dy: numbe
   return { dx: 0, dy: -1 };
 }
 
-function getStreetHeadingLabel(heading: StreetHeading): string {
-  return ['North', 'East', 'South', 'West'][heading];
-}
-
-function turnStreetHeading(heading: StreetHeading, delta: 1 | -1): StreetHeading {
-  return ((heading + delta + 4) % 4) as StreetHeading;
-}
-
 function StreetGridCamera({
   streetPlayerX,
   streetPlayerY,
@@ -990,6 +982,22 @@ function App() {
   };
 
   const handleStreetCellClick = (cell: GridCellBuilding) => {
+    const x = clampStreetCell(cell.x);
+    const y = clampStreetCell(cell.y);
+    setSelectedTargetIp(cell.ipAddress);
+    setStreetPlayerX(x);
+    setStreetPlayerY(y);
+    setPlayerLocation(getPlayerLocationForStreetPosition(
+      x,
+      y,
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position
+    ));
+  };
+
+  const handleStreetBuildingClick = (cell: GridCellBuilding) => {
     handleFlagClick(cell);
   };
 
@@ -1128,53 +1136,6 @@ function App() {
     });
     setBottomInfoHtml('');
   };
-
-  const moveStreet = (direction: 1 | -1) => {
-    const headingVector = getStreetHeadingVector(streetHeading);
-    setStreetPlayerX((prev) => clampStreetCell(prev + headingVector.dx * direction));
-    setStreetPlayerY((prev) => clampStreetCell(prev + headingVector.dy * direction));
-  };
-
-  const strafeStreet = (direction: 1 | -1) => {
-    const headingVector = getStreetHeadingVector(streetHeading);
-    setStreetPlayerX((prev) => clampStreetCell(prev - headingVector.dy * direction));
-    setStreetPlayerY((prev) => clampStreetCell(prev + headingVector.dx * direction));
-  };
-
-  useEffect(() => {
-    if (layoutMode !== 'street' || buildingView) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'w' || event.key === 'ArrowUp') {
-        const headingVector = getStreetHeadingVector(streetHeading);
-        setStreetPlayerX((prev) => clampStreetCell(prev + headingVector.dx));
-        setStreetPlayerY((prev) => clampStreetCell(prev + headingVector.dy));
-      } else if (event.key === 's' || event.key === 'ArrowDown') {
-        const headingVector = getStreetHeadingVector(streetHeading);
-        setStreetPlayerX((prev) => clampStreetCell(prev - headingVector.dx));
-        setStreetPlayerY((prev) => clampStreetCell(prev - headingVector.dy));
-      } else if (event.key === 'a') {
-        const headingVector = getStreetHeadingVector(streetHeading);
-        setStreetPlayerX((prev) => clampStreetCell(prev + headingVector.dy));
-        setStreetPlayerY((prev) => clampStreetCell(prev - headingVector.dx));
-      } else if (event.key === 'd') {
-        const headingVector = getStreetHeadingVector(streetHeading);
-        setStreetPlayerX((prev) => clampStreetCell(prev - headingVector.dy));
-        setStreetPlayerY((prev) => clampStreetCell(prev + headingVector.dx));
-      } else if (event.key === 'ArrowLeft') {
-        setStreetHeading((prev) => turnStreetHeading(prev, -1));
-      } else if (event.key === 'ArrowRight') {
-        setStreetHeading((prev) => turnStreetHeading(prev, 1));
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [layoutMode, buildingView, streetHeading]);
-
-
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -1402,7 +1363,7 @@ function App() {
 
   const getInstructionText = (): string => {
     if (layoutMode === 'street') {
-      return `Street level view inside the full grid at ${streetPlayerX + 1}, ${streetPlayerY + 1}, facing ${getStreetHeadingLabel(streetHeading)}. Use W/S or up/down arrows to move, A/D to step into side streets, and left/right arrows to turn.`;
+      return 'Hover over a location for information. Click on it to go to that location. Click on a building to enter it.';
     }
 
     if (gridSystemMode === 'grid2') {
@@ -1654,28 +1615,6 @@ function App() {
           </div>
         )}
 
-        {layoutMode === 'street' && !buildingView && (
-          <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-lg p-2 flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-sm font-medium">Street position:</span>
-              <span className="text-sm">{streetPlayerX + 1}, {streetPlayerY + 1}</span>
-              <span className="text-sm text-gray-500">|</span>
-              <span className="text-sm font-medium">Facing:</span>
-              <span className="text-sm">{getStreetHeadingLabel(streetHeading)}</span>
-
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center">
-              <button onClick={() => moveStreet(1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Forward</button>
-              <button onClick={() => moveStreet(-1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Back</button>
-              <button onClick={() => strafeStreet(-1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Step left</button>
-              <button onClick={() => strafeStreet(1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Step right</button>
-              <button onClick={() => setStreetHeading((prev) => turnStreetHeading(prev, -1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Turn left</button>
-              <button onClick={() => setStreetHeading((prev) => turnStreetHeading(prev, 1))} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">Turn right</button>
-            </div>
-          </div>
-        )}
-
         {buildingView ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1 min-h-[260px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
@@ -1900,6 +1839,8 @@ function App() {
                   getIPColor={getIPColor}
                   onCellClick={handleStreetCellClick}
                   onCellDoubleClick={handleStreetCellClick}
+                  onBuildingClick={handleStreetBuildingClick}
+                  onBuildingDoubleClick={handleStreetBuildingClick}
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}

@@ -65,6 +65,8 @@ type IPGridProps = {
   getIPColor: (first: number, second: number, third: number, fourth: number) => string;
   onCellClick: (cell: GridCellBuilding) => void;
   onCellDoubleClick: (cell: GridCellBuilding) => void;
+  onBuildingClick?: (cell: GridCellBuilding) => void;
+  onBuildingDoubleClick?: (cell: GridCellBuilding) => void;
   lookupMode: LookupMode;
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
@@ -1216,6 +1218,8 @@ function IPGrid({
   getIPColor,
   onCellClick,
   onCellDoubleClick,
+  onBuildingClick,
+  onBuildingDoubleClick,
   lookupMode,
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
@@ -2185,12 +2189,32 @@ function IPGrid({
           window.clearTimeout(clickTimerRef.current);
         }
         clickTimerRef.current = window.setTimeout(() => {
-          onCellClick(cellBuilding);
+          (onBuildingClick ?? onCellClick)(cellBuilding);
           clickTimerRef.current = null;
         }, 180);
       };
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+        }
+        (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(cellBuilding);
+      };
+
+      const handleCellSingleClick = (event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        if (clickTimerRef.current !== null) {
+          window.clearTimeout(clickTimerRef.current);
+        }
+        clickTimerRef.current = window.setTimeout(() => {
+          onCellClick(cellBuilding);
+          clickTimerRef.current = null;
+        }, 180);
+      };
+
+      const handleCellDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
@@ -2212,9 +2236,9 @@ function IPGrid({
           </mesh>
 
           <mesh
-            position={[0, cellHitboxHeight / 2, 0]}
-            onClick={handleBuildingSingleClick}
-            onDoubleClick={handleBuildingDoubleClick}
+            position={[0, onBuildingClick ? 0.055 : cellHitboxHeight / 2, 0]}
+            onClick={handleCellSingleClick}
+            onDoubleClick={handleCellDoubleClick}
             onPointerOver={(event) => {
               event.stopPropagation();
               document.body.style.cursor = 'pointer';
@@ -2229,7 +2253,7 @@ function IPGrid({
               setHoveredCube(null);
             }}
           >
-            <boxGeometry args={[spacing - 0.08, cellHitboxHeight, spacing - 0.08]} />
+            <boxGeometry args={[spacing - 0.08, onBuildingClick ? 0.11 : cellHitboxHeight, spacing - 0.08]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
 
