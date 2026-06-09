@@ -1210,6 +1210,93 @@ function App() {
       return;
     }
 
+    const dragThreshold = 24;
+    let pointerStart: { x: number; y: number; turnMode: boolean } | null = null;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return;
+      }
+      pointerStart = {
+        x: event.clientX,
+        y: event.clientY,
+        turnMode: event.button === 2 || event.altKey || event.shiftKey,
+      };
+      if (pointerStart.turnMode) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!pointerStart) {
+        return;
+      }
+
+      const deltaX = event.clientX - pointerStart.x;
+      const deltaY = event.clientY - pointerStart.y;
+
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < dragThreshold) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (pointerStart.turnMode && Math.abs(deltaX) >= Math.abs(deltaY)) {
+        turnStreetBy(deltaX > 0 ? 1 : -1);
+      } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        moveStreetByDirection(deltaX > 0 ? 'right' : 'left');
+      } else {
+        moveStreetByDirection(deltaY < 0 ? 'up' : 'down');
+      }
+
+      pointerStart = {
+        x: event.clientX,
+        y: event.clientY,
+        turnMode: pointerStart.turnMode,
+      };
+    };
+
+    const clearPointerDrag = () => {
+      pointerStart = null;
+    };
+
+    const preventStreetContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    container.addEventListener('pointerdown', handlePointerDown, { capture: true });
+    container.addEventListener('pointermove', handlePointerMove, { capture: true });
+    container.addEventListener('pointerup', clearPointerDrag, { capture: true });
+    container.addEventListener('pointercancel', clearPointerDrag, { capture: true });
+    container.addEventListener('contextmenu', preventStreetContextMenu, { capture: true });
+    return () => {
+      container.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+      container.removeEventListener('pointermove', handlePointerMove, { capture: true });
+      container.removeEventListener('pointerup', clearPointerDrag, { capture: true });
+      container.removeEventListener('pointercancel', clearPointerDrag, { capture: true });
+      container.removeEventListener('contextmenu', preventStreetContextMenu, { capture: true });
+    };
+  }, [
+    layoutMode,
+    buildingView,
+    streetHeading,
+    streetPlayerX,
+    streetPlayerY,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    activeTargetIp,
+  ]);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container || layoutMode !== 'street' || buildingView) {
+      return;
+    }
+
     const swipeThreshold = 32;
     let touchStart: { x: number; y: number } | null = null;
 
@@ -1505,7 +1592,7 @@ function App() {
 
   const getInstructionText = (): string => {
     if (layoutMode === 'street') {
-      return 'Hover over a location for information. Click on it to go to that location. Scroll to move forward or backward. Use horizontal or Shift-scroll to move left and right. Swipe left or right to turn. Click a building to enter it.';
+      return 'Hover over a location for information. Click on it to go to that location. Scroll or drag up/down to move forward or backward. Use horizontal scroll, Shift-scroll, or horizontal dragging to move left and right. Swipe left or right, or right/modified-drag horizontally, to turn. Click a building to enter it.';
     }
 
     if (gridSystemMode === 'grid2') {
@@ -1951,7 +2038,7 @@ function App() {
           <div className="flex-1 min-h-0 flex justify-center">
             <div
               ref={gridContainerRef}
-              className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+              className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
             >
               <Canvas
                 key={`street-${viewResetKey}`}
