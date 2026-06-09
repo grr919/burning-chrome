@@ -1463,6 +1463,11 @@ function App() {
           <div className="flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-start">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold">Burning Chrome</h1>
+              {gridSystemMode === 'grid1' && (
+                <p className="mt-1 text-xs italic text-gray-600">
+                  Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col items-start lg:items-end gap-3">
