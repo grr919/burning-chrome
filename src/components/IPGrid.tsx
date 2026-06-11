@@ -15,6 +15,15 @@ type LookupMode = 'rdap' | 'ptr';
 type GridSystemMode = 'grid1' | 'grid2';
 type InfoDisplayMode = 'structured' | 'prose';
 
+type BgpVisualEvent = {
+  id: string;
+  type: 'announcement' | 'withdrawal' | 'path_change' | 'flap';
+  prefix?: string;
+  asn?: string;
+  timestamp: string;
+  intensity: number;
+};
+
 type Grid2Position = {
   outerFirstOctet: number;
   outerSecondOctet: number;
@@ -45,6 +54,14 @@ export type GridCellBuilding = {
   asn?: string;
   asnName?: string;
   route?: string;
+  asnColor?: string;
+};
+
+type BgpVisibleCell = {
+  x: number;
+  y: number;
+  ipAddress: string;
+  asn?: string | null;
   asnColor?: string;
 };
 
@@ -1021,44 +1038,119 @@ type StreetTrafficLayerProps = {
   groundY: number;
 };
 
-function StreetTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTrafficLayerProps) {
-  const totalFlows = 40;
+type BgpTrafficLayerProps = StreetTrafficLayerProps & {
+  events: BgpVisualEvent[];
+  visibleCells: BgpVisibleCell[];
+};
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function getBgpEventColor(type: BgpVisualEvent['type']): string {
+  if (type === 'withdrawal') return '#F87171';
+  if (type === 'path_change') return '#A78BFA';
+  if (type === 'flap') return '#F59E0B';
+  return '#34D399';
+}
+
+function getBgpEventOpacity(type: BgpVisualEvent['type'], intensity: number): number {
+  const intensityBoost = Math.min(0.35, Math.max(0, intensity) * 0.035);
+  const base = type === 'withdrawal' ? 0.46 : type === 'path_change' ? 0.68 : type === 'flap' ? 0.78 : 0.72;
+  return Math.min(0.92, base + intensityBoost);
+}
+
+function BgpTrafficLayer({ gridSize, spacing, offset, groundY, events, visibleCells }: BgpTrafficLayerProps) {
+  const maxVisibleStreaks = 40;
   const refs = useRef<Array<THREE.Mesh | null>>([]);
 
-  const flows = useMemo(
-    () =>
-      Array.from({ length: totalFlows }, (_, index) => {
-        const seed = index + 1;
-        const horizontal = index % 2 === 0;
-        const laneIndex = Math.floor(pseudoRandom(seed * 7) * (gridSize + 1));
-        const laneCenter = laneIndex * spacing - offset - spacing / 2;
-        const travelPositive = pseudoRandom(seed * 13) > 0.5;
-        const speed = (0.65 + pseudoRandom(seed * 17) * 0.85) * 0.5;
-        const phase = pseudoRandom(seed * 19);
-        const width = 0.16 + pseudoRandom(seed * 23) * 0.16;
-        const length = 0.32 + pseudoRandom(seed * 29) * 0.32;
-        const y = groundY + 0.028 + pseudoRandom(seed * 31) * 0.012;
-        const colorOptions = ['#60A5FA', '#34D399', '#F59E0B', '#A78BFA', '#F87171'];
-        const color = colorOptions[index % colorOptions.length];
+  const flows = useMemo(() => {
+    const eventWindowMs = 5 * 60 * 1000;
+    const now = Date.now();
+    const normalizedCells = visibleCells
+      .map((cell) => ({ ...cell, normalizedAsn: normalizeAsn(cell.asn) }))
+      .filter((cell) => Boolean(cell.normalizedAsn));
+    const nextFlows: Array<{
+      key: string;
+      horizontal: boolean;
+      laneCenter: number;
+      cellCenter: number;
+      travelPositive: boolean;
+      speed: number;
+      phase: number;
+      width: number;
+      length: number;
+      y: number;
+      color: string;
+      opacity: number;
+      emissiveIntensity: number;
+    }> = [];
 
-        return {
+    for (const event of events) {
+      if (nextFlows.length >= maxVisibleStreaks) {
+        break;
+      }
+
+      const eventAsn = normalizeAsn(event.asn);
+      if (!eventAsn) {
+        continue;
+      }
+
+      const eventTime = Date.parse(event.timestamp);
+      if (!Number.isFinite(eventTime) || now - eventTime > eventWindowMs) {
+        continue;
+      }
+
+      const matchingCells = normalizedCells.filter((cell) => cell.normalizedAsn === eventAsn);
+      if (matchingCells.length === 0) {
+        continue;
+      }
+
+      const streakCount = Math.min(4, Math.max(1, Math.ceil(Math.max(1, event.intensity) / 4)));
+      for (let copyIndex = 0; copyIndex < streakCount && nextFlows.length < maxVisibleStreaks; copyIndex += 1) {
+        const seed = hashString(`${event.id}:${event.asn ?? ''}:${event.prefix ?? ''}:${event.timestamp}:${copyIndex}`);
+        const matchedCell = matchingCells[seed % matchingCells.length];
+        const horizontal = seed % 2 === 0;
+        const laneDirection = (seed >>> 2) % 2 === 0 ? -1 : 1;
+        const laneIndex = horizontal
+          ? Math.max(0, Math.min(gridSize, matchedCell.y + (laneDirection > 0 ? 1 : 0)))
+          : Math.max(0, Math.min(gridSize, matchedCell.x + (laneDirection > 0 ? 1 : 0)));
+        const laneCenter = laneIndex * spacing - offset - spacing / 2;
+        const cellCenter = (horizontal ? matchedCell.x : matchedCell.y) * spacing - offset;
+        const ageFactor = Math.max(0.25, 1 - (now - eventTime) / eventWindowMs);
+        const intensity = Math.max(1, Math.min(10, event.intensity || 1));
+        const baseOpacity = getBgpEventOpacity(event.type, intensity);
+
+        nextFlows.push({
+          key: `${event.id}-${copyIndex}`,
           horizontal,
           laneCenter,
-          travelPositive,
-          speed,
-          phase,
-          width,
-          length,
-          y,
-          color,
-        };
-      }),
-    [gridSize, spacing, offset, groundY]
-  );
+          cellCenter,
+          travelPositive: (seed >>> 3) % 2 === 0,
+          speed: 0.24 + ((seed >>> 5) % 7) * 0.035 + intensity * 0.012,
+          phase: ((seed >>> 8) % 1000) / 1000,
+          width: 0.12 + Math.min(0.14, intensity * 0.012),
+          length: 0.34 + Math.min(0.44, intensity * 0.045),
+          y: groundY + 0.032 + ((seed >>> 12) % 4) * 0.004,
+          color: getBgpEventColor(event.type),
+          opacity: baseOpacity * ageFactor,
+          emissiveIntensity: event.type === 'flap' ? 1.85 : event.type === 'path_change' ? 1.55 : 1.25,
+        });
+      }
+    }
+
+    return nextFlows;
+  }, [events, visibleCells, gridSize, spacing, offset, groundY]);
 
   useFrame(({ clock }) => {
     const elapsed = clock.getElapsedTime();
-    const fullTravel = gridSize * spacing + spacing;
+    const localTravel = spacing * 1.6;
 
     flows.forEach((flow, index) => {
       const mesh = refs.current[index];
@@ -1067,7 +1159,7 @@ function StreetTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTraffi
       }
 
       const progress = ((elapsed * flow.speed + flow.phase) % 1) - 0.5;
-      const along = progress * fullTravel * (flow.travelPositive ? 1 : -1);
+      const along = flow.cellCenter + progress * localTravel * (flow.travelPositive ? 1 : -1);
 
       if (flow.horizontal) {
         mesh.position.set(along, flow.y, flow.laneCenter);
@@ -1081,7 +1173,7 @@ function StreetTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTraffi
     <>
       {flows.map((flow, index) => (
         <mesh
-          key={`traffic-flow-${index}`}
+          key={`bgp-flow-${flow.key}`}
           ref={(node) => {
             refs.current[index] = node;
           }}
@@ -1091,9 +1183,9 @@ function StreetTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTraffi
           <meshStandardMaterial
             color={flow.color}
             emissive={flow.color}
-            emissiveIntensity={1.35}
+            emissiveIntensity={flow.emissiveIntensity}
             transparent
-            opacity={0.9}
+            opacity={flow.opacity}
           />
         </mesh>
       ))}
@@ -1248,6 +1340,7 @@ function IPGrid({
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
+  const [bgpEvents, setBgpEvents] = useState<BgpVisualEvent[]>([]);
   const clickTimerRef = useRef<number | null>(null);
 
   useEffect(() => () => {
@@ -1269,6 +1362,26 @@ function IPGrid({
       grid2Position.innerThirdStart,
       grid2Position.innerFourthStart,
     ]
+  );
+
+  const visibleBgpCells = useMemo<BgpVisibleCell[]>(
+    () =>
+      visibleLookupAddresses.map((item, index) => {
+        const asnRecord = asnInfo[item.ipAddress] ?? asnCache[item.ipAddress];
+        return {
+          x: index % gridSize,
+          y: Math.floor(index / gridSize),
+          ipAddress: item.ipAddress,
+          asn: asnRecord?.asn,
+          asnColor: getAsnColor(asnRecord?.asn),
+        };
+      }),
+    [visibleLookupAddresses, asnInfo, gridSize]
+  );
+
+  const visibleBgpAsns = useMemo(
+    () => [...new Set(visibleBgpCells.map((cell) => normalizeAsn(cell.asn)).filter((asn): asn is string => Boolean(asn)))],
+    [visibleBgpCells]
   );
 
   const performRdapLookup = async (ipAddress: string) => {
@@ -1564,6 +1677,56 @@ function IPGrid({
   }, [visibleLookupAddresses]);
 
   useEffect(() => {
+    if (visibleBgpAsns.length === 0) {
+      setBgpEvents([]);
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+
+    const fetchBgpEvents = async () => {
+      if (document.visibilityState === 'hidden') {
+        timer = window.setTimeout(fetchBgpEvents, 30000);
+        return;
+      }
+
+      try {
+        const query = visibleBgpAsns.slice(0, 128).map((asn) => encodeURIComponent(asn)).join(',');
+        const response = await fetch(`/api/bgp-events?asns=${query}`, {
+          headers: { accept: 'application/json' },
+        });
+        if (!response.ok) {
+          if (!cancelled) {
+            setBgpEvents([]);
+          }
+          return;
+        }
+
+        const json = (await response.json()) as { events?: BgpVisualEvent[] };
+        if (!cancelled) {
+          setBgpEvents(Array.isArray(json.events) ? json.events : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setBgpEvents([]);
+        }
+      } finally {
+        if (!cancelled) {
+          timer = window.setTimeout(fetchBgpEvents, 30000);
+        }
+      }
+    };
+
+    void fetchBgpEvents();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [visibleBgpAsns]);
+
+  useEffect(() => {
     let cancelled = false;
     const uncached = visibleLookupAddresses
       .map((item) => item.ipAddress)
@@ -1801,7 +1964,14 @@ function IPGrid({
         {items}
         {laneMarkings}
         {perimeterLabels}
-        <StreetTrafficLayer gridSize={gridSize} spacing={spacing} offset={offset} groundY={groundY} />
+        <BgpTrafficLayer
+          gridSize={gridSize}
+          spacing={spacing}
+          offset={offset}
+          groundY={groundY}
+          events={bgpEvents}
+          visibleCells={visibleBgpCells}
+        />
         <StreetSceneryLayer gridSize={gridSize} spacing={spacing} offset={offset} groundY={groundY} />
       </>
     );
