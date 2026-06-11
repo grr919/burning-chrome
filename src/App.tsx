@@ -283,6 +283,127 @@ function getRepresentativeTarget(gridSystemMode: GridSystemMode, zoomLevel: numb
   return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.1`;
 }
 
+function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 'ok' | 'warn' | 'error' {
+  if (certificateResult.status === 'error') return 'error';
+  if (certificateResult.lookupMode === 'hostname_sni' || certificateResult.authorizationError) return 'warn';
+  return 'ok';
+}
+
+function getExposureSummarySentences(exposure: ExposureRecord | null): string[] {
+  if (!exposure) {
+    return [];
+  }
+
+  const ports = new Set(
+    exposure.topPorts
+      .map((entry) => {
+        const match = entry.match(/^(\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  );
+
+  const sentences: string[] = [];
+
+  if (ports.has(80) && ports.has(443)) {
+    sentences.push('This IP appears to expose a public website over both HTTP and HTTPS.');
+  } else if (ports.has(443)) {
+    sentences.push('This IP appears to expose a secure public web service over HTTPS.');
+  } else if (ports.has(80)) {
+    sentences.push('This IP appears to expose a public web service over HTTP.');
+  }
+
+  if (ports.has(22)) {
+    sentences.push('This IP appears to expose SSH for remote shell access.');
+  }
+
+  if (ports.has(53)) {
+    sentences.push('This IP appears to expose DNS services.');
+  }
+
+  if ([25, 465, 587].some((port) => ports.has(port))) {
+    sentences.push('This IP appears to expose mail-related services.');
+  }
+
+  if (ports.has(3389)) {
+    sentences.push('This IP appears to expose Remote Desktop services.');
+  }
+
+  const knownPorts = new Set([22, 25, 53, 80, 443, 465, 587, 3389]);
+  const additionalPorts = [...ports].filter((port) => !knownPorts.has(port));
+  if (additionalPorts.length > 0) {
+    sentences.push(`This IP appears to expose additional public-facing services on ports ${additionalPorts.slice(0, 4).join(', ')}.`);
+  }
+
+  if (sentences.length === 0) {
+    if (exposure.openPortCount > 0 || exposure.serviceCount > 0) {
+      sentences.push('This IP appears to expose one or more public-facing services, but none matched the main categories shown here.');
+    } else {
+      sentences.push('No public-facing services were observed for this IP.');
+    }
+  }
+
+  return sentences;
+}
+
+function extractPortNumbers(exposure: ExposureRecord | null): Set<number> {
+  if (!exposure) {
+    return new Set();
+  }
+
+  return new Set(
+    exposure.topPorts
+      .map((entry) => {
+        const match = entry.match(/^(\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
+function normalizeHostnameCandidate(value: string): string | null {
+  const normalized = value.trim().toLowerCase().replace(/^dns:/i, '');
+  if (!normalized || /^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    return null;
+  }
+  if (!/^[a-z0-9.-]+$/.test(normalized) || !normalized.includes('.')) {
+    return null;
+  }
+  return normalized;
+}
+
+function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null) {
+  const ports = extractPortNumbers(exposure);
+  const hasHttp = ports.has(80);
+  const hasHttps = ports.has(443);
+
+  if (!hasHttp && !hasHttps) {
+    return null;
+  }
+
+  const candidates = [
+    ...(exposure?.hostnames ?? []),
+    ...(certificate?.subjectAltNames ?? []),
+    certificate?.subjectCn ?? '',
+    certificate?.host ?? '',
+  ]
+    .map((value) => normalizeHostnameCandidate(value))
+    .filter((value): value is string => Boolean(value));
+
+  const hostname = candidates.find((value) => !value.startsWith('*.'));
+  if (!hostname) {
+    return null;
+  }
+
+  return {
+    hostname,
+    hasHttp,
+    hasHttps,
+    primaryUrl: `${hasHttps ? 'https' : 'http'}://${hostname}`,
+    secondaryUrl: hasHttp && hasHttps ? `http://${hostname}` : null,
+  };
+}
+
 function getBuildingDirectoryEntries(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null): DirectoryEntry[] {
   const ports = extractPortNumbers(exposure);
   const hasHttp = ports.has(80);
