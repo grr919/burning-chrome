@@ -1760,6 +1760,7 @@ function App() {
                     <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
                     <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
                     <p className="mt-2">{getInstructionText()}</p>
+                    <p className="mt-2 text-xs text-gray-700">Faint street streaks are ambient visual motion. Brighter routing streaks represent recent BGP events affecting visible ASN neighborhoods when such events are available.</p>
                     <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
                     <p className="mt-1 text-xs text-gray-700">Selected routing target: {activeTargetIp}</p>
                   </div>
