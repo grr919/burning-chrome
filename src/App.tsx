@@ -1,6 +1,6 @@
-﻿﻿import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
-import { Html, OrbitControls } from '@react-three/drei';
+﻿import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid, { type GridCellBuilding } from './components/IPGrid';
 import {
@@ -283,372 +283,6 @@ function getRepresentativeTarget(gridSystemMode: GridSystemMode, zoomLevel: numb
   return `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.1`;
 }
 
-function WallMountedFlag({
-  flagImageUrl,
-  position,
-  width,
-  height,
-  onClick,
-}: {
-  flagImageUrl?: string | null;
-  position: [number, number, number];
-  width: number;
-  height: number;
-  onClick: (event: ThreeEvent<MouseEvent>) => void;
-}) {
-  const [flagTexture, setFlagTexture] = useState<THREE.Texture | null>(null);
-
-  useEffect(() => {
-    setFlagTexture(null);
-
-    if (!flagImageUrl) {
-      return;
-    }
-
-    let isMounted = true;
-    let loadedTexture: THREE.Texture | null = null;
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    loader.load(flagImageUrl, (texture) => {
-      if (!isMounted) {
-        texture.dispose();
-        return;
-      }
-
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
-      loadedTexture = texture;
-      setFlagTexture(texture);
-    });
-
-    return () => {
-      isMounted = false;
-      if (loadedTexture) {
-        loadedTexture.dispose();
-      }
-    };
-  }, [flagImageUrl]);
-
-  return (
-    <mesh
-      position={position}
-      onClick={onClick}
-      onPointerOver={(event) => {
-        event.stopPropagation();
-        document.body.style.cursor = 'pointer';
-      }}
-      onPointerOut={(event) => {
-        event.stopPropagation();
-        document.body.style.cursor = 'auto';
-      }}
-    >
-      <planeGeometry args={[width, height]} />
-      <meshBasicMaterial
-        map={flagTexture ?? undefined}
-        color={flagTexture ? '#ffffff' : '#f8fafc'}
-        side={THREE.FrontSide}
-        transparent={Boolean(flagTexture)}
-        alphaTest={flagTexture ? 0.08 : 0}
-        depthTest
-        depthWrite
-      />
-    </mesh>
-  );
-}
-
-
-function BuildingDetailScene({
-  building,
-  directoryEntries,
-  onExit,
-}: {
-  building: BuildingViewState;
-  directoryEntries: DirectoryEntry[];
-  onExit: () => void;
-}) {
-  const windowColor = '#dfe8ff';
-  const trimColor = '#4b5563';
-  const roofColor = '#374151';
-
-  const normalizedHeight = Math.max(2.8, Math.min(7.2, building.buildingHeight * 2.2));
-  const podiumHeight = Math.max(0.5, normalizedHeight * 0.22);
-  const towerOnlyHeight = Math.max(1.4, normalizedHeight - podiumHeight);
-  const steppedLowerHeight = Math.max(1.1, normalizedHeight * 0.4);
-  const steppedMidHeight = Math.max(0.8, normalizedHeight * 0.28);
-  const steppedTopHeight = Math.max(0.65, normalizedHeight * 0.18);
-  const fortWallHeight = Math.max(1.0, normalizedHeight * 0.34);
-  const keepHeight = Math.max(1.2, normalizedHeight * 0.44);
-  const turretHeight = Math.max(0.9, normalizedHeight * 0.26);
-
-  const roofTopY =
-    building.buildingFamily === 'block'
-      ? normalizedHeight
-      : building.buildingFamily === 'tower'
-        ? podiumHeight + towerOnlyHeight
-        : building.buildingFamily === 'stepped'
-          ? steppedLowerHeight + steppedMidHeight + steppedTopHeight
-          : fortWallHeight + keepHeight;
-
-  const flagY = Math.max(1.4, roofTopY * 0.46);
-  const labelY = roofTopY + 0.8;
-  const neighborPalette = ['#1f2937', '#374151', '#475569', '#334155', '#4b5563'];
-  const neighborBuildings = [
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-    [-1, 0],
-    [1, 0],
-    [-1, 1],
-    [0, 1],
-    [1, 1],
-  ].map(([gridX, gridZ], index) => {
-    const seed = building.label * 97 + gridX * 31 + gridZ * 53 + building.ipAddress.length * 17;
-    const height = 1.15 + pseudoRandom(seed + 1) * 2.15;
-    const width = 1.05 + pseudoRandom(seed + 2) * 0.55;
-    const depth = 1.05 + pseudoRandom(seed + 3) * 0.55;
-    const color = neighborPalette[Math.floor(pseudoRandom(seed + 4) * neighborPalette.length)];
-    return {
-      key: `neighbor-${index}`,
-      x: gridX * 4.55,
-      z: gridZ * 4.55,
-      height,
-      width,
-      depth,
-      color,
-    };
-  });
-
-  return (
-    <>
-      <fog attach="fog" args={['#4b91fa', 10, 28]} />
-      <ambientLight intensity={0.7} />
-      <pointLight position={[6, 10, 8]} intensity={1.1} />
-      <directionalLight position={[-6, 9, 6]} intensity={0.85} castShadow />
-
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.46, 0]} receiveShadow>
-        <planeGeometry args={[14, 14]} />
-        <meshStandardMaterial color="#2a2a2a" />
-      </mesh>
-
-      <mesh position={[0, -0.2, 0]} receiveShadow>
-        <boxGeometry args={[4.8, 0.5, 4.8]} />
-        <meshStandardMaterial color="#8f8f8f" />
-      </mesh>
-
-      {neighborBuildings.map((neighbor) => (
-        <group key={neighbor.key} position={[neighbor.x, 0, neighbor.z]}>
-          <mesh position={[0, -0.23, 0]} receiveShadow>
-            <boxGeometry args={[2.85, 0.38, 2.85]} />
-            <meshStandardMaterial color="#6b7280" roughness={0.9} />
-          </mesh>
-          <mesh position={[0, neighbor.height / 2 - 0.02, 0]} castShadow receiveShadow>
-            <boxGeometry args={[neighbor.width, neighbor.height, neighbor.depth]} />
-            <meshStandardMaterial color={neighbor.color} transparent opacity={0.72} roughness={0.82} />
-          </mesh>
-          <mesh position={[0, neighbor.height + 0.035, 0]} castShadow>
-            <boxGeometry args={[neighbor.width * 0.9, 0.07, neighbor.depth * 0.9]} />
-            <meshStandardMaterial color="#111827" transparent opacity={0.7} roughness={0.8} />
-          </mesh>
-          {[0.32, 0.58].map((rowY, rowIndex) => (
-            <mesh key={`${neighbor.key}-window-${rowIndex}`} position={[0, Math.min(neighbor.height - 0.18, rowY + rowIndex * 0.54), neighbor.depth / 2 + 0.012]}>
-              <planeGeometry args={[neighbor.width * 0.48, 0.16]} />
-              <meshStandardMaterial
-                color="#dbeafe"
-                emissive="#dbeafe"
-                emissiveIntensity={0.12}
-                transparent
-                opacity={0.28}
-              />
-            </mesh>
-          ))}
-        </group>
-      ))}
-
-      {building.buildingFamily === 'block' && (
-        <>
-          <mesh position={[0, normalizedHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[3.4, normalizedHeight, 3.4]} />
-            <meshStandardMaterial color={building.color} />
-          </mesh>
-          <mesh position={[0, normalizedHeight + 0.12, 0]} castShadow>
-            <boxGeometry args={[3.0, 0.18, 3.0]} />
-            <meshStandardMaterial color={roofColor} />
-          </mesh>
-        </>
-      )}
-
-      {building.buildingFamily === 'tower' && (
-        <>
-          <mesh position={[0, podiumHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[3.0, podiumHeight, 3.0]} />
-            <meshStandardMaterial color={trimColor} />
-          </mesh>
-          <mesh position={[0, podiumHeight + towerOnlyHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[2.1, towerOnlyHeight, 2.1]} />
-            <meshStandardMaterial color={building.color} />
-          </mesh>
-          <mesh position={[0, roofTopY + 0.12, 0]} castShadow>
-            <boxGeometry args={[2.3, 0.18, 2.3]} />
-            <meshStandardMaterial color={roofColor} />
-          </mesh>
-        </>
-      )}
-
-      {building.buildingFamily === 'stepped' && (
-        <>
-          <mesh position={[0, steppedLowerHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[3.6, steppedLowerHeight, 3.6]} />
-            <meshStandardMaterial color={trimColor} />
-          </mesh>
-          <mesh position={[0, steppedLowerHeight + steppedMidHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[2.5, steppedMidHeight, 2.5]} />
-            <meshStandardMaterial color={building.color} />
-          </mesh>
-          <mesh position={[0, steppedLowerHeight + steppedMidHeight + steppedTopHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[1.45, steppedTopHeight, 1.45]} />
-            <meshStandardMaterial color={building.color} />
-          </mesh>
-          <mesh position={[0, roofTopY + 0.12, 0]} castShadow>
-            <boxGeometry args={[1.6, 0.18, 1.6]} />
-            <meshStandardMaterial color={roofColor} />
-          </mesh>
-        </>
-      )}
-
-      {building.buildingFamily === 'fort' && (
-        <>
-          <mesh position={[0, fortWallHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[3.9, fortWallHeight, 3.9]} />
-            <meshStandardMaterial color={trimColor} />
-          </mesh>
-          <mesh position={[0, fortWallHeight + keepHeight / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[1.55, keepHeight, 1.55]} />
-            <meshStandardMaterial color={building.color} />
-          </mesh>
-          {[
-            [-1.35, -1.35],
-            [1.35, -1.35],
-            [-1.35, 1.35],
-            [1.35, 1.35],
-          ].map((offsets, turretIndex) => (
-            <mesh
-              key={`detail-turret-${turretIndex}`}
-              position={[offsets[0], fortWallHeight + turretHeight / 2 - 0.1, offsets[1]]}
-              castShadow
-              receiveShadow
-            >
-              <cylinderGeometry args={[0.42, 0.42, turretHeight, 12]} />
-              <meshStandardMaterial color={trimColor} />
-            </mesh>
-          ))}
-          <mesh position={[0, roofTopY + 0.12, 0]} castShadow>
-            <boxGeometry args={[1.75, 0.18, 1.75]} />
-            <meshStandardMaterial color={roofColor} />
-          </mesh>
-        </>
-      )}
-
-      {Array.from({ length: 4 }).map((_, rowIndex) =>
-        Array.from({ length: 3 }).map((__, colIndex) => {
-          const xOffset = (colIndex - 1) * 0.78;
-          const yOffset = 1.05 + rowIndex * 0.74;
-          if (yOffset >= roofTopY - 0.35) return null;
-          return (
-            <mesh key={`detail-window-${rowIndex}-${colIndex}`} position={[xOffset, yOffset, 1.72]}>
-              <planeGeometry args={[0.36, 0.34]} />
-              <meshStandardMaterial
-                color={windowColor}
-                emissive={windowColor}
-                emissiveIntensity={0.22}
-                transparent
-                opacity={0.42}
-              />
-            </mesh>
-          );
-        })
-      )}
-
-      <mesh position={[0, 0.45, 1.73]} castShadow>
-        <boxGeometry args={[0.72, 0.9, 0.08]} />
-        <meshStandardMaterial color="#374151" />
-      </mesh>
-
-      <Html position={[1.45, 0.86, 1.78]} transform sprite distanceFactor={8}>
-        <div
-          style={{
-            width: '156px',
-            maxHeight: '172px',
-            overflow: 'hidden',
-            border: '1px solid rgba(17,24,39,0.75)',
-            borderRadius: '4px',
-            background: 'rgba(255,255,255,0.94)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-            color: '#111827',
-            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-            fontSize: '10px',
-            lineHeight: 1.25,
-            padding: '6px',
-            pointerEvents: 'auto',
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '4px' }}>Directory</div>
-          {directoryEntries.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {directoryEntries.map((entry) => (
-                <a
-                  key={entry.hostname}
-                  href={entry.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={entry.hostname}
-                  style={{
-                    color: '#1d4ed8',
-                    display: 'block',
-                    overflow: 'hidden',
-                    textDecoration: 'underline',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {entry.hostname}
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: '#4b5563' }}>No websites identified.</div>
-          )}
-        </div>
-      </Html>
-
-      {building.flagImageUrl && (
-        <WallMountedFlag
-          flagImageUrl={building.flagImageUrl}
-          position={[0, flagY, 1.786]}
-          width={0.72}
-          height={0.48}
-          onClick={(event) => {
-            event.stopPropagation();
-            onExit();
-          }}
-        />
-      )}
-
-      <Html position={[0, labelY, 0]} center>
-        <div className="bg-white/90 text-black px-2 py-1 rounded text-sm shadow space-y-1">
-          <div className="font-semibold">{building.ipAddress}</div>
-          {building.asn && (
-            <div className="text-xs rounded px-1.5 py-0.5 text-white" style={{ background: building.asnColor ?? '#4b5563' }}>
-              {building.asn}{building.asnName ? ` - ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
-            </div>
-          )}
-        </div>
-      </Html>
-    </>
-  );
-}
-
-
-
 function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 'ok' | 'warn' | 'error' {
   if (certificateResult.status === 'error') return 'error';
   if (certificateResult.lookupMode === 'hostname_sni' || certificateResult.authorizationError) return 'warn';
@@ -827,6 +461,22 @@ function getStreetHeadingVector(heading: StreetHeading): { dx: number; dy: numbe
     return { dx: -1, dy: 0 };
   }
   return { dx: 0, dy: -1 };
+}
+
+function getStreetViewpointForBuilding(cell: GridCellBuilding): { x: number; y: number; heading: StreetHeading } {
+  const x = clampStreetCell(cell.x);
+  const y = clampStreetCell(cell.y);
+
+  if (y < STREET_GRID_SIZE - 1) {
+    return { x, y: y + 1, heading: 0 };
+  }
+  if (y > 0) {
+    return { x, y: y - 1, heading: 2 };
+  }
+  if (x < STREET_GRID_SIZE - 1) {
+    return { x: x + 1, y, heading: 3 };
+  }
+  return { x: Math.max(0, x - 1), y, heading: 1 };
 }
 
 function StreetGridCamera({
@@ -1077,6 +727,10 @@ function App() {
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
+    const viewpoint = getStreetViewpointForBuilding(cell);
+    setStreetPlayerX(viewpoint.x);
+    setStreetPlayerY(viewpoint.y);
+    setStreetHeading(viewpoint.heading);
     handleFlagClick(cell);
   };
 
@@ -1786,6 +1440,49 @@ function App() {
     }
   };
 
+  const renderStreetSceneCanvas = (viewKey: string) => (
+    <div
+      ref={gridContainerRef}
+      className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+    >
+      <Canvas
+        key={viewKey}
+        camera={{ position: [0, 1.55, 0], fov: 62 }}
+        shadows
+        onCreated={({ camera }) => {
+          cameraRef.current = camera as THREE.PerspectiveCamera;
+        }}
+      >
+        <fog attach="fog" args={['#111827', 12, 46]} />
+        <ambientLight intensity={0.68} />
+        <pointLight position={[10, 16, 10]} intensity={1.05} />
+        <directionalLight position={[-8, 12, 8]} intensity={0.85} castShadow />
+        <StreetGridCamera
+          streetPlayerX={streetPlayerX}
+          streetPlayerY={streetPlayerY}
+          heading={streetHeading}
+        />
+        <IPGrid
+          zoomLevel={zoomLevel}
+          currentPosition={currentPosition}
+          getIPColor={getIPColor}
+          onCellClick={handleStreetCellClick}
+          onCellDoubleClick={handleStreetCellClick}
+          onBuildingClick={handleStreetBuildingClick}
+          onBuildingDoubleClick={handleStreetBuildingClick}
+          lookupMode={lookupMode}
+          gridSystemMode={gridSystemMode}
+          grid2Position={grid2Position}
+          onHoverInfoHtml={setBottomInfoHtml}
+          onHoverCellChange={handlePointerTargetChange}
+          infoDisplayMode={infoDisplayMode}
+          remoteUsers={multiplayer.others}
+          onRemoteUserClick={handleRemoteUserClick}
+        />
+      </Canvas>
+    </div>
+  );
+
   return (
     <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
       <div className="flex-1 min-h-0 p-3 flex flex-col gap-3">
@@ -1912,28 +1609,8 @@ function App() {
 
         {buildingView ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
-              <Canvas
-                key={`building-${buildingView.ipAddress}`}
-                camera={{ position: [0, 3.6, 8.5], fov: 42 }}
-                shadows
-              >
-                <BuildingDetailScene
-                  building={buildingView}
-                  directoryEntries={buildingDirectoryEntries}
-                  onExit={handleExitBuildingView}
-                />
-                <OrbitControls
-                  enablePan={false}
-                  enableZoom
-                  enableRotate
-                  minDistance={5.5}
-                  maxDistance={12}
-                  minPolarAngle={Math.PI / 4}
-                  maxPolarAngle={Math.PI / 2.1}
-                  target={[0, 1.9, 0]}
-                />
-              </Canvas>
+            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
+              {renderStreetSceneCanvas(`building-street-${viewResetKey}-${buildingView.ipAddress}`)}
             </div>
 
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
@@ -2107,46 +1784,7 @@ function App() {
           </div>
         ) : layoutMode === 'street' ? (
           <div className="flex-1 min-h-0 flex justify-center">
-            <div
-              ref={gridContainerRef}
-              className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
-            >
-              <Canvas
-                key={`street-${viewResetKey}`}
-                camera={{ position: [0, 1.55, 0], fov: 62 }}
-                shadows
-                onCreated={({ camera }) => {
-                  cameraRef.current = camera as THREE.PerspectiveCamera;
-                }}
-              >
-                <fog attach="fog" args={['#111827', 12, 46]} />
-                <ambientLight intensity={0.68} />
-                <pointLight position={[10, 16, 10]} intensity={1.05} />
-                <directionalLight position={[-8, 12, 8]} intensity={0.85} castShadow />
-                <StreetGridCamera
-                  streetPlayerX={streetPlayerX}
-                  streetPlayerY={streetPlayerY}
-                  heading={streetHeading}
-                />
-                <IPGrid
-                  zoomLevel={zoomLevel}
-                  currentPosition={currentPosition}
-                  getIPColor={getIPColor}
-                  onCellClick={handleStreetCellClick}
-                  onCellDoubleClick={handleStreetCellClick}
-                  onBuildingClick={handleStreetBuildingClick}
-                  onBuildingDoubleClick={handleStreetBuildingClick}
-                  lookupMode={lookupMode}
-                  gridSystemMode={gridSystemMode}
-                  grid2Position={grid2Position}
-                  onHoverInfoHtml={setBottomInfoHtml}
-                  onHoverCellChange={handlePointerTargetChange}
-                  infoDisplayMode={infoDisplayMode}
-                  remoteUsers={multiplayer.others}
-                  onRemoteUserClick={handleRemoteUserClick}
-                />
-              </Canvas>
-            </div>
+            {renderStreetSceneCanvas(`street-${viewResetKey}`)}
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex justify-center">
