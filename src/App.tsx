@@ -1023,31 +1023,6 @@ function App() {
     updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
   };
 
-  const moveGridPlayerByWheel = (direction: 1 | -1) => {
-    const currentCell = getPlayerCell(playerLocation);
-    const currentIndex = currentCell.y * 16 + currentCell.x;
-    const nextIndex = Math.max(0, Math.min(255, currentIndex + direction));
-    if (nextIndex === currentIndex) {
-      return;
-    }
-
-    const nextX = nextIndex % 16;
-    const nextY = Math.floor(nextIndex / 16);
-    const nextLocation = getPlayerLocationForGridCell(
-      gridSystemMode,
-      zoomLevel,
-      currentPosition,
-      grid2Position,
-      nextX,
-      nextY
-    );
-
-    setPlayerLocation(nextLocation);
-    if (nextLocation.kind === 'ip') {
-      setSelectedTargetIp(nextLocation.ipAddress);
-    }
-  };
-
   const turnStreetBy = (delta: -1 | 1) => {
     setStreetHeading((prev) => ((prev + delta + 4) % 4) as StreetHeading);
   };
@@ -1202,44 +1177,6 @@ function App() {
     });
     setBottomInfoHtml('');
   };
-
-  useEffect(() => {
-    const container = gridContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const handleWheel = (event: WheelEvent) => {
-      if (layoutMode !== 'grid' || buildingView) {
-        return;
-      }
-
-      const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-        ? event.deltaY
-        : event.deltaY;
-
-      if (dominantDelta === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      moveGridPlayerByWheel(dominantDelta > 0 ? 1 : -1);
-    };
-
-    container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
-    return () => {
-      container.removeEventListener('wheel', handleWheel, { capture: true });
-    };
-  }, [
-    layoutMode,
-    buildingView,
-    playerLocation,
-    gridSystemMode,
-    zoomLevel,
-    currentPosition,
-    grid2Position,
-  ]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -2193,12 +2130,11 @@ function App() {
                   infoDisplayMode={infoDisplayMode}
                   remoteUsers={multiplayer.others}
                   onRemoteUserClick={handleRemoteUserClick}
-                  localPlayerLocation={playerLocation}
                 />
                 <OrbitControls
                   ref={controlsRef}
                   enablePan
-                  enableZoom={false}
+                  enableZoom
                   enableRotate
                   minPolarAngle={Math.PI / 6}
                   maxPolarAngle={Math.PI / 2.1}

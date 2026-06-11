@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getPlayerLocationDisplay, type MultiplayerPlayerLocation, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
+import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
 type GridPosition = {
   firstOctet: number;
@@ -84,7 +84,6 @@ type IPGridProps = {
   infoDisplayMode?: InfoDisplayMode;
   remoteUsers?: MultiplayerPresence[];
   onRemoteUserClick?: (user: MultiplayerPresence) => void;
-  localPlayerLocation?: MultiplayerPlayerLocation;
   bgpEvents?: BgpVisualEvent[];
 };
 
@@ -1385,7 +1384,6 @@ function IPGrid({
   infoDisplayMode = 'structured',
   remoteUsers = [],
   onRemoteUserClick,
-  localPlayerLocation,
   bgpEvents = [],
 }: IPGridProps) {
   const gridSize = 16;
@@ -3141,56 +3139,6 @@ function IPGrid({
     }
   }
 
-  let localPlayerMarker: JSX.Element | null = null;
-  if (localPlayerLocation?.kind === 'ip') {
-    const localCellIndex =
-      typeof localPlayerLocation.x === 'number' &&
-      typeof localPlayerLocation.y === 'number' &&
-      localPlayerLocation.x >= 0 &&
-      localPlayerLocation.x < gridSize &&
-      localPlayerLocation.y >= 0 &&
-      localPlayerLocation.y < gridSize &&
-      visibleLookupAddresses[localPlayerLocation.y * gridSize + localPlayerLocation.x]?.ipAddress === localPlayerLocation.ipAddress
-        ? localPlayerLocation.y * gridSize + localPlayerLocation.x
-        : visibleLookupAddresses.findIndex((address) => address.ipAddress === localPlayerLocation.ipAddress);
-
-    if (localCellIndex >= 0) {
-      const markerX = localCellIndex % gridSize;
-      const markerY = Math.floor(localCellIndex / gridSize);
-      localPlayerMarker = (
-        <group
-          key="local-player-location-marker"
-          position={[
-            markerX * spacing - offset,
-            groundY + 2.78,
-            markerY * spacing - offset,
-          ]}
-        >
-          <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.3, 0.48, 32]} />
-            <meshBasicMaterial color="#22d3ee" transparent opacity={0.72} />
-          </mesh>
-          <mesh position={[0, 0.16, 0]} castShadow>
-            <sphereGeometry args={[0.16, 16, 16]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.7} />
-          </mesh>
-          <Text
-            position={[0, -0.18, 0]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            fontSize={0.2}
-            color="#e0f2fe"
-            anchorX="center"
-            anchorY="middle"
-            outlineWidth={0.02}
-            outlineColor="#0f172a"
-          >
-            You
-          </Text>
-        </group>
-      );
-    }
-  }
-
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
     const playerLocation = user.playerLocation;
@@ -3338,7 +3286,6 @@ function IPGrid({
     <>
       {createStreetGrid()}
       {cubes}
-      {localPlayerMarker}
       {remoteAvatarMarkers}
     </>
   );
