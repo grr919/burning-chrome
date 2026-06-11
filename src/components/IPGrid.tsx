@@ -2164,10 +2164,6 @@ function IPGrid({
         hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching hostname data...</div>');
       }
 
-      if (lookupMode === 'rdap' && !isRdapLoading[ipAddress] && rdapRecord?.error) {
-        hoverInfoLines.push(`<div class="text-red-700 mt-2">${linkifyText(rdapRecord.error)}</div>`);
-      }
-
       if (lookupMode === 'ptr' && !isReverseLoading[ipAddress] && dnsRecord?.error) {
         hoverInfoLines.push(`<div class="text-red-700 mt-2">${linkifyText(dnsRecord.error)}</div>`);
       }
@@ -2226,8 +2222,6 @@ function IPGrid({
       if (lookupMode === 'rdap') {
         if (isRdapLoading[ipAddress]) {
           proseSentences.push('RDAP registration data is still loading.');
-        } else if (rdapRecord?.error) {
-          proseSentences.push(`RDAP lookup is unavailable: ${valueToDisplayText(rdapRecord.error)}`);
         } else if (rdapRecord) {
           proseSentences.push(joinSentenceParts([
             rdapRecord.org ? `RDAP identifies the organization as ${rdapRecord.org}.` : null,
