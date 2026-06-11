@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -102,6 +102,9 @@ type Grid2Position = {
 type PlayerLocation = MultiplayerPlayerLocation;
 
 const GRID2_WINDOW_SIZE = 16;
+const GRID_SIZE = 16;
+const GRID_SPACING = 1.9;
+const GRID_OFFSET = (GRID_SIZE * GRID_SPACING) / 2 - GRID_SPACING / 2;
 const STREET_GRID_SIZE = 16;
 const STREET_GRID_SPACING = 1.9;
 const STREET_GRID_OFFSET = (STREET_GRID_SIZE * STREET_GRID_SPACING) / 2 - STREET_GRID_SPACING / 2;
@@ -130,6 +133,13 @@ function clampGrid2WindowStart(value: number): number {
 
 function clampStreetCell(value: number): number {
   return Math.max(0, Math.min(STREET_GRID_SIZE - 1, Math.round(value)));
+}
+
+function getGridCellFromWorldTarget(target: THREE.Vector3): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(GRID_SIZE - 1, Math.round((target.x + GRID_OFFSET) / GRID_SPACING))),
+    y: Math.max(0, Math.min(GRID_SIZE - 1, Math.round((target.z + GRID_OFFSET) / GRID_SPACING))),
+  };
 }
 
 function getIpFromCell(zoomLevel: number, currentPosition: GridPosition, x: number, y: number): string {
@@ -1129,8 +1139,12 @@ function App() {
   };
 
   const handleGridSystemChange = (mode: GridSystemMode) => {
-    const nextTargetIp = mode === 'grid2' ? getGrid2IpFromCell(grid2Position, 0, 0) : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position);
-    const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, grid2Position, 0, 0);
+    const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, grid2Position, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y);
+    const nextTargetIp = nextPlayerLocation.kind === 'ip'
+      ? nextPlayerLocation.ipAddress
+      : mode === 'grid2'
+        ? getGrid2IpFromCell(grid2Position, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y)
+        : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position);
     setGridSystemMode(mode);
     setLayoutMode('grid');
     setBuildingView(null);
@@ -1177,6 +1191,39 @@ function App() {
     });
     setBottomInfoHtml('');
   };
+
+  const updatePlayerLocationFromGridView = useCallback(() => {
+    if (layoutMode !== 'grid' || buildingView || !controlsRef.current) {
+      return;
+    }
+
+    const cell = getGridCellFromWorldTarget(controlsRef.current.target as THREE.Vector3);
+    const nextLocation = getPlayerLocationForGridCell(
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position,
+      cell.x,
+      cell.y
+    );
+
+    if (nextLocation.kind !== 'ip') {
+      return;
+    }
+
+    setPlayerLocation((current) => {
+      if (
+        current.kind === 'ip' &&
+        current.ipAddress === nextLocation.ipAddress &&
+        current.x === nextLocation.x &&
+        current.y === nextLocation.y
+      ) {
+        return current;
+      }
+      return nextLocation;
+    });
+    setSelectedTargetIp((current) => current === nextLocation.ipAddress ? current : nextLocation.ipAddress);
+  }, [layoutMode, buildingView, gridSystemMode, zoomLevel, currentPosition, grid2Position]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -1615,7 +1662,7 @@ function App() {
     }
 
     if (gridSystemMode === 'grid2') {
-      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls to move through the larger 256 by 256 inner grid. Mouse wheel moves your location through the visible grid. Single-click a building or square for street level; double-click to select that exact IP.';
+      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls to move through the larger 256 by 256 inner grid. Single-click a building or square for street level; double-click to select that exact IP.';
     }
 
     if (zoomLevel === 0) {
@@ -1855,7 +1902,7 @@ function App() {
             </div>
 
             <p className="text-xs text-gray-700">
-              Mouse wheel moves your location through the visible grid; use the buttons to move the neighborhood window.
+              Mouse wheel and drag navigate the grid view; use the buttons to move the neighborhood window.
             </p>
           </div>
         )}
@@ -2136,6 +2183,7 @@ function App() {
                   enablePan
                   enableZoom
                   enableRotate
+                  onChange={updatePlayerLocationFromGridView}
                   minPolarAngle={Math.PI / 6}
                   maxPolarAngle={Math.PI / 2.1}
                   target={[0, 0, 0]}
