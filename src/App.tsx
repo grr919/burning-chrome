@@ -111,6 +111,14 @@ const DEFAULT_GRID2_POSITION: Grid2Position = {
   innerThirdStart: 0,
   innerFourthStart: 0,
 };
+const DEFAULT_GRID_POSITION: GridPosition = {
+  firstOctet: 0,
+  secondOctet: 0,
+  thirdOctet: 0,
+  fourthOctet: 0,
+};
+// Starts the local user near the visible foreground of the top-level grid.
+const DEFAULT_PLAYER_CELL = { x: 7, y: 15 };
 
 function clampOctet(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
@@ -764,12 +772,7 @@ function StreetGridCamera({
 
 function App() {
   const [zoomLevel, setZoomLevel] = useState<number>(0);
-  const [currentPosition, setCurrentPosition] = useState<GridPosition>({
-    firstOctet: 0,
-    secondOctet: 0,
-    thirdOctet: 0,
-    fourthOctet: 0,
-  });
+  const [currentPosition, setCurrentPosition] = useState<GridPosition>(DEFAULT_GRID_POSITION);
   const [showHeightLegend, setShowHeightLegend] = useState<boolean>(false);
   const [lookupMode, setLookupMode] = useState<LookupMode>('rdap');
   const [infoDisplayMode, setInfoDisplayMode] = useState<InfoDisplayMode>('structured');
@@ -779,13 +782,15 @@ function App() {
   const [streetPlayerX, setStreetPlayerX] = useState<number>(7);
   const [streetPlayerY, setStreetPlayerY] = useState<number>(7);
   const [streetHeading, setStreetHeading] = useState<StreetHeading>(0);
-  const [selectedTargetIp, setSelectedTargetIp] = useState<string>('8.8.8.8');
-  const [playerLocation, setPlayerLocation] = useState<PlayerLocation>({
-    kind: 'ip',
-    ipAddress: '0.0.0.0',
-    x: 0,
-    y: 0,
-  });
+  const [selectedTargetIp, setSelectedTargetIp] = useState<string>(
+    () => {
+      const initialLocation = getPlayerLocationForGridCell('grid1', 0, DEFAULT_GRID_POSITION, DEFAULT_GRID2_POSITION, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y);
+      return initialLocation.kind === 'ip' ? initialLocation.ipAddress : '247.0.0.0';
+    }
+  );
+  const [playerLocation, setPlayerLocation] = useState<PlayerLocation>(
+    () => getPlayerLocationForGridCell('grid1', 0, DEFAULT_GRID_POSITION, DEFAULT_GRID2_POSITION, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y)
+  );
   const [viewResetKey, setViewResetKey] = useState(0);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
@@ -1018,6 +1023,31 @@ function App() {
     updateStreetPlayerPosition(streetPlayerX + vector.dx, streetPlayerY + vector.dy);
   };
 
+  const moveGridPlayerByWheel = (direction: 1 | -1) => {
+    const currentCell = getPlayerCell(playerLocation);
+    const currentIndex = currentCell.y * 16 + currentCell.x;
+    const nextIndex = Math.max(0, Math.min(255, currentIndex + direction));
+    if (nextIndex === currentIndex) {
+      return;
+    }
+
+    const nextX = nextIndex % 16;
+    const nextY = Math.floor(nextIndex / 16);
+    const nextLocation = getPlayerLocationForGridCell(
+      gridSystemMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position,
+      nextX,
+      nextY
+    );
+
+    setPlayerLocation(nextLocation);
+    if (nextLocation.kind === 'ip') {
+      setSelectedTargetIp(nextLocation.ipAddress);
+    }
+  };
+
   const turnStreetBy = (delta: -1 | 1) => {
     setStreetHeading((prev) => ((prev + delta + 4) % 4) as StreetHeading);
   };
@@ -1088,12 +1118,19 @@ function App() {
   };
 
   const handleReset = () => {
-    const nextTargetIp = gridSystemMode === 'grid2' ? getGrid2IpFromCell(DEFAULT_GRID2_POSITION, 0, 0) : '8.8.8.8';
-    const nextPlayerLocation = getPlayerLocationForGridCell(gridSystemMode, 0, { firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 }, DEFAULT_GRID2_POSITION, 0, 0);
+    const nextPlayerLocation = getPlayerLocationForGridCell(
+      gridSystemMode,
+      0,
+      DEFAULT_GRID_POSITION,
+      DEFAULT_GRID2_POSITION,
+      DEFAULT_PLAYER_CELL.x,
+      DEFAULT_PLAYER_CELL.y
+    );
+    const nextTargetIp = nextPlayerLocation.kind === 'ip' ? nextPlayerLocation.ipAddress : '247.0.0.0';
     setLayoutMode('grid');
     setBuildingView(null);
     setZoomLevel(0);
-    setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
+    setCurrentPosition(DEFAULT_GRID_POSITION);
     setGrid2Position(DEFAULT_GRID2_POSITION);
     setSelectedTargetIp(nextTargetIp);
     setPlayerLocation(nextPlayerLocation);
@@ -1165,6 +1202,36 @@ function App() {
     });
     setBottomInfoHtml('');
   };
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container || layoutMode !== 'grid' || buildingView) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      moveGridPlayerByWheel(event.deltaY > 0 ? 1 : -1);
+    };
+
+    container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel, { capture: true });
+    };
+  }, [
+    layoutMode,
+    buildingView,
+    playerLocation,
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+  ]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -1603,7 +1670,7 @@ function App() {
     }
 
     if (gridSystemMode === 'grid2') {
-      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls or mouse wheel to move through the larger 256 by 256 inner grid. Single-click a building or square for street level; double-click to select that exact IP.';
+      return 'Grid 2 maps n1.n2.n3.n4 as inner point n3,n4 inside outer point n1,n2. Only the local 16 by 16 neighborhood is rendered; use the Grid 2 controls to move through the larger 256 by 256 inner grid. Mouse wheel moves your location through the visible grid. Single-click a building or square for street level; double-click to select that exact IP.';
     }
 
     if (zoomLevel === 0) {
@@ -1843,7 +1910,7 @@ function App() {
             </div>
 
             <p className="text-xs text-gray-700">
-              Mouse wheel moves n3 by four cells; Shift + mouse wheel moves n4 by four cells.
+              Mouse wheel moves your location through the visible grid; use the buttons to move the neighborhood window.
             </p>
           </div>
         )}
