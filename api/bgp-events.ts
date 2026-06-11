@@ -1,3 +1,5 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 type BgpVisualEvent = {
   id: string;
   type: 'announcement' | 'withdrawal' | 'path_change' | 'flap';
@@ -5,17 +7,6 @@ type BgpVisualEvent = {
   asn?: string;
   timestamp: string;
   intensity: number;
-};
-
-type VercelRequest = {
-  method?: string;
-  query?: Record<string, unknown>;
-};
-
-type VercelResponse = {
-  setHeader?: (name: string, value: string | string[]) => void;
-  status: (code: number) => VercelResponse;
-  json: (body: unknown) => void;
 };
 
 function normalizeAsn(value: unknown): string | null {

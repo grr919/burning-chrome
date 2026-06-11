@@ -1383,6 +1383,7 @@ function IPGrid({
     () => [...new Set(visibleBgpCells.map((cell) => normalizeAsn(cell.asn)).filter((asn): asn is string => Boolean(asn)))],
     [visibleBgpCells]
   );
+  const visibleBgpAsnsKey = visibleBgpAsns.join(',');
 
   const performRdapLookup = async (ipAddress: string) => {
     if (rdapCache[ipAddress] || pendingRdapLookups.has(ipAddress)) {
@@ -1677,7 +1678,8 @@ function IPGrid({
   }, [visibleLookupAddresses]);
 
   useEffect(() => {
-    if (visibleBgpAsns.length === 0) {
+    const requestedAsns = visibleBgpAsnsKey ? visibleBgpAsnsKey.split(',') : [];
+    if (requestedAsns.length === 0) {
       setBgpEvents([]);
       return;
     }
@@ -1692,7 +1694,7 @@ function IPGrid({
       }
 
       try {
-        const query = visibleBgpAsns.slice(0, 128).map((asn) => encodeURIComponent(asn)).join(',');
+        const query = requestedAsns.slice(0, 128).map((asn) => encodeURIComponent(asn)).join(',');
         const response = await fetch(`/api/bgp-events?asns=${query}`, {
           headers: { accept: 'application/json' },
         });
@@ -1724,7 +1726,7 @@ function IPGrid({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [visibleBgpAsns]);
+  }, [visibleBgpAsnsKey]);
 
   useEffect(() => {
     let cancelled = false;
