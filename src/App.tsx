@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -91,6 +91,7 @@ type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
 type SwipeDirection = 'up' | 'down' | 'left' | 'right';
+type Grid2ArrowDirection = 'north' | 'south' | 'east' | 'west';
 
 type Grid2Position = {
   outerFirstOctet: number;
@@ -134,6 +135,25 @@ function clampGrid2WindowStart(value: number): number {
 
 function clampStreetCell(value: number): number {
   return Math.max(0, Math.min(STREET_GRID_SIZE - 1, Math.round(value)));
+}
+
+function Grid2ArrowIcon({ direction }: { direction: Grid2ArrowDirection }) {
+  const rotation =
+    direction === 'north' ? 0 :
+    direction === 'east' ? 90 :
+    direction === 'south' ? 180 :
+    270;
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-8 w-8"
+      style={{ color: '#111827', transform: `rotate(${rotation}deg)` }}
+    >
+      <path d="M12 3L4 11H9V21H15V11H20L12 3Z" fill="currentColor" />
+    </svg>
+  );
 }
 
 function getGridCellFromWorldTarget(target: THREE.Vector3): { x: number; y: number } {
@@ -563,7 +583,7 @@ function BuildingDetailScene({
           <div className="font-semibold">{building.ipAddress}</div>
           {building.asn && (
             <div className="text-xs rounded px-1.5 py-0.5 text-white" style={{ background: building.asnColor ?? '#4b5563' }}>
-              {building.asn}{building.asnName ? ` - ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
+              {building.asn}{building.asnName ? ` â€” ${building.asnName}` : ''}{building.route ? ` (${building.route})` : ''}
             </div>
           )}
         </div>
@@ -1645,7 +1665,7 @@ function App() {
     if (gridSystemMode === 'grid2') {
       const thirdEnd = grid2Position.innerThirdStart + GRID2_WINDOW_SIZE - 1;
       const fourthEnd = grid2Position.innerFourthStart + GRID2_WINDOW_SIZE - 1;
-      return `Grid 2: outer point ${grid2Position.outerFirstOctet}.${grid2Position.outerSecondOctet}; inner neighborhood n3=${grid2Position.innerThirdStart}-${thirdEnd}, n4=${grid2Position.innerFourthStart}-${fourthEnd}`;
+      return `Grid 2: outer point ${grid2Position.outerFirstOctet}.${grid2Position.outerSecondOctet}; inner neighborhood n3=${grid2Position.innerThirdStart}â€“${thirdEnd}, n4=${grid2Position.innerFourthStart}â€“${fourthEnd}`;
     }
 
     if (zoomLevel === 0) return 'Grid 1: Top-level View';
@@ -1882,7 +1902,7 @@ function App() {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${sshLaunchLoadingIp === buildingView.ipAddress ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
                     title="Open the local SSH client"
                   >
-                    {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH.' : 'Open SSH client'}
+                    {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSHâ€¦' : 'Open SSH client'}
                   </button>
 
                   {websiteCandidate && (
@@ -2124,36 +2144,36 @@ function App() {
                     aria-label="Move Grid 2 window north"
                     onClick={() => moveGrid2WindowByDirection('north')}
                     disabled={grid2Position.innerThirdStart <= 0}
-                    className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-transparent shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ?
+                    <Grid2ArrowIcon direction="north" />
                   </button>
                   <button
                     type="button"
                     aria-label="Move Grid 2 window south"
                     onClick={() => moveGrid2WindowByDirection('south')}
                     disabled={grid2Position.innerThirdStart >= 256 - GRID2_WINDOW_SIZE}
-                    className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-transparent shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ?
+                    <Grid2ArrowIcon direction="south" />
                   </button>
                   <button
                     type="button"
                     aria-label="Move Grid 2 window west"
                     onClick={() => moveGrid2WindowByDirection('west')}
                     disabled={grid2Position.innerFourthStart <= 0}
-                    className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-transparent shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ?
+                    <Grid2ArrowIcon direction="west" />
                   </button>
                   <button
                     type="button"
                     aria-label="Move Grid 2 window east"
                     onClick={() => moveGrid2WindowByDirection('east')}
                     disabled={grid2Position.innerFourthStart >= 256 - GRID2_WINDOW_SIZE}
-                    className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-transparent shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ?
+                    <Grid2ArrowIcon direction="east" />
                   </button>
                 </>
               )}
