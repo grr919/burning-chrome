@@ -1045,7 +1045,7 @@ type BgpRoutingLayerProps = StreetTrafficLayerProps & {
 };
 
 function AmbientTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTrafficLayerProps) {
-  const totalFlows = 30;
+  const totalFlows = 40;
   const refs = useRef<Array<THREE.Mesh | null>>([]);
 
   const flows = useMemo(
@@ -1056,11 +1056,11 @@ function AmbientTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTraff
         const laneIndex = Math.floor(pseudoRandom(seed * 7) * (gridSize + 1));
         const laneCenter = laneIndex * spacing - offset - spacing / 2;
         const travelPositive = pseudoRandom(seed * 13) > 0.5;
-        const speed = (0.34 + pseudoRandom(seed * 17) * 0.48) * 0.5;
+        const speed = (0.65 + pseudoRandom(seed * 17) * 0.85) * 0.5;
         const phase = pseudoRandom(seed * 19);
-        const width = 0.1 + pseudoRandom(seed * 23) * 0.12;
-        const length = 0.26 + pseudoRandom(seed * 29) * 0.28;
-        const y = groundY + 0.028 + pseudoRandom(seed * 31) * 0.008;
+        const width = 0.16 + pseudoRandom(seed * 23) * 0.16;
+        const length = 0.32 + pseudoRandom(seed * 29) * 0.32;
+        const y = groundY + 0.028 + pseudoRandom(seed * 31) * 0.012;
         const colorOptions = ['#60A5FA', '#34D399', '#F59E0B', '#A78BFA', '#F87171'];
         const color = colorOptions[index % colorOptions.length];
 
@@ -1114,9 +1114,9 @@ function AmbientTrafficLayer({ gridSize, spacing, offset, groundY }: StreetTraff
           <meshStandardMaterial
             color={flow.color}
             emissive={flow.color}
-            emissiveIntensity={0.72}
+            emissiveIntensity={1.25}
             transparent
-            opacity={0.28}
+            opacity={0.62}
           />
         </mesh>
       ))}
