@@ -1758,7 +1758,6 @@ function App() {
                   <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
                     <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
                     <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
-                    <p className="mt-2 text-xs text-gray-700">Colored street streaks represent recent BGP routing events affecting visible ASN neighborhoods.</p>
                     <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
                     <p className="mt-2">{getInstructionText()}</p>
                     <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
