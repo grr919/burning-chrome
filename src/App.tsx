@@ -1478,6 +1478,10 @@ function App() {
           infoDisplayMode={infoDisplayMode}
           remoteUsers={multiplayer.others}
           onRemoteUserClick={handleRemoteUserClick}
+          selectedBuildingIp={buildingView?.ipAddress}
+          selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
+          selectedBuildingCountryCodeLabel={buildingView?.countryCodeLabel}
+          selectedBuildingDirectoryEntries={buildingView ? buildingDirectoryEntries : undefined}
         />
       </Canvas>
     </div>

@@ -41,6 +41,11 @@ type LookupAddress = {
   fourthOctetValue: number;
 };
 
+type DirectoryEntry = {
+  hostname: string;
+  url: string;
+};
+
 export type GridCellBuilding = {
   x: number;
   y: number;
@@ -85,6 +90,10 @@ type IPGridProps = {
   remoteUsers?: MultiplayerPresence[];
   onRemoteUserClick?: (user: MultiplayerPresence) => void;
   bgpEvents?: BgpVisualEvent[];
+  selectedBuildingIp?: string;
+  selectedBuildingFlagImageUrl?: string | null;
+  selectedBuildingCountryCodeLabel?: string;
+  selectedBuildingDirectoryEntries?: DirectoryEntry[];
 };
 
 function WallMountedFlag({
@@ -181,6 +190,63 @@ function WallMountedFlag({
         </Text>
       )}
     </mesh>
+  );
+}
+
+function BuildingDirectorySign({
+  entries,
+  position,
+}: {
+  entries: DirectoryEntry[];
+  position: [number, number, number];
+}) {
+  return (
+    <Html position={position} transform sprite distanceFactor={8}>
+      <div
+        style={{
+          width: '156px',
+          maxHeight: '172px',
+          overflow: 'hidden',
+          border: '1px solid rgba(17,24,39,0.75)',
+          borderRadius: '4px',
+          background: 'rgba(255,255,255,0.94)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          color: '#111827',
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontSize: '10px',
+          lineHeight: 1.25,
+          padding: '6px',
+          pointerEvents: 'auto',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '4px' }}>Directory</div>
+        {entries.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {entries.map((entry) => (
+              <a
+                key={entry.hostname}
+                href={entry.url}
+                target="_blank"
+                rel="noreferrer"
+                title={entry.hostname}
+                style={{
+                  color: '#1d4ed8',
+                  display: 'block',
+                  overflow: 'hidden',
+                  textDecoration: 'underline',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {entry.hostname}
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: '#4b5563' }}>No websites identified.</div>
+        )}
+      </div>
+    </Html>
   );
 }
 
@@ -438,7 +504,7 @@ function getAsnSummaryLabel(record?: AsnRecord | null): string {
   if (!record?.asn) {
     return 'ASN not loaded';
   }
-  return `${normalizeAsn(record.asn)}${record.asnName ? ` - ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
+  return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
 }
 
 function valueToDisplayText(value: unknown): string {
@@ -1385,6 +1451,10 @@ function IPGrid({
   remoteUsers = [],
   onRemoteUserClick,
   bgpEvents = [],
+  selectedBuildingIp,
+  selectedBuildingFlagImageUrl,
+  selectedBuildingCountryCodeLabel,
+  selectedBuildingDirectoryEntries = [],
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -2033,6 +2103,15 @@ function IPGrid({
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
       const flagImageUrl = getFlagImageUrl(rdapRecord?.country);
       const countryCodeLabel = getCountryCode(rdapRecord?.country)?.toUpperCase() ?? '';
+      const isSelectedBuilding = selectedBuildingIp === ipAddress;
+      const visibleFlagImageUrl =
+        isSelectedBuilding && selectedBuildingFlagImageUrl !== undefined
+          ? selectedBuildingFlagImageUrl
+          : flagImageUrl;
+      const visibleCountryCodeLabel =
+        isSelectedBuilding && selectedBuildingCountryCodeLabel !== undefined
+          ? selectedBuildingCountryCodeLabel
+          : countryCodeLabel;
       const countryName = flagImageUrl ? getCountryName(rdapRecord?.country) : null;
       const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
         .map((portLabel) => parseTopPortNumber(portLabel))
@@ -2137,7 +2216,7 @@ function IPGrid({
       ].filter(Boolean);
 
       const hoverInfoLines: string[] = [
-        `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
+        `<div class="font-bold">${escapeHtml(headerParts.join(' — '))}</div>`,
       ];
 
       if (isAsnLoading[ipAddress]) {
@@ -2349,8 +2428,8 @@ function IPGrid({
         color,
         buildingFamily,
         buildingHeight,
-        flagImageUrl,
-        countryCodeLabel,
+        flagImageUrl: visibleFlagImageUrl,
+        countryCodeLabel: visibleCountryCodeLabel,
         asn: asnRecord?.asn,
         asnName: asnRecord?.asnName,
         route: asnRecord?.route,
@@ -3096,14 +3175,21 @@ function IPGrid({
             })}
 
             <WallMountedFlag
-              flagImageUrl={flagImageUrl}
-              fallbackLabel={countryCodeLabel}
+              flagImageUrl={visibleFlagImageUrl}
+              fallbackLabel={visibleCountryCodeLabel}
               position={[0, facadeFlagY, facadeFlagZ + 0.006]}
               width={0.28}
               height={0.196}
               onClick={handleBuildingSingleClick}
               onDoubleClick={handleBuildingDoubleClick}
             />
+
+            {isSelectedBuilding && (
+              <BuildingDirectorySign
+                entries={selectedBuildingDirectoryEntries}
+                position={[facadeWidth / 2 + 0.52, Math.max(0.58, Math.min(1.1, roofTopY * 0.34)), facadeFlagZ + 0.18]}
+              />
+            )}
 
             {windowBands}
 
