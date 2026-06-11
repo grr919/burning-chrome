@@ -956,6 +956,13 @@ function App() {
     setBuildingView(null);
     setPlayerLocation(location);
     setSelectedTargetIp(location.ipAddresses[0] ?? activeTargetIp);
+    const deltaX = clampStreetCell(location.x) - streetPlayerX;
+    const deltaY = clampStreetCell(location.y) - streetPlayerY;
+    if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
+      setStreetHeading(deltaX > 0 ? 1 : 3);
+    } else if (deltaY !== 0) {
+      setStreetHeading(deltaY > 0 ? 2 : 0);
+    }
     setStreetPlayerX(clampStreetCell(location.x));
     setStreetPlayerY(clampStreetCell(location.y));
   };
@@ -1624,6 +1631,7 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
+  const nearbyUsers = multiplayer.others;
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const handlePointerTargetChange = (cell: MultiplayerCell) => {
     setPointerTarget(cell);
@@ -2163,7 +2171,28 @@ function App() {
                 </span>
                 <span className="text-gray-500">|</span>
                 <span className="text-gray-700">
-                  {multiplayer.others.length} nearby
+                  {nearbyUsers.length} nearby
+                  {nearbyUsers.length > 0 && nearbyUsers.length <= 3 && (
+                    <>
+                      :{' '}
+                      {nearbyUsers.map((user, index) => {
+                        const displayName = user.displayName?.trim() || 'Explorer';
+                        return (
+                          <span key={user.userId}>
+                            {index > 0 && ', '}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoteUserClick(user)}
+                              className="text-blue-700 underline-offset-2 hover:underline"
+                              title={`Go to ${displayName}`}
+                            >
+                              {displayName}
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500 break-all">Location: {userLocationLabel}</div>
