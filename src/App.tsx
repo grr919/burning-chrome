@@ -1184,7 +1184,7 @@ function App() {
         return;
       }
 
-      moveStreetByDirection(event.deltaY > 0 ? 'up' : 'down');
+      moveStreetByDirection(event.deltaY > 0 ? 'down' : 'up');
     };
 
     container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
