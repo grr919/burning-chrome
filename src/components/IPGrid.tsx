@@ -1340,7 +1340,6 @@ function IPGrid({
   const [isReverseLoading, setIsReverseLoading] = useState<Record<string, boolean>>({});
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
-  const [bgpEvents, setBgpEvents] = useState<BgpVisualEvent[]>([]);
   const clickTimerRef = useRef<number | null>(null);
 
   useEffect(() => () => {
@@ -1379,11 +1378,7 @@ function IPGrid({
     [visibleLookupAddresses, asnInfo, gridSize]
   );
 
-  const visibleBgpAsns = useMemo(
-    () => [...new Set(visibleBgpCells.map((cell) => normalizeAsn(cell.asn)).filter((asn): asn is string => Boolean(asn)))],
-    [visibleBgpCells]
-  );
-  const visibleBgpAsnsKey = visibleBgpAsns.join(',');
+  const bgpEvents = useMemo<BgpVisualEvent[]>(() => [], []);
 
   const performRdapLookup = async (ipAddress: string) => {
     if (rdapCache[ipAddress] || pendingRdapLookups.has(ipAddress)) {
@@ -1676,57 +1671,6 @@ function IPGrid({
     void performExposureLookup(visibleIps);
     void performAsnLookup(visibleIps);
   }, [visibleLookupAddresses]);
-
-  useEffect(() => {
-    const requestedAsns = visibleBgpAsnsKey ? visibleBgpAsnsKey.split(',') : [];
-    if (requestedAsns.length === 0) {
-      setBgpEvents([]);
-      return;
-    }
-
-    let cancelled = false;
-    let timer = 0;
-
-    const fetchBgpEvents = async () => {
-      if (document.visibilityState === 'hidden') {
-        timer = window.setTimeout(fetchBgpEvents, 30000);
-        return;
-      }
-
-      try {
-        const query = requestedAsns.slice(0, 128).map((asn) => encodeURIComponent(asn)).join(',');
-        const response = await fetch(`/api/bgp-events?asns=${query}`, {
-          headers: { accept: 'application/json' },
-        });
-        if (!response.ok) {
-          if (!cancelled) {
-            setBgpEvents([]);
-          }
-          return;
-        }
-
-        const json = (await response.json()) as { events?: BgpVisualEvent[] };
-        if (!cancelled) {
-          setBgpEvents(Array.isArray(json.events) ? json.events : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setBgpEvents([]);
-        }
-      } finally {
-        if (!cancelled) {
-          timer = window.setTimeout(fetchBgpEvents, 30000);
-        }
-      }
-    };
-
-    void fetchBgpEvents();
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [visibleBgpAsnsKey]);
 
   useEffect(() => {
     let cancelled = false;
