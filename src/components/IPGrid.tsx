@@ -2923,6 +2923,17 @@ function IPGrid({
     const xOffset = Math.cos(angle) * spread;
     const zOffset = Math.sin(angle) * spread;
     const locationLabel = getAvatarLocationDisplay(user);
+    const faceSeed = hashString(user.userId);
+    const faceShape = faceSeed % 3;
+    const headScale: [number, number, number] =
+      faceShape === 0
+        ? [1, 1, 1]
+        : faceShape === 1
+          ? [1.12, 0.92, 0.92]
+          : [0.92, 1.18, 0.96];
+    const eyeSize = 0.038 + (faceSeed % 3) * 0.008;
+    const eyeSpacing = 0.105 + ((faceSeed >> 2) % 3) * 0.018;
+    const mouthKind = (faceSeed >> 4) % 3;
     const handleRemoteAvatarClick = (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
       onRemoteUserClick?.(user);
@@ -2933,42 +2944,65 @@ function IPGrid({
         key={`remote-user-${user.userId}`}
         position={[
           cell.x * spacing - offset + xOffset,
-          groundY + 3.05 + stackIndex * 0.18,
+          groundY + 3.22 + stackIndex * 0.22,
           cell.y * spacing - offset + zOffset,
         ]}
         onClick={handleRemoteAvatarClick}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(event) => {
+          event.stopPropagation();
+          document.body.style.cursor = 'auto';
+        }}
       >
-        <mesh
-          castShadow
-          onClick={handleRemoteAvatarClick}
-          onPointerOver={(event) => {
-            event.stopPropagation();
-            document.body.style.cursor = 'pointer';
-          }}
-          onPointerOut={(event) => {
-            event.stopPropagation();
-            document.body.style.cursor = 'auto';
-          }}
-        >
-          <sphereGeometry args={[0.18, 16, 16]} />
-          <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.28} />
-        </mesh>
-        <mesh position={[0, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.22, 0.32, 24]} />
+        <group onClick={handleRemoteAvatarClick}>
+          <mesh castShadow scale={headScale}>
+            <sphereGeometry args={[0.36, 24, 24]} />
+            <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.32} />
+          </mesh>
+          <mesh position={[-eyeSpacing, 0.07, 0.34]}>
+            <sphereGeometry args={[eyeSize, 12, 12]} />
+            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.2} />
+          </mesh>
+          <mesh position={[eyeSpacing, 0.07, 0.34]}>
+            <sphereGeometry args={[eyeSize, 12, 12]} />
+            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.2} />
+          </mesh>
+          <mesh position={[0, -0.1, 0.35]} rotation={[0, 0, mouthKind === 1 ? Math.PI : 0]}>
+            <torusGeometry args={[0.105, 0.012, 8, 20, mouthKind === 2 ? Math.PI * 1.9 : Math.PI]} />
+            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.16} />
+          </mesh>
+          {(faceSeed >> 6) % 2 === 0 && (
+            <>
+              <mesh position={[-eyeSpacing, 0.17, 0.34]} rotation={[0, 0, -0.18]}>
+                <boxGeometry args={[0.1, 0.018, 0.012]} />
+                <meshStandardMaterial color="#111827" />
+              </mesh>
+              <mesh position={[eyeSpacing, 0.17, 0.34]} rotation={[0, 0, 0.18]}>
+                <boxGeometry args={[0.1, 0.018, 0.012]} />
+                <meshStandardMaterial color="#111827" />
+              </mesh>
+            </>
+          )}
+        </group>
+        <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.44, 0.64, 32]} />
           <meshBasicMaterial color={user.color} transparent opacity={0.42} />
         </mesh>
-        <Html position={[0, 0.34, 0]} center distanceFactor={10} style={{ pointerEvents: 'none' }}>
+        <Html position={[0, -0.9, 0]} center distanceFactor={8} style={{ pointerEvents: 'none' }}>
           <div
             style={{
               background: 'rgba(255,255,255,0.92)',
-              border: `1px solid ${user.color}`,
+              border: `2px solid ${user.color}`,
               borderRadius: '4px',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.28)',
               color: '#111827',
-              fontSize: '10px',
-              maxWidth: '96px',
+              fontSize: '18px',
+              maxWidth: '192px',
               overflow: 'hidden',
-              padding: '2px 5px',
+              padding: '4px 10px',
               textOverflow: 'ellipsis',
               whiteSpace: 'normal',
             }}
