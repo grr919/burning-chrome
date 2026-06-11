@@ -109,8 +109,8 @@ const STREET_GRID_SIZE = 16;
 const STREET_GRID_SPACING = 1.9;
 const STREET_GRID_OFFSET = (STREET_GRID_SIZE * STREET_GRID_SPACING) / 2 - STREET_GRID_SPACING / 2;
 const DEFAULT_GRID2_POSITION: Grid2Position = {
-  outerFirstOctet: 0,
-  outerSecondOctet: 0,
+  outerFirstOctet: 128,
+  outerSecondOctet: 220,
   innerThirdStart: 0,
   innerFourthStart: 0,
 };
@@ -122,6 +122,7 @@ const DEFAULT_GRID_POSITION: GridPosition = {
 };
 // Starts the local user near the visible foreground of the top-level grid.
 const DEFAULT_PLAYER_CELL = { x: 7, y: 15 };
+const DEFAULT_GRID2_PLAYER_CELL = { x: 0, y: 0 };
 
 function clampOctet(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
@@ -1103,13 +1104,14 @@ function App() {
   };
 
   const handleReset = () => {
+    const resetPlayerCell = gridSystemMode === 'grid2' ? DEFAULT_GRID2_PLAYER_CELL : DEFAULT_PLAYER_CELL;
     const nextPlayerLocation = getPlayerLocationForGridCell(
       gridSystemMode,
       0,
       DEFAULT_GRID_POSITION,
       DEFAULT_GRID2_POSITION,
-      DEFAULT_PLAYER_CELL.x,
-      DEFAULT_PLAYER_CELL.y
+      resetPlayerCell.x,
+      resetPlayerCell.y
     );
     const nextTargetIp = nextPlayerLocation.kind === 'ip' ? nextPlayerLocation.ipAddress : '247.0.0.0';
     setLayoutMode('grid');
@@ -1139,13 +1141,18 @@ function App() {
   };
 
   const handleGridSystemChange = (mode: GridSystemMode) => {
-    const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, grid2Position, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y);
+    const nextGrid2Position = mode === 'grid2' ? DEFAULT_GRID2_POSITION : grid2Position;
+    const nextPlayerCell = mode === 'grid2' ? DEFAULT_GRID2_PLAYER_CELL : DEFAULT_PLAYER_CELL;
+    const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, nextGrid2Position, nextPlayerCell.x, nextPlayerCell.y);
     const nextTargetIp = nextPlayerLocation.kind === 'ip'
       ? nextPlayerLocation.ipAddress
       : mode === 'grid2'
-        ? getGrid2IpFromCell(grid2Position, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y)
-        : getRepresentativeTarget('grid1', zoomLevel, currentPosition, grid2Position);
+        ? getGrid2IpFromCell(nextGrid2Position, nextPlayerCell.x, nextPlayerCell.y)
+        : getRepresentativeTarget('grid1', zoomLevel, currentPosition, nextGrid2Position);
     setGridSystemMode(mode);
+    if (mode === 'grid2') {
+      setGrid2Position(DEFAULT_GRID2_POSITION);
+    }
     setLayoutMode('grid');
     setBuildingView(null);
     setBottomInfoHtml('');
@@ -2119,7 +2126,7 @@ function App() {
                     disabled={grid2Position.innerThirdStart <= 0}
                     className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ? North
+                    ?
                   </button>
                   <button
                     type="button"
@@ -2128,7 +2135,7 @@ function App() {
                     disabled={grid2Position.innerThirdStart >= 256 - GRID2_WINDOW_SIZE}
                     className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ? South
+                    ?
                   </button>
                   <button
                     type="button"
@@ -2137,7 +2144,7 @@ function App() {
                     disabled={grid2Position.innerFourthStart <= 0}
                     className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ? West
+                    ?
                   </button>
                   <button
                     type="button"
@@ -2146,7 +2153,7 @@ function App() {
                     disabled={grid2Position.innerFourthStart >= 256 - GRID2_WINDOW_SIZE}
                     className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ? East
+                    ?
                   </button>
                 </>
               )}

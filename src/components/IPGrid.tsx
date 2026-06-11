@@ -58,8 +58,8 @@ export type GridCellBuilding = {
 };
 
 const DEFAULT_GRID2_POSITION: Grid2Position = {
-  outerFirstOctet: 0,
-  outerSecondOctet: 0,
+  outerFirstOctet: 128,
+  outerSecondOctet: 220,
   innerThirdStart: 0,
   innerFourthStart: 0,
 };
