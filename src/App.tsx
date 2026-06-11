@@ -391,6 +391,32 @@ function BuildingDetailScene({
 
   const flagY = Math.max(1.4, roofTopY * 0.46);
   const labelY = roofTopY + 0.8;
+  const neighborPalette = ['#1f2937', '#374151', '#475569', '#334155', '#4b5563'];
+  const neighborBuildings = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
+  ].map(([gridX, gridZ], index) => {
+    const seed = building.label * 97 + gridX * 31 + gridZ * 53 + building.ipAddress.length * 17;
+    const height = 1.15 + pseudoRandom(seed + 1) * 2.15;
+    const width = 1.05 + pseudoRandom(seed + 2) * 0.55;
+    const depth = 1.05 + pseudoRandom(seed + 3) * 0.55;
+    const color = neighborPalette[Math.floor(pseudoRandom(seed + 4) * neighborPalette.length)];
+    return {
+      key: `neighbor-${index}`,
+      x: gridX * 4.55,
+      z: gridZ * 4.55,
+      height,
+      width,
+      depth,
+      color,
+    };
+  });
 
   return (
     <>
@@ -408,6 +434,35 @@ function BuildingDetailScene({
         <boxGeometry args={[4.8, 0.5, 4.8]} />
         <meshStandardMaterial color="#8f8f8f" />
       </mesh>
+
+      {neighborBuildings.map((neighbor) => (
+        <group key={neighbor.key} position={[neighbor.x, 0, neighbor.z]}>
+          <mesh position={[0, -0.23, 0]} receiveShadow>
+            <boxGeometry args={[2.85, 0.38, 2.85]} />
+            <meshStandardMaterial color="#6b7280" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, neighbor.height / 2 - 0.02, 0]} castShadow receiveShadow>
+            <boxGeometry args={[neighbor.width, neighbor.height, neighbor.depth]} />
+            <meshStandardMaterial color={neighbor.color} transparent opacity={0.72} roughness={0.82} />
+          </mesh>
+          <mesh position={[0, neighbor.height + 0.035, 0]} castShadow>
+            <boxGeometry args={[neighbor.width * 0.9, 0.07, neighbor.depth * 0.9]} />
+            <meshStandardMaterial color="#111827" transparent opacity={0.7} roughness={0.8} />
+          </mesh>
+          {[0.32, 0.58].map((rowY, rowIndex) => (
+            <mesh key={`${neighbor.key}-window-${rowIndex}`} position={[0, Math.min(neighbor.height - 0.18, rowY + rowIndex * 0.54), neighbor.depth / 2 + 0.012]}>
+              <planeGeometry args={[neighbor.width * 0.48, 0.16]} />
+              <meshStandardMaterial
+                color="#dbeafe"
+                emissive="#dbeafe"
+                emissiveIntensity={0.12}
+                transparent
+                opacity={0.28}
+              />
+            </mesh>
+          ))}
+        </group>
+      ))}
 
       {building.buildingFamily === 'block' && (
         <>
