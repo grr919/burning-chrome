@@ -1171,25 +1171,16 @@ function App() {
     setBottomInfoHtml('');
   };
 
-  const updateGrid2Octet = (field: keyof Grid2Position, rawValue: string) => {
-    const parsed = Number.parseInt(rawValue, 10);
-    if (!Number.isFinite(parsed)) {
-      return;
+  const moveGrid2WindowByDirection = (direction: 'north' | 'south' | 'east' | 'west') => {
+    if (direction === 'north') {
+      moveGrid2Window(-GRID2_WINDOW_SIZE, 0);
+    } else if (direction === 'south') {
+      moveGrid2Window(GRID2_WINDOW_SIZE, 0);
+    } else if (direction === 'west') {
+      moveGrid2Window(0, -GRID2_WINDOW_SIZE);
+    } else {
+      moveGrid2Window(0, GRID2_WINDOW_SIZE);
     }
-
-    setGrid2Position((prev) => {
-      const next = {
-        ...prev,
-        [field]: field === 'innerThirdStart' || field === 'innerFourthStart'
-          ? clampGrid2WindowStart(parsed)
-          : clampOctet(parsed),
-      };
-      const nextTargetIp = getGrid2IpFromCell(next, 0, 0);
-      setSelectedTargetIp(nextTargetIp);
-      setPlayerLocation({ kind: 'ip', ipAddress: nextTargetIp, x: 0, y: 0 });
-      return next;
-    });
-    setBottomInfoHtml('');
   };
 
   const updatePlayerLocationFromGridView = useCallback(() => {
@@ -1837,76 +1828,6 @@ function App() {
           </div>
         </header>
 
-        {layoutMode === 'grid' && gridSystemMode === 'grid2' && !buildingView && (
-          <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-lg p-2 flex flex-col gap-2">
-            <div className="flex flex-wrap gap-3 items-end">
-              <label className="text-sm">
-                <span className="block font-medium mb-1">Outer n1</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={255}
-                  value={grid2Position.outerFirstOctet}
-                  onChange={(event) => updateGrid2Octet('outerFirstOctet', event.target.value)}
-                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="block font-medium mb-1">Outer n2</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={255}
-                  value={grid2Position.outerSecondOctet}
-                  onChange={(event) => updateGrid2Octet('outerSecondOctet', event.target.value)}
-                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="block font-medium mb-1">Start n3</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={240}
-                  value={grid2Position.innerThirdStart}
-                  onChange={(event) => updateGrid2Octet('innerThirdStart', event.target.value)}
-                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="block font-medium mb-1">Start n4</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={240}
-                  value={grid2Position.innerFourthStart}
-                  onChange={(event) => updateGrid2Octet('innerFourthStart', event.target.value)}
-                  className="w-20 rounded border border-gray-400 px-2 py-1 text-sm"
-                />
-              </label>
-              <div className="text-xs text-gray-700 pb-1">
-                Current visible range: {getGrid2IpFromCell(grid2Position, 0, 0)} through {getGrid2IpFromCell(grid2Position, 15, 15)}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-sm font-medium">Move neighborhood:</span>
-              <button onClick={() => moveGrid2Window(-16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 ?16</button>
-              <button onClick={() => moveGrid2Window(16, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +16</button>
-              <button onClick={() => moveGrid2Window(0, -16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 ?16</button>
-              <button onClick={() => moveGrid2Window(0, 16)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +16</button>
-              <button onClick={() => moveGrid2Window(-1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 ?1</button>
-              <button onClick={() => moveGrid2Window(1, 0)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n3 +1</button>
-              <button onClick={() => moveGrid2Window(0, -1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 ?1</button>
-              <button onClick={() => moveGrid2Window(0, 1)} className="px-3 py-1.5 rounded-md text-sm bg-gray-200 border border-gray-400">n4 +1</button>
-            </div>
-
-            <p className="text-xs text-gray-700">
-              Mouse wheel and drag navigate the grid view; use the buttons to move the neighborhood window.
-            </p>
-          </div>
-        )}
-
         {buildingView ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1 min-h-[260px] lg:flex-[1.35] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]">
@@ -2189,6 +2110,46 @@ function App() {
                   target={[0, 0, 0]}
                 />
               </Canvas>
+              {gridSystemMode === 'grid2' && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Move Grid 2 window north"
+                    onClick={() => moveGrid2WindowByDirection('north')}
+                    disabled={grid2Position.innerThirdStart <= 0}
+                    className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ? North
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move Grid 2 window south"
+                    onClick={() => moveGrid2WindowByDirection('south')}
+                    disabled={grid2Position.innerThirdStart >= 256 - GRID2_WINDOW_SIZE}
+                    className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ? South
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move Grid 2 window west"
+                    onClick={() => moveGrid2WindowByDirection('west')}
+                    disabled={grid2Position.innerFourthStart <= 0}
+                    className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ? West
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move Grid 2 window east"
+                    onClick={() => moveGrid2WindowByDirection('east')}
+                    disabled={grid2Position.innerFourthStart >= 256 - GRID2_WINDOW_SIZE}
+                    className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-gray-500 bg-white/80 px-4 py-2 text-base font-semibold text-gray-900 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ? East
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
