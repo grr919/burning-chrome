@@ -1205,18 +1205,26 @@ function App() {
 
   useEffect(() => {
     const container = gridContainerRef.current;
-    if (!container || layoutMode !== 'grid' || buildingView) {
+    if (!container) {
       return;
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      if (layoutMode !== 'grid' || buildingView) {
+        return;
+      }
+
+      const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+        ? event.deltaY
+        : event.deltaY;
+
+      if (dominantDelta === 0) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
-      moveGridPlayerByWheel(event.deltaY > 0 ? 1 : -1);
+      moveGridPlayerByWheel(dominantDelta > 0 ? 1 : -1);
     };
 
     container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
@@ -2185,11 +2193,12 @@ function App() {
                   infoDisplayMode={infoDisplayMode}
                   remoteUsers={multiplayer.others}
                   onRemoteUserClick={handleRemoteUserClick}
+                  localPlayerLocation={playerLocation}
                 />
                 <OrbitControls
                   ref={controlsRef}
                   enablePan
-                  enableZoom
+                  enableZoom={false}
                   enableRotate
                   minPolarAngle={Math.PI / 6}
                   maxPolarAngle={Math.PI / 2.1}
