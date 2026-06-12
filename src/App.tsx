@@ -1539,6 +1539,8 @@ function App() {
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
                 <div
                   className="relative"
+                  onMouseEnter={() => setIsOptionsOpen(true)}
+                  onMouseLeave={() => setIsOptionsOpen(false)}
                   onBlur={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                       setIsOptionsOpen(false);
@@ -1547,7 +1549,8 @@ function App() {
                 >
                   <button
                     type="button"
-                    onClick={() => setIsOptionsOpen((open) => !open)}
+                    onClick={() => setIsOptionsOpen(true)}
+                    onFocus={() => setIsOptionsOpen(true)}
                     className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                     aria-expanded={isOptionsOpen}
                     aria-haspopup="menu"
