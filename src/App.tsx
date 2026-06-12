@@ -1487,7 +1487,6 @@ function App() {
           selectedBuildingIp={buildingView?.ipAddress}
           selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
           selectedBuildingCountryCodeLabel={buildingView?.countryCodeLabel}
-          selectedBuildingDirectoryEntries={buildingView ? buildingDirectoryEntries : undefined}
         />
       </Canvas>
     </div>
@@ -1627,9 +1626,9 @@ function App() {
             </div>
 
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
-              <div className="font-bold text-lg">Building view: {buildingView.ipAddress}</div>
+              <div className="font-bold text-lg">Street and Building View: {buildingView.ipAddress}</div>
               <div className="text-sm text-gray-600 mt-1">
-                Use Return to grid to leave building view.
+                Use "Return to Grid" to leave Street and Building View.
               </div>
 
               <div className="mt-3 flex flex-col gap-2">
@@ -1638,7 +1637,7 @@ function App() {
                     onClick={handleExitBuildingView}
                     className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                   >
-                    Return to grid
+                    Return to Grid
                   </button>
 
                   <button
@@ -1790,6 +1789,28 @@ function App() {
                     )
                   ) : (
                     <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-semibold">Directory</div>
+                  {buildingDirectoryEntries.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {buildingDirectoryEntries.map((entry) => (
+                        <a
+                          key={entry.hostname}
+                          href={entry.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={entry.hostname}
+                          className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
+                        >
+                          {entry.hostname}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-600 mt-2">No websites identified.</div>
                   )}
                 </div>
               </div>

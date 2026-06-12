@@ -41,11 +41,6 @@ type LookupAddress = {
   fourthOctetValue: number;
 };
 
-type DirectoryEntry = {
-  hostname: string;
-  url: string;
-};
-
 export type GridCellBuilding = {
   x: number;
   y: number;
@@ -93,7 +88,6 @@ type IPGridProps = {
   selectedBuildingIp?: string;
   selectedBuildingFlagImageUrl?: string | null;
   selectedBuildingCountryCodeLabel?: string;
-  selectedBuildingDirectoryEntries?: DirectoryEntry[];
 };
 
 function WallMountedFlag({
@@ -190,62 +184,6 @@ function WallMountedFlag({
         </Text>
       )}
     </mesh>
-  );
-}
-
-function BuildingDirectorySign({
-  entries,
-  position,
-}: {
-  entries: DirectoryEntry[];
-  position: [number, number, number];
-}) {
-  return (
-    <Html position={position} transform sprite distanceFactor={8}>
-      <div
-        style={{
-          width: '180px',
-          overflow: 'visible',
-          border: '1px solid rgba(17,24,39,0.75)',
-          borderRadius: '4px',
-          background: 'rgba(255,255,255,0.94)',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-          color: '#111827',
-          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          fontSize: '10px',
-          lineHeight: 1.25,
-          padding: '6px',
-          pointerEvents: 'auto',
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '4px' }}>Directory</div>
-        {entries.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {entries.map((entry) => (
-              <a
-                key={entry.hostname}
-                href={entry.url}
-                target="_blank"
-                rel="noreferrer"
-                title={entry.hostname}
-                style={{
-                  color: '#1d4ed8',
-                  display: 'block',
-                  overflow: 'hidden',
-                  textDecoration: 'underline',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {entry.hostname}
-              </a>
-            ))}
-          </div>
-        ) : (
-          <div style={{ color: '#4b5563' }}>No websites identified.</div>
-        )}
-      </div>
-    </Html>
   );
 }
 
@@ -1453,7 +1391,6 @@ function IPGrid({
   selectedBuildingIp,
   selectedBuildingFlagImageUrl,
   selectedBuildingCountryCodeLabel,
-  selectedBuildingDirectoryEntries = [],
 }: IPGridProps) {
   const gridSize = 16;
   const spacing = 1.9;
@@ -3183,13 +3120,6 @@ function IPGrid({
               onDoubleClick={handleBuildingDoubleClick}
             />
 
-            {isSelectedBuilding && (
-              <BuildingDirectorySign
-                entries={selectedBuildingDirectoryEntries}
-                position={[facadeWidth / 2 + 0.72, Math.max(1.05, Math.min(1.65, roofTopY * 0.62)), facadeFlagZ + 0.36]}
-              />
-            )}
-
             {windowBands}
 
             <Text
@@ -3264,17 +3194,6 @@ function IPGrid({
     const xOffset = Math.cos(angle) * spread;
     const zOffset = Math.sin(angle) * spread;
     const locationLabel = getAvatarLocationDisplay(user);
-    const faceSeed = hashString(user.userId);
-    const faceShape = faceSeed % 3;
-    const headScale: [number, number, number] =
-      faceShape === 0
-        ? [1, 1, 1]
-        : faceShape === 1
-          ? [1.12, 0.92, 0.92]
-          : [0.92, 1.18, 0.96];
-    const eyeSize = 0.038 + (faceSeed % 3) * 0.008;
-    const eyeSpacing = 0.105 + ((faceSeed >> 2) % 3) * 0.018;
-    const mouthKind = (faceSeed >> 4) % 3;
     const handleRemoteAvatarClick = (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
       onRemoteUserClick?.(user);
@@ -3299,34 +3218,10 @@ function IPGrid({
         }}
       >
         <group onClick={handleRemoteAvatarClick}>
-          <mesh castShadow scale={headScale}>
+          <mesh castShadow>
             <sphereGeometry args={[0.36, 24, 24]} />
             <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.32} />
           </mesh>
-          <mesh position={[-eyeSpacing, 0.07, 0.34]}>
-            <sphereGeometry args={[eyeSize, 12, 12]} />
-            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.2} />
-          </mesh>
-          <mesh position={[eyeSpacing, 0.07, 0.34]}>
-            <sphereGeometry args={[eyeSize, 12, 12]} />
-            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.2} />
-          </mesh>
-          <mesh position={[0, -0.1, 0.35]} rotation={[0, 0, mouthKind === 1 ? Math.PI : 0]}>
-            <torusGeometry args={[0.105, 0.012, 8, 20, mouthKind === 2 ? Math.PI * 1.9 : Math.PI]} />
-            <meshStandardMaterial color="#111827" emissive="#111827" emissiveIntensity={0.16} />
-          </mesh>
-          {(faceSeed >> 6) % 2 === 0 && (
-            <>
-              <mesh position={[-eyeSpacing, 0.17, 0.34]} rotation={[0, 0, -0.18]}>
-                <boxGeometry args={[0.1, 0.018, 0.012]} />
-                <meshStandardMaterial color="#111827" />
-              </mesh>
-              <mesh position={[eyeSpacing, 0.17, 0.34]} rotation={[0, 0, 0.18]}>
-                <boxGeometry args={[0.1, 0.018, 0.012]} />
-                <meshStandardMaterial color="#111827" />
-              </mesh>
-            </>
-          )}
         </group>
         <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.44, 0.64, 32]} />
