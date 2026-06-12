@@ -80,7 +80,7 @@ type IPGridProps = {
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
   onHoverInfoHtml?: (html: string) => void;
-  onHoverCellChange?: (cell: { x: number; y: number; ipAddress: string }) => void;
+  onHoverCellChange?: (cell: GridCellBuilding) => void;
   infoDisplayMode?: InfoDisplayMode;
   remoteUsers?: MultiplayerPresence[];
   onRemoteUserClick?: (user: MultiplayerPresence) => void;
@@ -2433,7 +2433,7 @@ function IPGrid({
               document.body.style.cursor = 'pointer';
               setHoveredCube(cubeId);
               setHoveredIpAddress(ipAddress);
-              onHoverCellChange?.({ x: cellX, y: cellY, ipAddress });
+              onHoverCellChange?.(cellBuilding);
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
             onPointerOut={(event) => {
@@ -2455,7 +2455,7 @@ function IPGrid({
                 document.body.style.cursor = 'pointer';
                 setHoveredCube(cubeId);
                 setHoveredIpAddress(ipAddress);
-                onHoverCellChange?.({ x: cellX, y: cellY, ipAddress });
+                onHoverCellChange?.(cellBuilding);
                 onHoverInfoHtml?.(hoverInfoHtml);
               }}
               onPointerOut={() => {

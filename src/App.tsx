@@ -481,10 +481,6 @@ function getStreetViewpointForBuilding(cell: GridCellBuilding): { x: number; y: 
   return { x: Math.max(0, x - 1), y, heading: 1 };
 }
 
-function getDebugCellTarget(cell: { x: number; y: number; ipAddress: string } | null | undefined) {
-  return cell ? { x: cell.x, y: cell.y, ipAddress: cell.ipAddress } : null;
-}
-
 function StreetGridCamera({
   streetPlayerX,
   streetPlayerY,
@@ -542,6 +538,7 @@ function App() {
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const currentHoverCellRef = useRef<GridCellBuilding | null>(null);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
@@ -615,16 +612,14 @@ function App() {
   }, [multiplayer.currentUser.displayName]);
   useEffect(() => {
     setPointerTarget(undefined);
+    currentHoverCellRef.current = null;
   }, [multiplayerRoomKey]);
 
   useEffect(() => {
-    console.debug('[Burning Chrome target debug] buildingView state applied', {
-      buildingViewTarget: getDebugCellTarget(buildingView),
-      lastHoverTarget: getDebugCellTarget(pointerTarget),
-      gridSystemMode,
-      zoomLevel,
-    });
-  }, [buildingView, pointerTarget, gridSystemMode, zoomLevel]);
+    if (layoutMode !== 'grid' || buildingView) {
+      currentHoverCellRef.current = null;
+    }
+  }, [layoutMode, buildingView]);
 
   useEffect(() => {
     if (layoutMode !== 'street' || buildingView) {
@@ -746,18 +741,14 @@ function App() {
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
-    const viewpoint = getStreetViewpointForBuilding(cell);
-    console.debug('[Burning Chrome target debug] grid click target', {
-      clickTarget: getDebugCellTarget(cell),
-      lastHoverTarget: getDebugCellTarget(pointerTarget),
-      viewpoint,
-      gridSystemMode,
-      zoomLevel,
-    });
+    const targetCell = layoutMode === 'grid' && currentHoverCellRef.current
+      ? currentHoverCellRef.current
+      : cell;
+    const viewpoint = getStreetViewpointForBuilding(targetCell);
     setStreetPlayerX(viewpoint.x);
     setStreetPlayerY(viewpoint.y);
     setStreetHeading(viewpoint.heading);
-    handleFlagClick(cell);
+    handleFlagClick(targetCell);
   };
 
   const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
@@ -1245,12 +1236,6 @@ function App() {
 
 
   const handleFlagClick = (building: BuildingViewState) => {
-    console.debug('[Burning Chrome target debug] buildingView target requested', {
-      buildingViewTarget: getDebugCellTarget(building),
-      lastHoverTarget: getDebugCellTarget(pointerTarget),
-      gridSystemMode,
-      zoomLevel,
-    });
     setBuildingView(building);
     setSelectedTargetIp(building.ipAddress);
     setPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
@@ -1451,13 +1436,8 @@ function App() {
     : 'Offline';
   const nearbyUsers = multiplayer.others;
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
-  const handlePointerTargetChange = (cell: MultiplayerCell) => {
-    console.debug('[Burning Chrome target debug] hover target', {
-      hoverTarget: getDebugCellTarget(cell),
-      currentBuildingViewTarget: getDebugCellTarget(buildingView),
-      gridSystemMode,
-      zoomLevel,
-    });
+  const handlePointerTargetChange = (cell: GridCellBuilding) => {
+    currentHoverCellRef.current = cell;
     setPointerTarget(cell);
   };
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
