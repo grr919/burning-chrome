@@ -793,14 +793,17 @@ function App() {
   };
 
   const handleCellDoubleClick = (cell: GridCellBuilding) => {
-    setSelectedTargetIp(cell.ipAddress);
+    const targetCell = layoutMode === 'grid' && currentHoverCellRef.current
+      ? currentHoverCellRef.current
+      : cell;
+    setSelectedTargetIp(targetCell.ipAddress);
 
     if (gridSystemMode === 'grid2') {
-      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
       return;
     }
 
-    const [firstOctet, secondOctet, thirdOctet] = parseIpOctets(cell.ipAddress);
+    const [firstOctet, secondOctet, thirdOctet] = parseIpOctets(targetCell.ipAddress);
     setBuildingView(null);
 
     if (zoomLevel === 0) {
