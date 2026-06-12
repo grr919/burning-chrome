@@ -505,7 +505,7 @@ function StreetGridCamera({
       focusPosition ? focusPosition.z : position.z + headingVector.dy * STREET_GRID_SPACING * 3
     );
     camera.updateProjectionMatrix();
-  }, [camera, streetPlayerX, streetPlayerY, heading, focusCell]);
+  }, [camera, streetPlayerX, streetPlayerY, heading, focusCell?.x, focusCell?.y]);
 
   return null;
 }
@@ -1461,52 +1461,68 @@ function App() {
     }
   };
 
-  const renderStreetSceneCanvas = (viewKey: string, focusCell?: { x: number; y: number } | null) => (
-    <div
-      ref={gridContainerRef}
-      className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
-    >
-      <Canvas
-        key={viewKey}
-        camera={{ position: [0, 1.55, 0], fov: 62 }}
-        shadows
-        onCreated={({ camera }) => {
-          cameraRef.current = camera as THREE.PerspectiveCamera;
-        }}
+  const renderStreetSceneCanvas = (viewKey: string, focusCell?: { x: number; y: number } | null) => {
+    const focusPosition = focusCell ? getStreetCellWorldPosition(focusCell.x, focusCell.y) : null;
+
+    return (
+      <div
+        ref={gridContainerRef}
+        className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
       >
-        <fog attach="fog" args={['#111827', 12, 46]} />
-        <ambientLight intensity={0.68} />
-        <pointLight position={[10, 16, 10]} intensity={1.05} />
-        <directionalLight position={[-8, 12, 8]} intensity={0.85} castShadow />
-        <StreetGridCamera
-          streetPlayerX={streetPlayerX}
-          streetPlayerY={streetPlayerY}
-          heading={streetHeading}
-          focusCell={focusCell}
-        />
-        <IPGrid
-          zoomLevel={zoomLevel}
-          currentPosition={currentPosition}
-          getIPColor={getIPColor}
-          onCellClick={handleStreetCellClick}
-          onCellDoubleClick={handleStreetCellClick}
-          onBuildingClick={handleStreetBuildingClick}
-          onBuildingDoubleClick={handleStreetBuildingClick}
-          lookupMode={lookupMode}
-          gridSystemMode={gridSystemMode}
-          grid2Position={grid2Position}
-          onHoverInfoHtml={setBottomInfoHtml}
-          onHoverCellChange={handlePointerTargetChange}
-          infoDisplayMode={infoDisplayMode}
-          remoteUsers={multiplayer.others}
-          onRemoteUserClick={handleRemoteUserClick}
-          selectedBuildingIp={buildingView?.ipAddress}
-          selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
-          selectedBuildingCountryCodeLabel={buildingView?.countryCodeLabel}
-        />
-      </Canvas>
-    </div>
-  );
+        <Canvas
+          key={viewKey}
+          camera={{ position: [0, 1.55, 0], fov: 62 }}
+          shadows
+          onCreated={({ camera }) => {
+            cameraRef.current = camera as THREE.PerspectiveCamera;
+          }}
+        >
+          <fog attach="fog" args={['#111827', 12, 46]} />
+          <ambientLight intensity={0.68} />
+          <pointLight position={[10, 16, 10]} intensity={1.05} />
+          <directionalLight position={[-8, 12, 8]} intensity={0.85} castShadow />
+          <StreetGridCamera
+            streetPlayerX={streetPlayerX}
+            streetPlayerY={streetPlayerY}
+            heading={streetHeading}
+            focusCell={focusCell}
+          />
+          <IPGrid
+            zoomLevel={zoomLevel}
+            currentPosition={currentPosition}
+            getIPColor={getIPColor}
+            onCellClick={handleStreetCellClick}
+            onCellDoubleClick={handleStreetCellClick}
+            onBuildingClick={handleStreetBuildingClick}
+            onBuildingDoubleClick={handleStreetBuildingClick}
+            lookupMode={lookupMode}
+            gridSystemMode={gridSystemMode}
+            grid2Position={grid2Position}
+            onHoverInfoHtml={setBottomInfoHtml}
+            onHoverCellChange={handlePointerTargetChange}
+            infoDisplayMode={infoDisplayMode}
+            remoteUsers={multiplayer.others}
+            onRemoteUserClick={handleRemoteUserClick}
+            selectedBuildingIp={buildingView?.ipAddress}
+            selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
+            selectedBuildingCountryCodeLabel={buildingView?.countryCodeLabel}
+          />
+          {focusPosition && (
+            <OrbitControls
+              ref={controlsRef}
+              enablePan
+              enableZoom
+              enableRotate
+              onChange={updatePlayerLocationFromGridView}
+              minPolarAngle={Math.PI / 6}
+              maxPolarAngle={Math.PI / 2.1}
+              target={[focusPosition.x, 1.05, focusPosition.z]}
+            />
+          )}
+        </Canvas>
+      </div>
+    );
+  };
 
   return (
     <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
