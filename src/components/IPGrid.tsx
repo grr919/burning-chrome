@@ -204,9 +204,8 @@ function BuildingDirectorySign({
     <Html position={position} transform sprite distanceFactor={8}>
       <div
         style={{
-          width: '156px',
-          maxHeight: '172px',
-          overflow: 'hidden',
+          width: '180px',
+          overflow: 'visible',
           border: '1px solid rgba(17,24,39,0.75)',
           borderRadius: '4px',
           background: 'rgba(255,255,255,0.94)',
@@ -3187,7 +3186,7 @@ function IPGrid({
             {isSelectedBuilding && (
               <BuildingDirectorySign
                 entries={selectedBuildingDirectoryEntries}
-                position={[facadeWidth / 2 + 0.52, Math.max(0.58, Math.min(1.1, roofTopY * 0.34)), facadeFlagZ + 0.18]}
+                position={[facadeWidth / 2 + 0.72, Math.max(1.05, Math.min(1.65, roofTopY * 0.62)), facadeFlagZ + 0.36]}
               />
             )}
 

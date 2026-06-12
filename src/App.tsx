@@ -69,6 +69,8 @@ type SshLaunchResponse = {
 };
 
 type BuildingViewState = {
+  x: number;
+  y: number;
   ipAddress: string;
   label: number;
   color: string;
@@ -483,24 +485,27 @@ function StreetGridCamera({
   streetPlayerX,
   streetPlayerY,
   heading,
+  focusCell,
 }: {
   streetPlayerX: number;
   streetPlayerY: number;
   heading: StreetHeading;
+  focusCell?: { x: number; y: number } | null;
 }) {
   const { camera } = useThree();
 
   useEffect(() => {
     const position = getStreetCellWorldPosition(streetPlayerX, streetPlayerY);
     const headingVector = getStreetHeadingVector(heading);
+    const focusPosition = focusCell ? getStreetCellWorldPosition(focusCell.x, focusCell.y) : null;
     camera.position.set(position.x, 1.55, position.z);
     camera.lookAt(
-      position.x + headingVector.dx * STREET_GRID_SPACING * 3,
-      1.35,
-      position.z + headingVector.dy * STREET_GRID_SPACING * 3
+      focusPosition ? focusPosition.x : position.x + headingVector.dx * STREET_GRID_SPACING * 3,
+      focusPosition ? 1.05 : 1.35,
+      focusPosition ? focusPosition.z : position.z + headingVector.dy * STREET_GRID_SPACING * 3
     );
     camera.updateProjectionMatrix();
-  }, [camera, streetPlayerX, streetPlayerY, heading]);
+  }, [camera, streetPlayerX, streetPlayerY, heading, focusCell]);
 
   return null;
 }
@@ -1440,7 +1445,7 @@ function App() {
     }
   };
 
-  const renderStreetSceneCanvas = (viewKey: string) => (
+  const renderStreetSceneCanvas = (viewKey: string, focusCell?: { x: number; y: number } | null) => (
     <div
       ref={gridContainerRef}
       className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
@@ -1461,6 +1466,7 @@ function App() {
           streetPlayerX={streetPlayerX}
           streetPlayerY={streetPlayerY}
           heading={streetHeading}
+          focusCell={focusCell}
         />
         <IPGrid
           zoomLevel={zoomLevel}
@@ -1515,7 +1521,7 @@ function App() {
                     aria-expanded={isOptionsOpen}
                     aria-haspopup="menu"
                   >
-                    Options
+                    Menu
                   </button>
                   {isOptionsOpen && (
                     <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
@@ -1614,7 +1620,10 @@ function App() {
         {buildingView ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
-              {renderStreetSceneCanvas(`building-street-${viewResetKey}-${buildingView.ipAddress}`)}
+              {renderStreetSceneCanvas(
+                `building-street-${viewResetKey}-${buildingView.ipAddress}`,
+                { x: buildingView.x, y: buildingView.y }
+              )}
             </div>
 
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
