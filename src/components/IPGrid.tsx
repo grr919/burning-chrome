@@ -153,8 +153,6 @@ function WallMountedFlag({
     };
   }, [flagImageUrl]);
 
-  const hasTexture = Boolean(flagTexture && !textureFailed);
-
   return (
     <mesh
       position={position}
@@ -172,15 +170,15 @@ function WallMountedFlag({
     >
       <planeGeometry args={[width, height]} />
       <meshBasicMaterial
-        map={hasTexture ? flagTexture ?? undefined : undefined}
-        color={hasTexture ? '#ffffff' : '#f8fafc'}
+        map={flagTexture ?? undefined}
+        color={flagTexture && !textureFailed ? '#ffffff' : '#f8fafc'}
         side={THREE.DoubleSide}
-        transparent={hasTexture}
-        alphaTest={hasTexture ? 0.08 : 0}
+        transparent={Boolean(flagTexture)}
+        alphaTest={flagTexture ? 0.08 : 0}
         depthTest
-        depthWrite={false}
+        depthWrite
       />
-      {!hasTexture && fallbackLabel && (
+      {!flagTexture && fallbackLabel && (
         <Text position={[0, 0, 0.002]} fontSize={height * 0.42} color="#111827" anchorX="center" anchorY="middle">
           {fallbackLabel}
         </Text>
@@ -3112,11 +3110,11 @@ function IPGrid({
               );
             })}
 
-            {(visibleFlagImageUrl || visibleCountryCodeLabel) && (
+            {visibleFlagImageUrl && (
               <WallMountedFlag
                 flagImageUrl={visibleFlagImageUrl}
                 fallbackLabel={visibleCountryCodeLabel}
-                position={[0, facadeFlagY, facadeFlagZ + 0.055]}
+                position={[0, facadeFlagY, facadeFlagZ + 0.03]}
                 width={0.28}
                 height={0.196}
                 onClick={handleBuildingSingleClick}
