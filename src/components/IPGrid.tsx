@@ -2041,11 +2041,11 @@ function IPGrid({
       const countryCodeLabel = getCountryCode(rdapRecord?.country)?.toUpperCase() ?? '';
       const isSelectedBuilding = selectedBuildingIp === ipAddress;
       const visibleFlagImageUrl =
-        isSelectedBuilding && selectedBuildingFlagImageUrl !== undefined
+        isSelectedBuilding && selectedBuildingFlagImageUrl
           ? selectedBuildingFlagImageUrl
           : flagImageUrl;
       const visibleCountryCodeLabel =
-        isSelectedBuilding && selectedBuildingCountryCodeLabel !== undefined
+        isSelectedBuilding && selectedBuildingCountryCodeLabel
           ? selectedBuildingCountryCodeLabel
           : countryCodeLabel;
       const countryName = flagImageUrl ? getCountryName(rdapRecord?.country) : null;
@@ -3110,15 +3110,17 @@ function IPGrid({
               );
             })}
 
-            <WallMountedFlag
-              flagImageUrl={visibleFlagImageUrl}
-              fallbackLabel={visibleCountryCodeLabel}
-              position={[0, facadeFlagY, facadeFlagZ + 0.006]}
-              width={0.28}
-              height={0.196}
-              onClick={handleBuildingSingleClick}
-              onDoubleClick={handleBuildingDoubleClick}
-            />
+            {visibleFlagImageUrl && (
+              <WallMountedFlag
+                flagImageUrl={visibleFlagImageUrl}
+                fallbackLabel={visibleCountryCodeLabel}
+                position={[0, facadeFlagY, facadeFlagZ + 0.03]}
+                width={0.28}
+                height={0.196}
+                onClick={handleBuildingSingleClick}
+                onDoubleClick={handleBuildingDoubleClick}
+              />
+            )}
 
             {windowBands}
 
