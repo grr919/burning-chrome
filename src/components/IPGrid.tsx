@@ -673,6 +673,10 @@ function getCountryName(countryCode?: string): string | null {
   }
 }
 
+function getBestCountryCode(rdapRecord?: RdapRecord, asnRecord?: AsnRecord): string | null {
+  return getCountryCode(rdapRecord?.country) ?? getCountryCode(asnRecord?.country);
+}
+
 type OrganizationCategory = 'cloud' | 'telecom' | 'education' | 'government' | 'residential' | 'security' | 'commercial' | 'unknown';
 
 type BuildingVisualStyle = {
@@ -2034,8 +2038,9 @@ function IPGrid({
         : mixHexColors('#9a9a9a', visualStyle.bodyColor, 0.12);
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
-      const flagImageUrl = getFlagImageUrl(rdapRecord?.country);
-      const countryCodeLabel = getCountryCode(rdapRecord?.country)?.toUpperCase() ?? '';
+      const bestCountryCode = getBestCountryCode(rdapRecord, asnRecord);
+      const flagImageUrl = bestCountryCode ? getFlagImageUrl(bestCountryCode) : null;
+      const countryCodeLabel = bestCountryCode?.toUpperCase() ?? '';
       const isSelectedBuilding = selectedBuildingIp === ipAddress;
       const visibleFlagImageUrl =
         isSelectedBuilding && selectedBuildingFlagImageUrl
@@ -2045,7 +2050,7 @@ function IPGrid({
         isSelectedBuilding && selectedBuildingCountryCodeLabel
           ? selectedBuildingCountryCodeLabel
           : countryCodeLabel;
-      const countryName = flagImageUrl ? getCountryName(rdapRecord?.country) : null;
+      const countryName = bestCountryCode ? getCountryName(bestCountryCode) : null;
       const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
         .map((portLabel) => parseTopPortNumber(portLabel))
         .filter((port): port is number => typeof port === 'number'))];
