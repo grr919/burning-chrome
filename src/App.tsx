@@ -810,23 +810,36 @@ function App() {
     if (zoomLevel === 0) {
       setCurrentPosition({ firstOctet, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(1);
-      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else if (zoomLevel === 1) {
       setCurrentPosition((prev) => ({ ...prev, secondOctet, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(2);
-      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else if (zoomLevel === 2) {
       setCurrentPosition((prev) => ({ ...prev, thirdOctet, fourthOctet: 0 }));
       setZoomLevel(3);
-      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: 0, y: 0 });
+      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else {
-      setPlayerLocation({ kind: 'ip', ipAddress: cell.ipAddress, x: cell.x, y: cell.y });
+      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
     }
   };
 
 
   const handleBack = () => {
     if (layoutMode === 'street') {
+      const nextLocation = getPlayerLocationForGridCell(
+        gridSystemMode,
+        zoomLevel,
+        currentPosition,
+        grid2Position,
+        streetPlayerX,
+        streetPlayerY
+      );
+      if (nextLocation.kind === 'ip') {
+        setSelectedTargetIp(nextLocation.ipAddress);
+      }
+      setPlayerLocation(nextLocation);
+      setBuildingView(null);
       setLayoutMode('grid');
       return;
     }
@@ -836,20 +849,29 @@ function App() {
     }
 
     if (zoomLevel === 1) {
+      const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.0.0.0`, x: currentPosition.firstOctet % GRID_SIZE, y: Math.floor(currentPosition.firstOctet / GRID_SIZE) };
       setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(0);
+      setSelectedTargetIp(nextLocation.ipAddress);
+      setPlayerLocation(nextLocation);
       return;
     }
 
     if (zoomLevel === 2) {
+      const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.0.0`, x: currentPosition.secondOctet % GRID_SIZE, y: Math.floor(currentPosition.secondOctet / GRID_SIZE) };
       setCurrentPosition((prev) => ({ ...prev, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(1);
+      setSelectedTargetIp(nextLocation.ipAddress);
+      setPlayerLocation(nextLocation);
       return;
     }
 
     if (zoomLevel === 3) {
+      const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0`, x: currentPosition.thirdOctet % GRID_SIZE, y: Math.floor(currentPosition.thirdOctet / GRID_SIZE) };
       setCurrentPosition((prev) => ({ ...prev, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(2);
+      setSelectedTargetIp(nextLocation.ipAddress);
+      setPlayerLocation(nextLocation);
     }
   };
 
@@ -1438,7 +1460,9 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const nearbyUsers = multiplayer.others;
+  const nearbyUsers = multiplayer.others.filter((user) =>
+    (user.chatLocationKey ?? getExactLocationKey(user.playerLocation)) === chatLocationKey
+  );
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const handlePointerTargetChange = (cell: GridCellBuilding) => {
     currentHoverCellRef.current = cell;

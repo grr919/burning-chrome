@@ -55,6 +55,7 @@ export type MultiplayerPresence = {
   pointerTarget?: MultiplayerCell;
   hoveredCell?: MultiplayerCell;
   selectedIp?: string;
+  chatLocationKey?: string;
   lastSeenAt: string;
 };
 
@@ -209,7 +210,6 @@ export function useMultiplayerPresence({
   const [others, setOthers] = useState<MultiplayerPresence[]>([]);
   const [messages, setMessages] = useState<RoomChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const lastTrackRef = useRef(0);
   const chatLocationKeyRef = useRef(chatLocationKey);
 
   useEffect(() => {
@@ -227,8 +227,9 @@ export function useMultiplayerPresence({
     pointerTarget,
     hoveredCell: pointerTarget,
     selectedIp,
+    chatLocationKey,
     lastSeenAt: new Date().toISOString(),
-  }), [identity, gridSystemMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp]);
+  }), [identity, gridSystemMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, chatLocationKey]);
 
   useEffect(() => {
     setMessages([]);
@@ -284,7 +285,6 @@ export function useMultiplayerPresence({
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('online');
           await channel.track(payload);
-          lastTrackRef.current = Date.now();
         } else if (nextStatus === 'CHANNEL_ERROR' || nextStatus === 'TIMED_OUT') {
           setStatus('error');
         }
@@ -306,14 +306,7 @@ export function useMultiplayerPresence({
       return;
     }
 
-    const elapsed = Date.now() - lastTrackRef.current;
-    const delay = Math.max(0, 500 - elapsed);
-    const timer = window.setTimeout(() => {
-      void channel.track({ ...payload, lastSeenAt: new Date().toISOString() });
-      lastTrackRef.current = Date.now();
-    }, delay);
-
-    return () => window.clearTimeout(timer);
+    void channel.track({ ...payload, lastSeenAt: new Date().toISOString() });
   }, [payload, status]);
 
   const sendMessage = useCallback((body: string) => {
