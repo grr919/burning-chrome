@@ -158,6 +158,13 @@ function dedupePresenceByUserId(items: MultiplayerPresence[]): MultiplayerPresen
   return [...byUserId.values()];
 }
 
+function getChatChannelName(chatLocationKey: string): string {
+  const safeKey = encodeURIComponent(chatLocationKey)
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 180);
+  return `cyberspace-chat:${safeKey || 'unknown'}`;
+}
+
 export function getExactLocationKey(location?: MultiplayerPlayerLocation): string {
   if (!location) return 'unknown';
   if (location.kind === 'ip') return `ip:${location.ipAddress}`;
@@ -210,6 +217,8 @@ export function useMultiplayerPresence({
   const [others, setOthers] = useState<MultiplayerPresence[]>([]);
   const [messages, setMessages] = useState<RoomChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const chatChannelRef = useRef<RealtimeChannel | null>(null);
+  const isChatChannelReadyRef = useRef(false);
   const chatLocationKeyRef = useRef(chatLocationKey);
 
   useEffect(() => {
@@ -263,20 +272,6 @@ export function useMultiplayerPresence({
           .filter((presence) => presence.userId !== identity.userId);
         setOthers(dedupePresenceByUserId(raw));
       })
-      .on('broadcast', { event: 'chat' }, ({ payload: chatPayload }) => {
-        if (!isActive) {
-          return;
-        }
-
-        const message = chatPayload as RoomChatMessage;
-        if (!message?.id || typeof message.body !== 'string') {
-          return;
-        }
-        if (message.locationKey !== chatLocationKeyRef.current) {
-          return;
-        }
-        setMessages((prev) => [...prev.filter((item) => item.id !== message.id), message].slice(-40));
-      })
       .subscribe(async (nextStatus) => {
         if (!isActive) {
           return;
@@ -301,6 +296,55 @@ export function useMultiplayerPresence({
   }, [roomKey, identity.userId]);
 
   useEffect(() => {
+    setMessages([]);
+    isChatChannelReadyRef.current = false;
+
+    if (!supabase || !isSupabaseConfigured || chatLocationKey === 'unknown') {
+      return;
+    }
+
+    let isActive = true;
+    const chatChannel = supabase.channel(getChatChannelName(chatLocationKey), {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+    chatChannelRef.current = chatChannel;
+
+    chatChannel
+      .on('broadcast', { event: 'chat' }, ({ payload: chatPayload }) => {
+        if (!isActive) {
+          return;
+        }
+
+        const message = chatPayload as RoomChatMessage;
+        if (!message?.id || typeof message.body !== 'string') {
+          return;
+        }
+        if (message.locationKey !== chatLocationKeyRef.current) {
+          return;
+        }
+        setMessages((prev) => [...prev.filter((item) => item.id !== message.id), message].slice(-40));
+      })
+      .subscribe((nextStatus) => {
+        if (!isActive) {
+          return;
+        }
+
+        isChatChannelReadyRef.current = nextStatus === 'SUBSCRIBED';
+      });
+
+    return () => {
+      isActive = false;
+      isChatChannelReadyRef.current = false;
+      if (chatChannelRef.current === chatChannel) {
+        chatChannelRef.current = null;
+      }
+      void supabase.removeChannel(chatChannel);
+    };
+  }, [chatLocationKey]);
+
+  useEffect(() => {
     const channel = channelRef.current;
     if (!channel || status !== 'online') {
       return;
@@ -311,8 +355,8 @@ export function useMultiplayerPresence({
 
   const sendMessage = useCallback((body: string) => {
     const trimmed = body.trim().slice(0, 300);
-    const channel = channelRef.current;
-    if (!trimmed || !channel || status !== 'online') {
+    const chatChannel = chatChannelRef.current;
+    if (!trimmed || !chatChannel || !isChatChannelReadyRef.current || status !== 'online' || chatLocationKey === 'unknown') {
       return;
     }
 
@@ -326,7 +370,7 @@ export function useMultiplayerPresence({
       locationKey: chatLocationKey,
     };
     setMessages((prev) => [...prev, message].slice(-40));
-    void channel.send({ type: 'broadcast', event: 'chat', payload: message });
+    void chatChannel.send({ type: 'broadcast', event: 'chat', payload: message });
   }, [chatLocationKey, identity, status]);
 
   const updateDisplayName = useCallback((nextName: string): boolean => {
