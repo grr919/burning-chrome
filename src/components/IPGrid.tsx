@@ -90,100 +90,6 @@ type IPGridProps = {
   selectedBuildingCountryCodeLabel?: string;
 };
 
-function WallMountedFlag({
-  flagImageUrl,
-  position,
-  rotation = [0, 0, 0],
-  width,
-  height,
-  onClick,
-  onDoubleClick,
-}: {
-  flagImageUrl?: string | null;
-  position: [number, number, number];
-  rotation?: [number, number, number];
-  width: number;
-  height: number;
-  onClick: (event: ThreeEvent<MouseEvent>) => void;
-  onDoubleClick?: (event: ThreeEvent<MouseEvent>) => void;
-}) {
-  const [flagTexture, setFlagTexture] = useState<THREE.Texture | null>(null);
-  const [textureFailed, setTextureFailed] = useState(false);
-
-  useEffect(() => {
-    setFlagTexture(null);
-    setTextureFailed(false);
-
-    if (!flagImageUrl) {
-      return;
-    }
-
-    let isMounted = true;
-    let loadedTexture: THREE.Texture | null = null;
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    loader.load(
-      flagImageUrl,
-      (texture) => {
-        if (!isMounted) {
-          texture.dispose();
-          return;
-        }
-
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        loadedTexture = texture;
-        setFlagTexture(texture);
-      },
-      undefined,
-      () => {
-        if (isMounted) {
-          setTextureFailed(true);
-        }
-      }
-    );
-
-    return () => {
-      isMounted = false;
-      if (loadedTexture) {
-        loadedTexture.dispose();
-      }
-    };
-  }, [flagImageUrl]);
-
-  if (!flagImageUrl || textureFailed || !flagTexture) {
-    return null;
-  }
-
-  return (
-    <mesh
-      position={position}
-      rotation={rotation}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onPointerOver={(event) => {
-        event.stopPropagation();
-        document.body.style.cursor = 'pointer';
-      }}
-      onPointerOut={(event) => {
-        event.stopPropagation();
-        document.body.style.cursor = 'auto';
-      }}
-    >
-      <planeGeometry args={[width, height]} />
-      <meshBasicMaterial
-        map={flagTexture}
-        color="#ffffff"
-        side={THREE.DoubleSide}
-        transparent
-        alphaTest={0.08}
-        depthTest
-        depthWrite
-      />
-    </mesh>
-  );
-}
-
 type RdapEntity = {
   roles: string[];
   name?: string;
@@ -3204,14 +3110,54 @@ function IPGrid({
             })}
 
             {visibleFlagImageUrl && (
-              <WallMountedFlag
-                flagImageUrl={visibleFlagImageUrl}
-                position={[0, facadeFlagY, facadeFlagZ + 0.035]}
-                width={0.28}
-                height={0.196}
-                onClick={handleBuildingSingleClick}
-                onDoubleClick={handleBuildingDoubleClick}
-              />
+              <Html position={[0, facadeFlagY, facadeFlagZ + 0.035]} transform distanceFactor={8}>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (clickTimerRef.current !== null) {
+                      window.clearTimeout(clickTimerRef.current);
+                    }
+                    clickTimerRef.current = window.setTimeout(() => {
+                      (onBuildingClick ?? onCellClick)(cellBuilding);
+                      clickTimerRef.current = null;
+                    }, 180);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    if (clickTimerRef.current !== null) {
+                      window.clearTimeout(clickTimerRef.current);
+                      clickTimerRef.current = null;
+                    }
+                    (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(cellBuilding);
+                  }}
+                  style={{
+                    width: '20px',
+                    height: '14px',
+                    padding: 0,
+                    border: '1px solid rgba(255,255,255,0.5)',
+                    borderRadius: '1px',
+                    background: 'transparent',
+                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
+                    userSelect: 'none',
+                    pointerEvents: 'auto',
+                    cursor: 'pointer',
+                  }}
+                  title="Open Street and Building View"
+                  type="button"
+                >
+                  <img
+                    src={visibleFlagImageUrl}
+                    alt={visibleCountryCodeLabel || 'National flag'}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      borderRadius: '1px',
+                      display: 'block',
+                    }}
+                  />
+                </button>
+              </Html>
             )}
 
             {windowBands}
