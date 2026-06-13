@@ -2437,6 +2437,14 @@ function IPGrid({
               onHoverCellChange?.(cellBuilding);
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
+            onPointerMove={(event) => {
+              event.stopPropagation();
+              document.body.style.cursor = 'pointer';
+              setHoveredCube(cubeId);
+              setHoveredIpAddress(ipAddress);
+              onHoverCellChange?.(cellBuilding);
+              onHoverInfoHtml?.(hoverInfoHtml);
+            }}
             onPointerOut={(event) => {
               event.stopPropagation();
               document.body.style.cursor = 'auto';
@@ -2454,15 +2462,10 @@ function IPGrid({
               onDoubleClick={handleBuildingDoubleClick}
               onPointerOver={() => {
                 document.body.style.cursor = 'pointer';
-                setHoveredCube(cubeId);
-                setHoveredIpAddress(ipAddress);
-                onHoverCellChange?.(cellBuilding);
-                onHoverInfoHtml?.(hoverInfoHtml);
               }}
               onPointerOut={() => {
                 document.body.style.cursor = 'auto';
-                setHoveredCube(null);
-                  }}
+              }}
             >
               <boxGeometry
                 args={[
