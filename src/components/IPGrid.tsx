@@ -92,7 +92,6 @@ type IPGridProps = {
 
 function WallMountedFlag({
   flagImageUrl,
-  fallbackLabel,
   position,
   rotation = [0, 0, 0],
   width,
@@ -101,7 +100,6 @@ function WallMountedFlag({
   onDoubleClick,
 }: {
   flagImageUrl?: string | null;
-  fallbackLabel?: string;
   position: [number, number, number];
   rotation?: [number, number, number];
   width: number;
@@ -153,6 +151,10 @@ function WallMountedFlag({
     };
   }, [flagImageUrl]);
 
+  if (!flagImageUrl || textureFailed || !flagTexture) {
+    return null;
+  }
+
   return (
     <mesh
       position={position}
@@ -170,19 +172,14 @@ function WallMountedFlag({
     >
       <planeGeometry args={[width, height]} />
       <meshBasicMaterial
-        map={flagTexture ?? undefined}
-        color={flagTexture && !textureFailed ? '#ffffff' : '#f8fafc'}
+        map={flagTexture}
+        color="#ffffff"
         side={THREE.DoubleSide}
-        transparent={Boolean(flagTexture)}
-        alphaTest={flagTexture ? 0.08 : 0}
+        transparent
+        alphaTest={0.08}
         depthTest
         depthWrite
       />
-      {!flagTexture && fallbackLabel && (
-        <Text position={[0, 0, 0.002]} fontSize={height * 0.42} color="#111827" anchorX="center" anchorY="middle">
-          {fallbackLabel}
-        </Text>
-      )}
     </mesh>
   );
 }
@@ -3113,8 +3110,7 @@ function IPGrid({
             {visibleFlagImageUrl && (
               <WallMountedFlag
                 flagImageUrl={visibleFlagImageUrl}
-                fallbackLabel={visibleCountryCodeLabel}
-                position={[0, facadeFlagY, facadeFlagZ + 0.03]}
+                position={[0, facadeFlagY, facadeFlagZ + 0.035]}
                 width={0.28}
                 height={0.196}
                 onClick={handleBuildingSingleClick}
