@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useIpMetadataCache, type CachedAsnMetadata, type CachedExposure, type CachedIpMetadata, type CachedReverseDns } from '../hooks/useIpMetadataCache';
 import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
 type GridPosition = {
@@ -160,6 +161,97 @@ const exposureCache: Record<string, ExposureRecord> = {};
 const pendingExposureLookups = new Set<string>();
 const asnCache: Record<string, AsnRecord> = {};
 const pendingAsnLookups = new Set<string>();
+
+function cachedIpMetadataToRdapRecord(row: CachedIpMetadata): RdapRecord | null {
+  if (!row.rdap_org && !row.rdap_network_name && !row.rdap_country) {
+    return null;
+  }
+
+  return {
+    ipAddress: row.ip_address,
+    networkName: row.rdap_network_name ?? undefined,
+    org: row.rdap_org ?? undefined,
+    country: row.rdap_country ?? undefined,
+    entities: [],
+    source: row.source_status ?? 'supabase-cache',
+  };
+}
+
+function cachedMetadataToAsnRecord(row: CachedIpMetadata, asnMetadata?: CachedAsnMetadata): AsnRecord | null {
+  const asn = normalizeAsn(row.asn);
+  if (!asn && !row.asn_name && !row.asn_country && !asnMetadata) {
+    return null;
+  }
+
+  return {
+    ipAddress: row.ip_address,
+    asn: asn ?? undefined,
+    asnName: asnMetadata?.asn_name ?? row.asn_name ?? undefined,
+    country: asnMetadata?.country ?? row.asn_country ?? undefined,
+    registry: asnMetadata?.registry ?? undefined,
+    route: asnMetadata?.route ?? undefined,
+    source: row.source_status ?? asnMetadata?.source_status ?? 'supabase-cache',
+  };
+}
+
+function cachedIpMetadataToReverseDnsRecord(row: CachedIpMetadata): ReverseDnsRecord | null {
+  if (!row.reverse_dns?.length) {
+    return null;
+  }
+
+  return {
+    ipAddress: row.ip_address,
+    hostnames: row.reverse_dns,
+    ptrHostnames: row.reverse_dns,
+    fallbackHostnames: [],
+  };
+}
+
+function cachedIpMetadataToExposureRecord(row: CachedIpMetadata): ExposureRecord | null {
+  if (!row.open_ports?.length && !row.services?.length && !row.hostnames?.length) {
+    return null;
+  }
+
+  return {
+    ipAddress: row.ip_address,
+    sourceProvider: 'internetdb',
+    serviceCount: row.services?.length ?? 0,
+    openPortCount: row.open_ports?.length ?? 0,
+    topPorts: row.open_ports?.map((port) => String(port)) ?? [],
+    serviceNames: row.services ?? [],
+    labels: [],
+    hostnames: row.hostnames ?? [],
+  };
+}
+
+function cachedReverseDnsToReverseDnsRecord(row: CachedReverseDns): ReverseDnsRecord {
+  const ptrHostnames = row.ptr_hostnames ?? [];
+  const fallbackHostnames = row.fallback_hostnames ?? [];
+  const hostnames = row.hostnames ?? [...new Set([...ptrHostnames, ...fallbackHostnames])];
+
+  return {
+    ipAddress: row.ip_address,
+    hostnames,
+    ptrHostnames,
+    fallbackHostnames,
+    error: row.error ?? undefined,
+  };
+}
+
+function cachedExposureToExposureRecord(row: CachedExposure): ExposureRecord {
+  return {
+    ipAddress: row.ip_address,
+    sourceProvider: 'internetdb',
+    serviceCount: row.service_count ?? row.service_names?.length ?? 0,
+    openPortCount: row.open_port_count ?? row.open_ports?.length ?? 0,
+    topPorts: row.top_ports ?? row.open_ports?.map((port) => String(port)) ?? [],
+    serviceNames: row.service_names ?? [],
+    labels: row.labels ?? [],
+    hostnames: row.hostnames ?? [],
+    warning: row.warning ?? undefined,
+    error: row.error ?? undefined,
+  };
+}
 
 function getLookupAddress(
   zoomLevel: number,
@@ -1433,6 +1525,72 @@ function IPGrid({
     ]
   );
 
+  const visibleIpAddresses = useMemo(
+    () => visibleLookupAddresses.map((item) => item.ipAddress),
+    [visibleLookupAddresses]
+  );
+  const metadataCache = useIpMetadataCache(visibleIpAddresses);
+
+  useEffect(() => {
+    const nextRdapInfo: Record<string, RdapRecord> = {};
+    const nextAsnInfo: Record<string, AsnRecord> = {};
+    const nextReverseDnsInfo: Record<string, ReverseDnsRecord> = {};
+    const nextExposureInfo: Record<string, ExposureRecord> = {};
+
+    for (const row of Object.values(metadataCache.ipMetadataByIp)) {
+      const asn = normalizeAsn(row.asn);
+      const rdapRecord = cachedIpMetadataToRdapRecord(row);
+      const asnRecord = cachedMetadataToAsnRecord(row, asn ? metadataCache.asnMetadataByAsn[asn] : undefined);
+      const reverseDnsRecord = cachedIpMetadataToReverseDnsRecord(row);
+      const exposureRecord = cachedIpMetadataToExposureRecord(row);
+
+      if (rdapRecord) {
+        rdapCache[row.ip_address] = rdapRecord;
+        nextRdapInfo[row.ip_address] = rdapRecord;
+      }
+
+      if (asnRecord) {
+        asnCache[row.ip_address] = asnRecord;
+        nextAsnInfo[row.ip_address] = asnRecord;
+      }
+
+      if (reverseDnsRecord) {
+        reverseDnsCache[row.ip_address] = reverseDnsRecord;
+        nextReverseDnsInfo[row.ip_address] = reverseDnsRecord;
+      }
+
+      if (exposureRecord) {
+        exposureCache[row.ip_address] = exposureRecord;
+        nextExposureInfo[row.ip_address] = exposureRecord;
+      }
+    }
+
+    for (const row of Object.values(metadataCache.reverseDnsByIp)) {
+      const record = cachedReverseDnsToReverseDnsRecord(row);
+      reverseDnsCache[row.ip_address] = record;
+      nextReverseDnsInfo[row.ip_address] = record;
+    }
+
+    for (const row of Object.values(metadataCache.exposureByIp)) {
+      const record = cachedExposureToExposureRecord(row);
+      exposureCache[row.ip_address] = record;
+      nextExposureInfo[row.ip_address] = record;
+    }
+
+    if (Object.keys(nextRdapInfo).length > 0) {
+      setRdapInfo((prev) => ({ ...prev, ...nextRdapInfo }));
+    }
+    if (Object.keys(nextAsnInfo).length > 0) {
+      setAsnInfo((prev) => ({ ...prev, ...nextAsnInfo }));
+    }
+    if (Object.keys(nextReverseDnsInfo).length > 0) {
+      setReverseDnsInfo((prev) => ({ ...prev, ...nextReverseDnsInfo }));
+    }
+    if (Object.keys(nextExposureInfo).length > 0) {
+      setExposureInfo((prev) => ({ ...prev, ...nextExposureInfo }));
+    }
+  }, [metadataCache.ipMetadataByIp, metadataCache.asnMetadataByAsn, metadataCache.reverseDnsByIp, metadataCache.exposureByIp]);
+
   const visibleBgpCells = useMemo<BgpRoutingCell[]>(
     () =>
       visibleLookupAddresses.map((item, index) => {
@@ -1735,15 +1893,21 @@ function IPGrid({
   };
 
   useEffect(() => {
-    const visibleIps = visibleLookupAddresses.map((item) => item.ipAddress);
-    void performExposureLookup(visibleIps);
-    void performAsnLookup(visibleIps);
-  }, [visibleLookupAddresses]);
+    if (metadataCache.loading) {
+      return;
+    }
+
+    void performExposureLookup(visibleIpAddresses);
+    void performAsnLookup(visibleIpAddresses);
+  }, [visibleIpAddresses, metadataCache.loading]);
 
   useEffect(() => {
+    if (metadataCache.loading) {
+      return;
+    }
+
     let cancelled = false;
-    const uncached = visibleLookupAddresses
-      .map((item) => item.ipAddress)
+    const uncached = visibleIpAddresses
       .filter((ipAddress) => !rdapCache[ipAddress] && !pendingRdapLookups.has(ipAddress));
 
     if (uncached.length === 0) {
@@ -1776,10 +1940,14 @@ function IPGrid({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [visibleLookupAddresses]);
+  }, [visibleIpAddresses, metadataCache.loading]);
 
   useEffect(() => {
     if (!hoveredIpAddress) {
+      return;
+    }
+
+    if (metadataCache.loading) {
       return;
     }
 
@@ -1792,7 +1960,7 @@ function IPGrid({
     if (!reverseDnsCache[hoveredIpAddress] && !pendingReverseLookups.has(hoveredIpAddress)) {
       void performReverseDnsLookup(hoveredIpAddress);
     }
-  }, [hoveredIpAddress, lookupMode]);
+  }, [hoveredIpAddress, lookupMode, metadataCache.loading]);
 
 
   useEffect(() => {
@@ -1804,7 +1972,7 @@ function IPGrid({
     if (activePanel?.innerHTML) {
       onHoverInfoHtml(activePanel.innerHTML);
     }
-  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, asnInfo, isRdapLoading, isReverseLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml]);
+  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, exposureInfo, asnInfo, isRdapLoading, isReverseLoading, isExposureLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml]);
 
   const getColumnPerimeterLabel = (column: number): string => {
     if (gridSystemMode === 'grid2') {
@@ -2022,6 +2190,7 @@ function IPGrid({
         (gridSystemMode === 'grid2' ? 2000000 : zoomLevel * 10000);
       const rdapRecord = rdapInfo[ipAddress] ?? rdapCache[ipAddress];
       const asnRecord = asnInfo[ipAddress] ?? asnCache[ipAddress];
+      const cachedIpMetadata = metadataCache.ipMetadataByIp[ipAddress];
       const asnColor = getAsnColor(asnRecord?.asn);
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const organizationCategory = getOrganizationCategory(rdapRecord, asnRecord, dnsRecord, exposureRecord, ipTypeLabel);
@@ -2037,8 +2206,12 @@ function IPGrid({
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
       const bestFlagCountryCode = getBestFlagCountryCode(rdapRecord, asnRecord);
-      const flagImageUrl = bestFlagCountryCode ? getFlagImageUrl(bestFlagCountryCode) : null;
-      const countryCodeLabel = bestFlagCountryCode?.toUpperCase() ?? '';
+      const cachedFlagCountryCode = getFlagCountryCode(cachedIpMetadata?.flag_country_code);
+      const flagImageUrl =
+        cachedIpMetadata?.flag_url ??
+        (cachedFlagCountryCode ? getFlagImageUrl(cachedFlagCountryCode) : null) ??
+        (bestFlagCountryCode ? getFlagImageUrl(bestFlagCountryCode) : null);
+      const countryCodeLabel = (cachedFlagCountryCode ?? bestFlagCountryCode)?.toUpperCase() ?? '';
       const isSelectedBuilding = selectedBuildingIp === ipAddress;
       const visibleFlagImageUrl =
         isSelectedBuilding && selectedBuildingFlagImageUrl
@@ -2048,7 +2221,9 @@ function IPGrid({
         isSelectedBuilding && selectedBuildingCountryCodeLabel
           ? selectedBuildingCountryCodeLabel
           : countryCodeLabel;
-      const countryName = bestFlagCountryCode ? getCountryName(bestFlagCountryCode) : null;
+      const countryName = cachedFlagCountryCode || bestFlagCountryCode
+        ? getCountryName(cachedFlagCountryCode ?? bestFlagCountryCode ?? undefined)
+        : null;
       const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
         .map((portLabel) => parseTopPortNumber(portLabel))
         .filter((port): port is number => typeof port === 'number'))];
