@@ -82,6 +82,7 @@ type BuildingViewState = {
   asnName?: string;
   route?: string;
   asnColor?: string;
+  organizationName?: string;
 };
 
 type DirectoryEntry = {
@@ -1662,6 +1663,10 @@ function App() {
 
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
               <div className="font-bold text-lg">Street and Building View: {buildingView.ipAddress}</div>
+              <div className="text-sm text-gray-700 mt-1">
+                Street and Building View: {buildingView.ipAddress}
+                {buildingView.organizationName?.trim() ? ` — ${buildingView.organizationName.trim()}` : ''}
+              </div>
               <div className="text-sm text-gray-600 mt-1">
                 Use "Return to Grid" to leave Street and Building View.
               </div>

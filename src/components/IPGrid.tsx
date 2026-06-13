@@ -55,6 +55,7 @@ export type GridCellBuilding = {
   asnName?: string;
   route?: string;
   asnColor?: string;
+  organizationName?: string;
 };
 
 const DEFAULT_GRID2_POSITION: Grid2Position = {
@@ -2369,6 +2370,7 @@ function IPGrid({
         asnName: asnRecord?.asnName,
         route: asnRecord?.route,
         asnColor,
+        organizationName: rdapRecord?.org ?? rdapRecord?.networkName,
       };
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
