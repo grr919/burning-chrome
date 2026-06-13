@@ -673,8 +673,99 @@ function getCountryName(countryCode?: string): string | null {
   }
 }
 
-function getBestCountryCode(rdapRecord?: RdapRecord, asnRecord?: AsnRecord): string | null {
-  return getCountryCode(rdapRecord?.country) ?? getCountryCode(asnRecord?.country);
+function normalizeCountryText(value?: string | null): string {
+  return (value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  'united states': 'us',
+  'united states of america': 'us',
+  usa: 'us',
+  'u s a': 'us',
+  us: 'us',
+  'u s': 'us',
+  'united kingdom': 'gb',
+  'great britain': 'gb',
+  uk: 'gb',
+  'u k': 'gb',
+  england: 'gb',
+  scotland: 'gb',
+  wales: 'gb',
+  germany: 'de',
+  deutschland: 'de',
+  france: 'fr',
+  netherlands: 'nl',
+  'the netherlands': 'nl',
+  canada: 'ca',
+  japan: 'jp',
+  china: 'cn',
+  india: 'in',
+  australia: 'au',
+  brazil: 'br',
+  mexico: 'mx',
+  italy: 'it',
+  spain: 'es',
+  sweden: 'se',
+  norway: 'no',
+  finland: 'fi',
+  denmark: 'dk',
+  ireland: 'ie',
+  switzerland: 'ch',
+  austria: 'at',
+  belgium: 'be',
+  poland: 'pl',
+  'czech republic': 'cz',
+  czechia: 'cz',
+  russia: 'ru',
+  'south korea': 'kr',
+  korea: 'kr',
+  taiwan: 'tw',
+  'hong kong': 'hk',
+  singapore: 'sg',
+  israel: 'il',
+  'south africa': 'za',
+  'new zealand': 'nz',
+  argentina: 'ar',
+  chile: 'cl',
+  colombia: 'co',
+  turkey: 'tr',
+  turkiye: 'tr',
+  ukraine: 'ua',
+  romania: 'ro',
+  portugal: 'pt',
+  greece: 'gr',
+  hungary: 'hu',
+  bulgaria: 'bg',
+  croatia: 'hr',
+  slovakia: 'sk',
+  slovenia: 'si',
+  lithuania: 'lt',
+  latvia: 'lv',
+  estonia: 'ee',
+};
+
+function getFlagCountryCode(value?: string | null): string | null {
+  const direct = getCountryCode(value ?? undefined);
+  if (direct) {
+    return direct;
+  }
+
+  const normalized = normalizeCountryText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return COUNTRY_NAME_TO_CODE[normalized] ?? null;
+}
+
+function getBestFlagCountryCode(rdapRecord?: RdapRecord, asnRecord?: AsnRecord): string | null {
+  return getFlagCountryCode(rdapRecord?.country) ?? getFlagCountryCode(asnRecord?.country);
 }
 
 type OrganizationCategory = 'cloud' | 'telecom' | 'education' | 'government' | 'residential' | 'security' | 'commercial' | 'unknown';
@@ -2038,9 +2129,9 @@ function IPGrid({
         : mixHexColors('#9a9a9a', visualStyle.bodyColor, 0.12);
       const topReverseDnsHostname = dnsRecord?.ptrHostnames[0] ?? dnsRecord?.fallbackHostnames[0] ?? null;
       const visibleEntities = rdapRecord ? firstUsefulEntities(rdapRecord.entities) : [];
-      const bestCountryCode = getBestCountryCode(rdapRecord, asnRecord);
-      const flagImageUrl = bestCountryCode ? getFlagImageUrl(bestCountryCode) : null;
-      const countryCodeLabel = bestCountryCode?.toUpperCase() ?? '';
+      const bestFlagCountryCode = getBestFlagCountryCode(rdapRecord, asnRecord);
+      const flagImageUrl = bestFlagCountryCode ? getFlagImageUrl(bestFlagCountryCode) : null;
+      const countryCodeLabel = bestFlagCountryCode?.toUpperCase() ?? '';
       const isSelectedBuilding = selectedBuildingIp === ipAddress;
       const visibleFlagImageUrl =
         isSelectedBuilding && selectedBuildingFlagImageUrl
@@ -2050,7 +2141,7 @@ function IPGrid({
         isSelectedBuilding && selectedBuildingCountryCodeLabel
           ? selectedBuildingCountryCodeLabel
           : countryCodeLabel;
-      const countryName = bestCountryCode ? getCountryName(bestCountryCode) : null;
+      const countryName = bestFlagCountryCode ? getCountryName(bestFlagCountryCode) : null;
       const visiblePorts: number[] = [...new Set<number>((exposureRecord?.topPorts ?? [])
         .map((portLabel) => parseTopPortNumber(portLabel))
         .filter((port): port is number => typeof port === 'number'))];
