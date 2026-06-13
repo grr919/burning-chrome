@@ -1460,9 +1460,10 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const nearbyUsers = multiplayer.others.filter((user) =>
-    (user.chatLocationKey ?? getExactLocationKey(user.playerLocation)) === chatLocationKey
-  );
+  const nearbyUsers = multiplayer.others.filter((user) => {
+    const userLocationKey = getExactLocationKey(user.playerLocation);
+    return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
+  });
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const handlePointerTargetChange = (cell: GridCellBuilding) => {
     currentHoverCellRef.current = cell;
