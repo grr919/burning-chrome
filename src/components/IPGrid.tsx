@@ -2160,6 +2160,8 @@ function IPGrid({
     );
   };
 
+  const flatGridTargeting = !onBuildingClick;
+  const gridTargetCells = new Map<string, { cellBuilding: GridCellBuilding; hoverInfoHtml: string; cubeId: string }>();
   const cubes = [];
 
   for (let y = 0; y < gridSize; y += 1) {
@@ -2547,6 +2549,7 @@ function IPGrid({
         asnColor,
         organizationName: rdapRecord?.org ?? rdapRecord?.networkName,
       };
+      gridTargetCells.set(`${cellX}-${cellY}`, { cellBuilding, hoverInfoHtml, cubeId });
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
@@ -2602,9 +2605,9 @@ function IPGrid({
 
           <mesh
             position={[0, onBuildingClick ? 0.055 : cellHitboxHeight / 2, 0]}
-            onClick={handleCellSingleClick}
-            onDoubleClick={handleCellDoubleClick}
-            onPointerOver={(event) => {
+            onClick={flatGridTargeting ? undefined : handleCellSingleClick}
+            onDoubleClick={flatGridTargeting ? undefined : handleCellDoubleClick}
+            onPointerOver={flatGridTargeting ? undefined : (event) => {
               event.stopPropagation();
               document.body.style.cursor = 'pointer';
               setHoveredCube(cubeId);
@@ -2612,7 +2615,7 @@ function IPGrid({
               onHoverCellChange?.(cellBuilding);
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
-            onPointerMove={(event) => {
+            onPointerMove={flatGridTargeting ? undefined : (event) => {
               event.stopPropagation();
               document.body.style.cursor = 'pointer';
               setHoveredCube(cubeId);
@@ -2620,7 +2623,7 @@ function IPGrid({
               onHoverCellChange?.(cellBuilding);
               onHoverInfoHtml?.(hoverInfoHtml);
             }}
-            onPointerOut={(event) => {
+            onPointerOut={flatGridTargeting ? undefined : (event) => {
               event.stopPropagation();
               document.body.style.cursor = 'auto';
               setHoveredCube(null);
@@ -2633,12 +2636,12 @@ function IPGrid({
           <group scale={[hoverScale, hoverScale, hoverScale]}>
             <mesh
               position={[0, hitboxHeight / 2, 0]}
-              onClick={handleBuildingSingleClick}
-              onDoubleClick={handleBuildingDoubleClick}
-              onPointerOver={() => {
+              onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
+              onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
+              onPointerOver={flatGridTargeting ? undefined : () => {
                 document.body.style.cursor = 'pointer';
               }}
-              onPointerOut={() => {
+              onPointerOut={flatGridTargeting ? undefined : () => {
                 document.body.style.cursor = 'auto';
               }}
             >
@@ -3290,7 +3293,12 @@ function IPGrid({
             })}
 
             {visibleFlagImageUrl && (
-              <Html position={[0, facadeFlagY, facadeFlagZ + 0.035]} transform distanceFactor={8}>
+              <Html
+                position={[0, facadeFlagY, facadeFlagZ + 0.035]}
+                transform
+                distanceFactor={8}
+                style={{ pointerEvents: flatGridTargeting ? 'none' : 'auto' }}
+              >
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
@@ -3319,7 +3327,7 @@ function IPGrid({
                     background: 'transparent',
                     filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
                     userSelect: 'none',
-                    pointerEvents: 'auto',
+                    pointerEvents: flatGridTargeting ? 'none' : 'auto',
                     cursor: 'pointer',
                   }}
                   title="Open Street and Building View"
@@ -3367,6 +3375,90 @@ function IPGrid({
       );
     }
   }
+
+  type FlatGridTargetEvent = ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>;
+
+  const flatGridGroundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
+  const getFlatGridTarget = (event: FlatGridTargetEvent) => {
+    const point = new THREE.Vector3();
+    if (!event.ray.intersectPlane(flatGridGroundPlane, point)) {
+      return null;
+    }
+
+    const x = Math.floor((point.x + offset + spacing / 2) / spacing);
+    const y = Math.floor((point.z + offset + spacing / 2) / spacing);
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
+      return null;
+    }
+
+    return gridTargetCells.get(`${x}-${y}`) ?? null;
+  };
+
+  const updateFlatGridTarget = (event: FlatGridTargetEvent) => {
+    const target = getFlatGridTarget(event);
+    if (!target) {
+      document.body.style.cursor = 'auto';
+      setHoveredCube(null);
+      return null;
+    }
+
+    document.body.style.cursor = 'pointer';
+    setHoveredCube(target.cubeId);
+    setHoveredIpAddress(target.cellBuilding.ipAddress);
+    onHoverCellChange?.(target.cellBuilding);
+    onHoverInfoHtml?.(target.hoverInfoHtml);
+    return target;
+  };
+
+  const handleFlatGridClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const target = updateFlatGridTarget(event);
+    if (!target) {
+      return;
+    }
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+    }
+    clickTimerRef.current = window.setTimeout(() => {
+      onCellClick(target.cellBuilding);
+      clickTimerRef.current = null;
+    }, 180);
+  };
+
+  const handleFlatGridDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const target = updateFlatGridTarget(event);
+    if (!target) {
+      return;
+    }
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    onCellDoubleClick(target.cellBuilding);
+  };
+
+  const flatGridTargetPlane = flatGridTargeting ? (
+    <mesh
+      key="flat-grid-target-plane"
+      position={[0, groundY + 7, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onPointerMove={(event) => {
+        event.stopPropagation();
+        updateFlatGridTarget(event);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        document.body.style.cursor = 'auto';
+        setHoveredCube(null);
+      }}
+      onClick={handleFlatGridClick}
+      onDoubleClick={handleFlatGridDoubleClick}
+    >
+      <planeGeometry args={[gridExtent, gridExtent]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  ) : null;
 
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
@@ -3480,6 +3572,7 @@ function IPGrid({
     <>
       {createStreetGrid()}
       {cubes}
+      {flatGridTargetPlane}
       {remoteAvatarMarkers}
     </>
   );
