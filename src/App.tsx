@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -107,8 +107,6 @@ type PlayerLocation = MultiplayerPlayerLocation;
 
 const GRID2_WINDOW_SIZE = 16;
 const GRID_SIZE = 16;
-const GRID_SPACING = 1.9;
-const GRID_OFFSET = (GRID_SIZE * GRID_SPACING) / 2 - GRID_SPACING / 2;
 const STREET_GRID_SIZE = 16;
 const STREET_GRID_SPACING = 1.9;
 const STREET_GRID_OFFSET = (STREET_GRID_SIZE * STREET_GRID_SPACING) / 2 - STREET_GRID_SPACING / 2;
@@ -157,13 +155,6 @@ function Grid2ArrowIcon({ direction }: { direction: Grid2ArrowDirection }) {
       <path d="M12 3L4 11H9V21H15V11H20L12 3Z" fill="currentColor" />
     </svg>
   );
-}
-
-function getGridCellFromWorldTarget(target: THREE.Vector3): { x: number; y: number } {
-  return {
-    x: Math.max(0, Math.min(GRID_SIZE - 1, Math.round((target.x + GRID_OFFSET) / GRID_SPACING))),
-    y: Math.max(0, Math.min(GRID_SIZE - 1, Math.round((target.z + GRID_OFFSET) / GRID_SPACING))),
-  };
 }
 
 function getIpFromCell(zoomLevel: number, currentPosition: GridPosition, x: number, y: number): string {
@@ -588,6 +579,20 @@ function App() {
   );
 
   const activeTargetIp = selectedTargetIp || fallbackTargetIp;
+  function applyPlayerLocation(nextLocation: PlayerLocation, options?: { selectedIp?: string }) {
+    setPlayerLocation(nextLocation);
+
+    const nextIp =
+      options?.selectedIp ??
+      (nextLocation.kind === 'ip' || nextLocation.kind === 'building'
+        ? nextLocation.ipAddress
+        : nextLocation.ipAddresses[0]);
+
+    if (nextIp) {
+      setSelectedTargetIp(nextIp);
+    }
+  }
+
   const playerLocationIp =
     playerLocation.kind === 'ip' || playerLocation.kind === 'building'
       ? playerLocation.ipAddress
@@ -627,7 +632,7 @@ function App() {
       return;
     }
 
-    setPlayerLocation(getPlayerLocationForStreetPosition(
+    applyPlayerLocation(getPlayerLocationForStreetPosition(
       streetPlayerX,
       streetPlayerY,
       gridSystemMode,
@@ -659,8 +664,6 @@ function App() {
     const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
     setLayoutMode('grid');
     setBuildingView(null);
-    setSelectedTargetIp(ipAddress);
-
     if (gridSystemMode === 'grid2') {
       const nextGrid2Position = {
         outerFirstOctet: firstOctet,
@@ -671,7 +674,10 @@ function App() {
       const x = fourthOctet - nextGrid2Position.innerFourthStart;
       const y = thirdOctet - nextGrid2Position.innerThirdStart;
       setGrid2Position(nextGrid2Position);
-      setPlayerLocation(kind === 'building' ? { kind: 'building', ipAddress, outside: true } : { kind: 'ip', ipAddress, x, y });
+      applyPlayerLocation(
+        kind === 'building' ? { kind: 'building', ipAddress, outside: true } : { kind: 'ip', ipAddress, x, y },
+        { selectedIp: ipAddress }
+      );
       return;
     }
 
@@ -682,14 +688,17 @@ function App() {
       thirdOctet,
       fourthOctet: 0,
     });
-    setPlayerLocation(kind === 'building'
-      ? { kind: 'building', ipAddress, outside: true }
-      : {
-          kind: 'ip',
-          ipAddress,
-          x: fourthOctet % 16,
-          y: Math.floor(fourthOctet / 16),
-        });
+    applyPlayerLocation(
+      kind === 'building'
+        ? { kind: 'building', ipAddress, outside: true }
+        : {
+            kind: 'ip',
+            ipAddress,
+            x: fourthOctet % 16,
+            y: Math.floor(fourthOctet / 16),
+          },
+      { selectedIp: ipAddress }
+    );
   };
 
   const handleRemoteUserClick = (user: MultiplayerPresence) => {
@@ -710,8 +719,7 @@ function App() {
 
     setLayoutMode('street');
     setBuildingView(null);
-    setPlayerLocation(location);
-    setSelectedTargetIp(location.ipAddresses[0] ?? activeTargetIp);
+    applyPlayerLocation(location, { selectedIp: location.ipAddresses[0] ?? activeTargetIp });
     const deltaX = clampStreetCell(location.x) - streetPlayerX;
     const deltaY = clampStreetCell(location.y) - streetPlayerY;
     if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
@@ -726,19 +734,18 @@ function App() {
   const enterStreetAtCell = (cell: GridCellBuilding) => {
     const x = clampStreetCell(cell.x);
     const y = clampStreetCell(cell.y);
-    setSelectedTargetIp(cell.ipAddress);
     setBuildingView(null);
     setLayoutMode('street');
     setStreetPlayerX(x);
     setStreetPlayerY(y);
-    setPlayerLocation(getPlayerLocationForStreetPosition(
+    applyPlayerLocation(getPlayerLocationForStreetPosition(
       x,
       y,
       gridSystemMode,
       zoomLevel,
       currentPosition,
       grid2Position
-    ));
+    ), { selectedIp: cell.ipAddress });
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
@@ -765,8 +772,7 @@ function App() {
     );
     setStreetPlayerX(nextX);
     setStreetPlayerY(nextY);
-    setPlayerLocation(nextLocation);
-    setSelectedTargetIp(ipAddress ?? nextLocation.ipAddresses[0] ?? activeTargetIp);
+    applyPlayerLocation(nextLocation, { selectedIp: ipAddress ?? nextLocation.ipAddresses[0] ?? activeTargetIp });
   };
 
   const moveStreetByDirection = (direction: SwipeDirection) => {
@@ -797,10 +803,8 @@ function App() {
     const targetCell = layoutMode === 'grid' && currentHoverCellRef.current
       ? currentHoverCellRef.current
       : cell;
-    setSelectedTargetIp(targetCell.ipAddress);
-
     if (gridSystemMode === 'grid2') {
-      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
+      applyPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
       return;
     }
 
@@ -810,17 +814,17 @@ function App() {
     if (zoomLevel === 0) {
       setCurrentPosition({ firstOctet, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(1);
-      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
+      applyPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else if (zoomLevel === 1) {
       setCurrentPosition((prev) => ({ ...prev, secondOctet, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(2);
-      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
+      applyPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else if (zoomLevel === 2) {
       setCurrentPosition((prev) => ({ ...prev, thirdOctet, fourthOctet: 0 }));
       setZoomLevel(3);
-      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
+      applyPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: 0, y: 0 });
     } else {
-      setPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
+      applyPlayerLocation({ kind: 'ip', ipAddress: targetCell.ipAddress, x: targetCell.x, y: targetCell.y });
     }
   };
 
@@ -835,10 +839,7 @@ function App() {
         streetPlayerX,
         streetPlayerY
       );
-      if (nextLocation.kind === 'ip') {
-        setSelectedTargetIp(nextLocation.ipAddress);
-      }
-      setPlayerLocation(nextLocation);
+      applyPlayerLocation(nextLocation);
       setBuildingView(null);
       setLayoutMode('grid');
       return;
@@ -852,8 +853,7 @@ function App() {
       const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.0.0.0`, x: currentPosition.firstOctet % GRID_SIZE, y: Math.floor(currentPosition.firstOctet / GRID_SIZE) };
       setCurrentPosition({ firstOctet: 0, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(0);
-      setSelectedTargetIp(nextLocation.ipAddress);
-      setPlayerLocation(nextLocation);
+      applyPlayerLocation(nextLocation);
       return;
     }
 
@@ -861,8 +861,7 @@ function App() {
       const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.0.0`, x: currentPosition.secondOctet % GRID_SIZE, y: Math.floor(currentPosition.secondOctet / GRID_SIZE) };
       setCurrentPosition((prev) => ({ ...prev, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(1);
-      setSelectedTargetIp(nextLocation.ipAddress);
-      setPlayerLocation(nextLocation);
+      applyPlayerLocation(nextLocation);
       return;
     }
 
@@ -870,8 +869,7 @@ function App() {
       const nextLocation = { kind: 'ip' as const, ipAddress: `${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0`, x: currentPosition.thirdOctet % GRID_SIZE, y: Math.floor(currentPosition.thirdOctet / GRID_SIZE) };
       setCurrentPosition((prev) => ({ ...prev, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(2);
-      setSelectedTargetIp(nextLocation.ipAddress);
-      setPlayerLocation(nextLocation);
+      applyPlayerLocation(nextLocation);
     }
   };
 
@@ -885,14 +883,12 @@ function App() {
       resetPlayerCell.x,
       resetPlayerCell.y
     );
-    const nextTargetIp = nextPlayerLocation.kind === 'ip' ? nextPlayerLocation.ipAddress : '247.0.0.0';
     setLayoutMode('grid');
     setBuildingView(null);
     setZoomLevel(0);
     setCurrentPosition(DEFAULT_GRID_POSITION);
     setGrid2Position(DEFAULT_GRID2_POSITION);
-    setSelectedTargetIp(nextTargetIp);
-    setPlayerLocation(nextPlayerLocation);
+    applyPlayerLocation(nextPlayerLocation);
     setStreetPlayerX(7);
     setStreetPlayerY(7);
     setStreetHeading(0);
@@ -916,11 +912,6 @@ function App() {
     const nextGrid2Position = mode === 'grid2' ? DEFAULT_GRID2_POSITION : grid2Position;
     const nextPlayerCell = mode === 'grid2' ? DEFAULT_GRID2_PLAYER_CELL : DEFAULT_PLAYER_CELL;
     const nextPlayerLocation = getPlayerLocationForGridCell(mode, zoomLevel, currentPosition, nextGrid2Position, nextPlayerCell.x, nextPlayerCell.y);
-    const nextTargetIp = nextPlayerLocation.kind === 'ip'
-      ? nextPlayerLocation.ipAddress
-      : mode === 'grid2'
-        ? getGrid2IpFromCell(nextGrid2Position, nextPlayerCell.x, nextPlayerCell.y)
-        : getRepresentativeTarget('grid1', zoomLevel, currentPosition, nextGrid2Position);
     setGridSystemMode(mode);
     if (mode === 'grid2') {
       setGrid2Position(DEFAULT_GRID2_POSITION);
@@ -928,8 +919,13 @@ function App() {
     setLayoutMode('grid');
     setBuildingView(null);
     setBottomInfoHtml('');
-    setSelectedTargetIp(nextTargetIp);
-    setPlayerLocation(nextPlayerLocation);
+    applyPlayerLocation(nextPlayerLocation, {
+      selectedIp: nextPlayerLocation.kind === 'ip'
+        ? nextPlayerLocation.ipAddress
+        : mode === 'grid2'
+          ? getGrid2IpFromCell(nextGrid2Position, nextPlayerCell.x, nextPlayerCell.y)
+          : getRepresentativeTarget('grid1', zoomLevel, currentPosition, nextGrid2Position),
+    });
   };
 
   const moveGrid2Window = (thirdDelta: number, fourthDelta: number) => {
@@ -941,10 +937,7 @@ function App() {
         innerFourthStart: clampGrid2WindowStart(prev.innerFourthStart + fourthDelta),
       };
       const nextPlayerLocation = getPlayerLocationForGridCell('grid2', zoomLevel, currentPosition, next, playerCell.x, playerCell.y);
-      if (nextPlayerLocation.kind === 'ip') {
-        setSelectedTargetIp(nextPlayerLocation.ipAddress);
-      }
-      setPlayerLocation(nextPlayerLocation);
+      applyPlayerLocation(nextPlayerLocation);
       return next;
     });
     setBottomInfoHtml('');
@@ -961,39 +954,6 @@ function App() {
       moveGrid2Window(0, GRID2_WINDOW_SIZE);
     }
   };
-
-  const updatePlayerLocationFromGridView = useCallback(() => {
-    if (layoutMode !== 'grid' || buildingView || !controlsRef.current) {
-      return;
-    }
-
-    const cell = getGridCellFromWorldTarget(controlsRef.current.target as THREE.Vector3);
-    const nextLocation = getPlayerLocationForGridCell(
-      gridSystemMode,
-      zoomLevel,
-      currentPosition,
-      grid2Position,
-      cell.x,
-      cell.y
-    );
-
-    if (nextLocation.kind !== 'ip') {
-      return;
-    }
-
-    setPlayerLocation((current) => {
-      if (
-        current.kind === 'ip' &&
-        current.ipAddress === nextLocation.ipAddress &&
-        current.x === nextLocation.x &&
-        current.y === nextLocation.y
-      ) {
-        return current;
-      }
-      return nextLocation;
-    });
-    setSelectedTargetIp((current) => current === nextLocation.ipAddress ? current : nextLocation.ipAddress);
-  }, [layoutMode, buildingView, gridSystemMode, zoomLevel, currentPosition, grid2Position]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -1263,8 +1223,7 @@ function App() {
 
   const handleFlagClick = (building: BuildingViewState) => {
     setBuildingView(building);
-    setSelectedTargetIp(building.ipAddress);
-    setPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
+    applyPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
     setCertificateLoadingIp(building.ipAddress);
     setExposureLoadingIp(building.ipAddress);
     setCertificateResult(null);
@@ -1555,7 +1514,6 @@ function App() {
               enablePan
               enableZoom
               enableRotate
-              onChange={updatePlayerLocationFromGridView}
               minPolarAngle={Math.PI / 6}
               maxPolarAngle={Math.PI / 2.1}
               target={[focusPosition.x, 1.05, focusPosition.z]}
@@ -1938,7 +1896,6 @@ function App() {
                   enablePan
                   enableZoom
                   enableRotate
-                  onChange={updatePlayerLocationFromGridView}
                   minPolarAngle={Math.PI / 6}
                   maxPolarAngle={Math.PI / 2.1}
                   target={[0, 0, 0]}
