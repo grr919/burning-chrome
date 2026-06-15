@@ -843,7 +843,6 @@ function App() {
       ? currentHoverCellRef.current
       : cell;
     enterStreetAtCell(targetCell);
-    handleFlagClick(targetCell);
   };
 
   const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
@@ -1618,6 +1617,7 @@ function App() {
           />
           {focusPosition && (
             <OrbitControls
+              key={`street-controls-${viewKey}`}
               ref={controlsRef}
               enablePan
               enableZoom
@@ -2038,7 +2038,7 @@ function App() {
         ) : layoutMode === 'street' ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
-              {renderStreetSceneCanvas(`street-${viewResetKey}`, streetFocusCell)}
+              {renderStreetSceneCanvas(`street-${viewResetKey}-${streetTargetCell?.ipAddress ?? 'none'}`, streetFocusCell)}
             </div>
 
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
