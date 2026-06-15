@@ -32,12 +32,6 @@ export type MultiplayerPlayerLocation =
       y?: number;
     }
   | {
-      kind: 'intersection';
-      x: number;
-      y: number;
-      ipAddresses: string[];
-    }
-  | {
       kind: 'building';
       ipAddress: string;
       outside: true;
@@ -169,9 +163,6 @@ export function getExactLocationKey(location?: MultiplayerPlayerLocation): strin
   if (!location) return 'unknown';
   if (location.kind === 'ip') return `ip:${location.ipAddress}`;
   if (location.kind === 'building') return `building:${location.ipAddress}`;
-  if (location.kind === 'intersection') {
-    return `intersection:${[...location.ipAddresses].sort().join('|')}`;
-  }
   return 'unknown';
 }
 
@@ -179,7 +170,6 @@ export function getPlayerLocationDisplay(location?: MultiplayerPlayerLocation): 
   if (!location) return 'Unknown location';
   if (location.kind === 'ip') return location.ipAddress;
   if (location.kind === 'building') return `Building ${location.ipAddress}`;
-  if (location.kind === 'intersection') return `Intersection ${location.ipAddresses.join(' / ')}`;
   return 'Unknown location';
 }
 

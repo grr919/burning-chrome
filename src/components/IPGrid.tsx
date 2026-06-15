@@ -138,7 +138,6 @@ type ExposureRecord = {
 function getAvatarLocationDisplay(user: MultiplayerPresence): string {
   if (user.playerLocation?.kind === 'ip') return user.playerLocation.ipAddress;
   if (user.playerLocation?.kind === 'building') return `Building ${user.playerLocation.ipAddress}`;
-  if (user.playerLocation?.kind === 'intersection') return 'Intersection';
   return getPlayerLocationDisplay(user.playerLocation);
 }
 

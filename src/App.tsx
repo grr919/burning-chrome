@@ -229,10 +229,7 @@ function getPlayerCell(playerLocation: PlayerLocation): { x: number; y: number }
     return { x: 7, y: 7 };
   }
 
-  return {
-    x: Math.max(0, Math.min(15, Math.round(playerLocation.x))),
-    y: Math.max(0, Math.min(15, Math.round(playerLocation.y))),
-  };
+  return { x: 7, y: 7 };
 }
 
 function getPlayerLocationForStreetPosition(
@@ -245,19 +242,11 @@ function getPlayerLocationForStreetPosition(
 ): PlayerLocation {
   const x = clampStreetCell(streetPlayerX);
   const y = clampStreetCell(streetPlayerY);
-  const adjacentX = Math.min(STREET_GRID_SIZE - 1, x + 1);
-  const adjacentY = Math.min(STREET_GRID_SIZE - 1, y + 1);
-  const ipAddresses = [
-    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y),
-    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, adjacentX, y),
-    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, adjacentY),
-    getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, adjacentX, adjacentY),
-  ];
   return {
-    kind: 'intersection',
+    kind: 'ip',
+    ipAddress: getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y),
     x,
     y,
-    ipAddresses: [...new Set(ipAddresses)].sort(),
   };
 }
 
@@ -457,22 +446,6 @@ function getStreetHeadingVector(heading: StreetHeading): { dx: number; dy: numbe
   return { dx: 0, dy: -1 };
 }
 
-function getStreetViewpointForBuilding(cell: GridCellBuilding): { x: number; y: number; heading: StreetHeading } {
-  const x = clampStreetCell(cell.x);
-  const y = clampStreetCell(cell.y);
-
-  if (y < STREET_GRID_SIZE - 1) {
-    return { x, y: y + 1, heading: 0 };
-  }
-  if (y > 0) {
-    return { x, y: y - 1, heading: 2 };
-  }
-  if (x < STREET_GRID_SIZE - 1) {
-    return { x: x + 1, y, heading: 3 };
-  }
-  return { x: Math.max(0, x - 1), y, heading: 1 };
-}
-
 function StreetGridCamera({
   streetPlayerX,
   streetPlayerY,
@@ -586,7 +559,7 @@ function App() {
       options?.selectedIp ??
       (nextLocation.kind === 'ip' || nextLocation.kind === 'building'
         ? nextLocation.ipAddress
-        : nextLocation.ipAddresses[0]);
+        : undefined);
 
     if (nextIp) {
       setSelectedTargetIp(nextIp);
@@ -714,21 +687,7 @@ function App() {
 
     if (location.kind === 'building') {
       moveToIpLocation(location.ipAddress, 'building');
-      return;
     }
-
-    setLayoutMode('street');
-    setBuildingView(null);
-    applyPlayerLocation(location, { selectedIp: location.ipAddresses[0] ?? activeTargetIp });
-    const deltaX = clampStreetCell(location.x) - streetPlayerX;
-    const deltaY = clampStreetCell(location.y) - streetPlayerY;
-    if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
-      setStreetHeading(deltaX > 0 ? 1 : 3);
-    } else if (deltaY !== 0) {
-      setStreetHeading(deltaY > 0 ? 2 : 0);
-    }
-    setStreetPlayerX(clampStreetCell(location.x));
-    setStreetPlayerY(clampStreetCell(location.y));
   };
 
   const enterStreetAtCell = (cell: GridCellBuilding) => {
@@ -752,11 +711,7 @@ function App() {
     const targetCell = layoutMode === 'grid' && currentHoverCellRef.current
       ? currentHoverCellRef.current
       : cell;
-    const viewpoint = getStreetViewpointForBuilding(targetCell);
-    setStreetPlayerX(viewpoint.x);
-    setStreetPlayerY(viewpoint.y);
-    setStreetHeading(viewpoint.heading);
-    handleFlagClick(targetCell);
+    enterStreetAtCell(targetCell);
   };
 
   const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
@@ -772,7 +727,7 @@ function App() {
     );
     setStreetPlayerX(nextX);
     setStreetPlayerY(nextY);
-    applyPlayerLocation(nextLocation, { selectedIp: ipAddress ?? nextLocation.ipAddresses[0] ?? activeTargetIp });
+    applyPlayerLocation(nextLocation, { selectedIp: ipAddress ?? nextLocation.ipAddress });
   };
 
   const moveStreetByDirection = (direction: SwipeDirection) => {
