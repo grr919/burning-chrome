@@ -843,6 +843,7 @@ function App() {
       ? currentHoverCellRef.current
       : cell;
     enterStreetAtCell(targetCell);
+    handleFlagClick(targetCell);
   };
 
   const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
