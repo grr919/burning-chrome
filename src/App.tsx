@@ -821,6 +821,105 @@ function App() {
     }
   };
 
+  const loadStreetTargetDetails = (target: { ipAddress: string }) => {
+    setCertificateLoadingIp(target.ipAddress);
+    setExposureLoadingIp(target.ipAddress);
+    setCertificateResult(null);
+    setExposureResult(null);
+    setSshLaunchLoadingIp(null);
+    setSshLaunchResult(null);
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/https-certificate?ip=${encodeURIComponent(target.ipAddress)}`);
+        const json = (await response.json()) as HttpsCertificateResponse & { details?: string };
+
+        if (!response.ok) {
+          setCertificateResult({
+            provider: 'https_certificate',
+            ipAddress: target.ipAddress,
+            status: 'error',
+            host: target.ipAddress,
+            port: 443,
+            subjectAltNames: [],
+            error: json.error ?? json.details ?? `HTTPS certificate lookup failed with status ${response.status}`,
+          });
+          return;
+        }
+
+        setCertificateResult(json);
+      } catch (error) {
+        setCertificateResult({
+          provider: 'https_certificate',
+          ipAddress: target.ipAddress,
+          status: 'error',
+          host: target.ipAddress,
+          port: 443,
+          subjectAltNames: [],
+          error: error instanceof Error ? error.message : 'Unknown HTTPS certificate lookup error',
+        });
+      } finally {
+        setCertificateLoadingIp(null);
+      }
+    })();
+
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/exposure', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify({ ipAddresses: [target.ipAddress] }),
+        });
+        const json = (await response.json()) as { records?: ExposureRecord[]; error?: string; details?: string };
+
+        if (!response.ok) {
+          setExposureResult({
+            ipAddress: target.ipAddress,
+            sourceProvider: 'internetdb',
+            serviceCount: 0,
+            openPortCount: 0,
+            topPorts: [],
+            serviceNames: [],
+            labels: [],
+            hostnames: [],
+            error: json.error ?? json.details ?? `Exposure lookup failed with status ${response.status}`,
+          });
+          return;
+        }
+
+        const record = Array.isArray(json.records) ? json.records[0] : null;
+        setExposureResult(record ?? {
+          ipAddress: target.ipAddress,
+          sourceProvider: 'internetdb',
+          serviceCount: 0,
+          openPortCount: 0,
+          topPorts: [],
+          serviceNames: [],
+          labels: [],
+          hostnames: [],
+        });
+      } catch (error) {
+        setExposureResult({
+          ipAddress: target.ipAddress,
+          sourceProvider: 'internetdb',
+          serviceCount: 0,
+          openPortCount: 0,
+          topPorts: [],
+          serviceNames: [],
+          labels: [],
+          hostnames: [],
+          error: error instanceof Error ? error.message : 'Unknown exposure lookup error',
+        });
+      } finally {
+        setExposureLoadingIp(null);
+      }
+    })();
+  };
+
   const enterStreetAtCell = (cell: GridCellBuilding) => {
     const entry = getStreetEntryForTargetCell(cell);
     setBuildingView(null);
@@ -836,6 +935,7 @@ function App() {
       x: clampStreetCell(cell.x),
       y: clampStreetCell(cell.y),
     }, { selectedIp: cell.ipAddress });
+    loadStreetTargetDetails(cell);
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
@@ -1328,102 +1428,7 @@ function App() {
     setStreetTargetCell(building);
     setStreetFocusCell({ x: clampStreetCell(building.x), y: clampStreetCell(building.y) });
     applyPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
-    setCertificateLoadingIp(building.ipAddress);
-    setExposureLoadingIp(building.ipAddress);
-    setCertificateResult(null);
-    setExposureResult(null);
-    setSshLaunchLoadingIp(null);
-    setSshLaunchResult(null);
-
-    void (async () => {
-      try {
-        const response = await fetch(`/api/https-certificate?ip=${encodeURIComponent(building.ipAddress)}`);
-        const json = (await response.json()) as HttpsCertificateResponse & { details?: string };
-
-        if (!response.ok) {
-          setCertificateResult({
-            provider: 'https_certificate',
-            ipAddress: building.ipAddress,
-            status: 'error',
-            host: building.ipAddress,
-            port: 443,
-            subjectAltNames: [],
-            error: json.error ?? json.details ?? `HTTPS certificate lookup failed with status ${response.status}`,
-          });
-          return;
-        }
-
-        setCertificateResult(json);
-      } catch (error) {
-        setCertificateResult({
-          provider: 'https_certificate',
-          ipAddress: building.ipAddress,
-          status: 'error',
-          host: building.ipAddress,
-          port: 443,
-          subjectAltNames: [],
-          error: error instanceof Error ? error.message : 'Unknown HTTPS certificate lookup error',
-        });
-      } finally {
-        setCertificateLoadingIp(null);
-      }
-    })();
-
-
-    void (async () => {
-      try {
-        const response = await fetch('/api/exposure', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            accept: 'application/json',
-          },
-          body: JSON.stringify({ ipAddresses: [building.ipAddress] }),
-        });
-        const json = (await response.json()) as { records?: ExposureRecord[]; error?: string; details?: string };
-
-        if (!response.ok) {
-          setExposureResult({
-            ipAddress: building.ipAddress,
-            sourceProvider: 'internetdb',
-            serviceCount: 0,
-            openPortCount: 0,
-            topPorts: [],
-            serviceNames: [],
-            labels: [],
-            hostnames: [],
-            error: json.error ?? json.details ?? `Exposure lookup failed with status ${response.status}`,
-          });
-          return;
-        }
-
-        const record = Array.isArray(json.records) ? json.records[0] : null;
-        setExposureResult(record ?? {
-          ipAddress: building.ipAddress,
-          sourceProvider: 'internetdb',
-          serviceCount: 0,
-          openPortCount: 0,
-          topPorts: [],
-          serviceNames: [],
-          labels: [],
-          hostnames: [],
-        });
-      } catch (error) {
-        setExposureResult({
-          ipAddress: building.ipAddress,
-          sourceProvider: 'internetdb',
-          serviceCount: 0,
-          openPortCount: 0,
-          topPorts: [],
-          serviceNames: [],
-          labels: [],
-          hostnames: [],
-          error: error instanceof Error ? error.message : 'Unknown exposure lookup error',
-        });
-      } finally {
-        setExposureLoadingIp(null);
-      }
-    })();
+    loadStreetTargetDetails(building);
   };
 
   const handleExitBuildingView = () => {
@@ -1436,15 +1441,16 @@ function App() {
   };
 
   const handleLaunchSsh = async () => {
-    if (!buildingView) {
+    const target = buildingView ?? streetTargetCell;
+    if (!target) {
       return;
     }
 
-    setSshLaunchLoadingIp(buildingView.ipAddress);
+    setSshLaunchLoadingIp(target.ipAddress);
     setSshLaunchResult(null);
 
     try {
-      const response = await fetch(`/api/launch-ssh?ip=${encodeURIComponent(buildingView.ipAddress)}`, {
+      const response = await fetch(`/api/launch-ssh?ip=${encodeURIComponent(target.ipAddress)}`, {
         method: 'POST',
         headers: {
           accept: 'application/json',
@@ -1456,7 +1462,7 @@ function App() {
         setSshLaunchResult({
           provider: 'ssh_launch',
           status: 'error',
-          ipAddress: buildingView.ipAddress,
+          ipAddress: target.ipAddress,
           error: json.error ?? json.details ?? `SSH launch failed with status ${response.status}`,
           statusSummary: json.statusSummary ?? 'Unable to open the local SSH client.',
         });
@@ -1468,7 +1474,7 @@ function App() {
       setSshLaunchResult({
         provider: 'ssh_launch',
         status: 'error',
-        ipAddress: buildingView.ipAddress,
+        ipAddress: target.ipAddress,
         error: error instanceof Error ? error.message : 'Unknown SSH launch error',
         statusSummary: 'Unable to open the local SSH client.',
       });
@@ -1568,6 +1574,206 @@ function App() {
       setDisplayNameDraft(cleaned);
     }
   };
+
+  const renderStreetAndBuildingInfoPanel = (
+    target: { ipAddress: string; organizationName?: string | null },
+    onReturn: () => void,
+    helperText: string
+  ) => (
+    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+      <div className="font-bold text-lg">Street and Building View: {target.ipAddress}</div>
+      {target.organizationName?.trim() && (
+        <div className="text-sm text-gray-700 mt-1">{target.organizationName.trim()}</div>
+      )}
+      <div className="text-sm text-gray-600 mt-1">{helperText}</div>
+
+      <div className="mt-3 flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onReturn}
+            className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+          >
+            Return to Grid
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLaunchSsh}
+            disabled={sshLaunchLoadingIp === target.ipAddress}
+            className={`px-3 py-2 rounded-md text-sm font-medium ${sshLaunchLoadingIp === target.ipAddress ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
+            title="Open the local SSH client"
+          >
+            {sshLaunchLoadingIp === target.ipAddress ? 'Opening SSH...' : 'Open SSH client'}
+          </button>
+
+          {websiteCandidate && (
+            <a
+              href={websiteCandidate.primaryUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+              title={`Open ${websiteCandidate.hostname}`}
+            >
+              Open website
+            </a>
+          )}
+        </div>
+
+        {websiteCandidate && (
+          <div className="text-sm text-gray-700">
+            Website candidate: {websiteCandidate.hostname}
+            {websiteCandidate.secondaryUrl ? (
+              <div className="text-xs text-gray-600 mt-1">
+                Tries HTTPS first. HTTP may also be available at {websiteCandidate.secondaryUrl}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {sshLaunchResult && sshLaunchResult.ipAddress === target.ipAddress && (
+          <div className={`text-sm ${sshLaunchResult.status === 'ready' ? 'text-green-700' : 'text-red-700'}`}>
+            {sshLaunchResult.statusSummary ?? sshLaunchResult.error}
+            {sshLaunchResult.command ? (
+              <div className="text-xs text-gray-600 mt-1 break-all">Command: {sshLaunchResult.command}</div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 space-y-5">
+        <div>
+          <div className="font-semibold">Public-facing services</div>
+          {exposureLoadingIp ? (
+            <div className="text-sm text-blue-700 mt-1">Looking up exposure data for {exposureLoadingIp}...</div>
+          ) : exposureResult ? (
+            <div className="space-y-3 mt-2">
+              <div className="space-y-2">
+                {getExposureSummarySentences(exposureResult).map((sentence) => (
+                  <div key={sentence} className="text-sm text-gray-700">
+                    {sentence}
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
+                <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
+                <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
+                {exposureResult.topPorts.length > 0 && (
+                  <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
+                )}
+                {exposureResult.hostnames.length > 0 && (
+                  <div className="break-all"><span className="text-gray-600">Hostnames:</span> {exposureResult.hostnames.join(', ')}</div>
+                )}
+              </div>
+
+              {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
+              {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
+          )}
+        </div>
+
+        <div>
+          <div className="font-semibold">HTTPS certificate</div>
+          {certificateLoadingIp ? (
+            <div className="text-sm text-blue-700 mt-1">Looking up HTTPS certificate for {certificateLoadingIp}...</div>
+          ) : certificateResult ? (
+            certificateResult.status === 'error' ? (
+              <div className="mt-2 space-y-2">
+                <div className="text-sm text-red-700">
+                  {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
+                </div>
+                {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
+                  <div className="text-xs text-gray-600">
+                    Attempted: {certificateResult.attemptedHosts.join(', ')}
+                  </div>
+                )}
+                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+              </div>
+            ) : (
+              <div className="space-y-3 mt-2">
+                <div className={`text-sm ${
+                  getCertificateStatusTone(certificateResult) === 'ok'
+                    ? 'text-green-700'
+                    : getCertificateStatusTone(certificateResult) === 'warn'
+                      ? 'text-amber-700'
+                      : 'text-red-700'
+                }`}>
+                  {certificateResult.statusSummary ?? 'HTTPS certificate retrieved successfully.'}
+                </div>
+
+                <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
+                  <div><span className="text-gray-600">Connected to:</span> {certificateResult.host}:{certificateResult.port}</div>
+                  {certificateResult.lookupMode && (
+                    <div><span className="text-gray-600">Lookup method:</span> {certificateResult.lookupMode === 'direct_ip' ? 'Direct IP TLS' : 'Hostname-based SNI retry'}</div>
+                  )}
+                  {certificateResult.subjectCn && <div><span className="text-gray-600">Subject CN:</span> {certificateResult.subjectCn}</div>}
+                  {certificateResult.issuerCn && <div><span className="text-gray-600">Issuer:</span> {certificateResult.issuerCn}</div>}
+                  {certificateResult.validFrom && <div><span className="text-gray-600">Valid from:</span> {certificateResult.validFrom}</div>}
+                  {certificateResult.validTo && <div><span className="text-gray-600">Valid to:</span> {certificateResult.validTo}</div>}
+                  {typeof certificateResult.authorized === 'boolean' && (
+                    <div><span className="text-gray-600">Authorized:</span> {certificateResult.authorized ? 'yes' : 'no'}</div>
+                  )}
+                  {certificateResult.authorizationError && (
+                    <div><span className="text-gray-600">Authorization issue:</span> {certificateResult.authorizationError}</div>
+                  )}
+                  {certificateResult.serialNumber && <div><span className="text-gray-600">Serial:</span> {certificateResult.serialNumber}</div>}
+                  {certificateResult.fingerprint256 && <div className="break-all"><span className="text-gray-600">SHA-256:</span> {certificateResult.fingerprint256}</div>}
+                </div>
+
+                {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
+                  <div className="text-xs text-gray-600">
+                    Attempted: {certificateResult.attemptedHosts.join(', ')}
+                  </div>
+                )}
+
+                {certificateResult.subjectAltNames.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Subject alternative names</div>
+                    <div className="space-y-1">
+                      {certificateResult.subjectAltNames.map((name) => (
+                        <div key={name} className="text-xs bg-gray-100 rounded p-2 break-all">
+                          {name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+              </div>
+            )
+          ) : (
+            <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
+          )}
+        </div>
+
+        <div>
+          <div className="font-semibold">Directory</div>
+          {buildingDirectoryEntries.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {buildingDirectoryEntries.map((entry) => (
+                <a
+                  key={entry.hostname}
+                  href={entry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={entry.hostname}
+                  className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
+                >
+                  {entry.hostname}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 mt-2">No websites identified.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const renderStreetSceneCanvas = (viewKey: string, focusCell?: { x: number; y: number } | null) => {
     const focusPosition = focusCell ? getStreetCellWorldPosition(focusCell.x, focusCell.y) : null;
@@ -2041,37 +2247,33 @@ function App() {
               {renderStreetSceneCanvas(`street-${viewResetKey}-${streetTargetCell?.ipAddress ?? 'none'}`, streetFocusCell)}
             </div>
 
-            <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
-              <div className="font-bold text-lg">Street and Building View: {streetPanelTargetIp}</div>
-              {streetPanelOrganizationName && (
-                <div className="text-sm text-gray-700 mt-1">{streetPanelOrganizationName}</div>
-              )}
-              <div className="text-sm text-gray-600 mt-1">
-                Use "Return to Grid" to leave Street and Building View. Click a building to enter it.
-              </div>
-
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-                >
-                  Return to Grid
-                </button>
-              </div>
-
-              {bottomInfoHtml && (
-                <div className="mt-4">
-                  <div className="font-semibold mb-2">Current information</div>
-                  <div
-                    className={infoDisplayMode === 'prose'
-                      ? "text-sm leading-relaxed [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2 [&_.text-gray-600]:text-gray-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-700]:text-red-700"
-                      : "space-y-2 text-sm leading-snug [&_.font-bold]:text-base [&_.font-bold]:mb-1 [&_.text-gray-400]:text-gray-600 [&_.text-gray-300]:text-gray-700 [&_.text-blue-300]:text-blue-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-300]:text-red-700 [&_.text-red-700]:text-red-700 [&_.bg-gray-800]:bg-gray-100 [&_.bg-gray-100]:bg-gray-100 [&_.bg-gray-800]:p-1.5 [&_.bg-gray-100]:p-1.5 [&_.bg-gray-800]:rounded [&_.bg-gray-100]:rounded"}
-                    dangerouslySetInnerHTML={{ __html: bottomInfoHtml }}
-                  />
+            {streetTargetCell ? (
+              renderStreetAndBuildingInfoPanel(
+                streetTargetCell,
+                handleBack,
+                'Use "Return to Grid" to leave Street and Building View. Click a building to enter it.'
+              )
+            ) : (
+              <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+                <div className="font-bold text-lg">Street and Building View: {streetPanelTargetIp}</div>
+                {streetPanelOrganizationName && (
+                  <div className="text-sm text-gray-700 mt-1">{streetPanelOrganizationName}</div>
+                )}
+                <div className="text-sm text-gray-600 mt-1">
+                  Use "Return to Grid" to leave Street and Building View. Click a building to enter it.
                 </div>
-              )}
-            </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                  >
+                    Return to Grid
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex justify-center">
