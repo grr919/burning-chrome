@@ -483,6 +483,13 @@ function getStreetCellWorldPosition(x: number, y: number): { x: number; z: numbe
   };
 }
 
+function getStreetBuildingWorldPosition(x: number, y: number): { x: number; z: number } {
+  return {
+    x: clampStreetCell(x) * STREET_GRID_SPACING - STREET_GRID_OFFSET,
+    z: clampStreetCell(y) * STREET_GRID_SPACING - STREET_GRID_OFFSET,
+  };
+}
+
 function getStreetHeadingVector(heading: StreetHeading): { dx: number; dy: number } {
   if (heading === 1) {
     return { dx: 1, dy: 0 };
@@ -512,7 +519,7 @@ function StreetGridCamera({
   useEffect(() => {
     const position = getStreetCellWorldPosition(streetPlayerX, streetPlayerY);
     const headingVector = getStreetHeadingVector(heading);
-    const focusPosition = focusCell ? getStreetCellWorldPosition(focusCell.x, focusCell.y) : null;
+    const focusPosition = focusCell ? getStreetBuildingWorldPosition(focusCell.x, focusCell.y) : null;
     camera.position.set(position.x, 1.55, position.z);
     camera.lookAt(
       focusPosition ? focusPosition.x : position.x + headingVector.dx * STREET_GRID_SPACING * 3,
@@ -1776,7 +1783,7 @@ function App() {
   );
 
   const renderStreetSceneCanvas = (viewKey: string, focusCell?: { x: number; y: number } | null) => {
-    const focusPosition = focusCell ? getStreetCellWorldPosition(focusCell.x, focusCell.y) : null;
+    const focusPosition = focusCell ? getStreetBuildingWorldPosition(focusCell.x, focusCell.y) : null;
 
     return (
       <div
