@@ -214,6 +214,7 @@ export function useMultiplayerPresence({
   const [status, setStatus] = useState<'offline' | 'connecting' | 'online' | 'error'>(
     isSupabaseConfigured ? 'connecting' : 'offline'
   );
+  const [chatStatus, setChatStatus] = useState<'unavailable' | 'connecting' | 'ready'>('unavailable');
   const [others, setOthers] = useState<MultiplayerPresence[]>([]);
   const [messages, setMessages] = useState<RoomChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -298,12 +299,14 @@ export function useMultiplayerPresence({
   useEffect(() => {
     setMessages([]);
     isChatChannelReadyRef.current = false;
+    setChatStatus('unavailable');
 
     if (!supabase || !isSupabaseConfigured || chatLocationKey === 'unknown') {
       return;
     }
 
     let isActive = true;
+    setChatStatus('connecting');
     const chatChannel = supabase.channel(getChatChannelName(chatLocationKey), {
       config: {
         broadcast: { self: false },
@@ -332,11 +335,13 @@ export function useMultiplayerPresence({
         }
 
         isChatChannelReadyRef.current = nextStatus === 'SUBSCRIBED';
+        setChatStatus(nextStatus === 'SUBSCRIBED' ? 'ready' : 'connecting');
       });
 
     return () => {
       isActive = false;
       isChatChannelReadyRef.current = false;
+      setChatStatus('unavailable');
       if (chatChannelRef.current === chatChannel) {
         chatChannelRef.current = null;
       }
@@ -357,7 +362,10 @@ export function useMultiplayerPresence({
     const trimmed = body.trim().slice(0, 300);
     const chatChannel = chatChannelRef.current;
     if (!trimmed || !chatChannel || !isChatChannelReadyRef.current || status !== 'online' || chatLocationKey === 'unknown') {
-      return;
+      if (trimmed) {
+        console.warn('Chat message not sent because exact-location chat is not ready.', { chatLocationKey });
+      }
+      return false;
     }
 
     const message: RoomChatMessage = {
@@ -371,6 +379,7 @@ export function useMultiplayerPresence({
     };
     setMessages((prev) => [...prev, message].slice(-40));
     void chatChannel.send({ type: 'broadcast', event: 'chat', payload: message });
+    return true;
   }, [chatLocationKey, identity, status]);
 
   const updateDisplayName = useCallback((nextName: string): boolean => {
@@ -390,6 +399,8 @@ export function useMultiplayerPresence({
     currentUser: identity,
     others,
     messages,
+    isChatReady: chatStatus === 'ready',
+    chatStatus,
     sendMessage,
     updateDisplayName,
   };

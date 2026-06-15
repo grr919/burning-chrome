@@ -1465,14 +1465,30 @@ function App() {
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   });
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
+  const isChatDisabled =
+    !multiplayer.isConfigured ||
+    multiplayer.status !== 'online' ||
+    chatLocationKey === 'unknown' ||
+    !multiplayer.isChatReady;
+  const chatPlaceholder = !multiplayer.isConfigured
+    ? 'Multiplayer offline'
+    : multiplayer.status !== 'online'
+      ? 'Multiplayer offline'
+      : chatLocationKey === 'unknown'
+        ? 'Location unavailable'
+        : !multiplayer.isChatReady
+          ? 'Connecting to this location...'
+          : 'Message this location';
   const handlePointerTargetChange = (cell: GridCellBuilding) => {
     currentHoverCellRef.current = cell;
     setPointerTarget(cell);
   };
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    multiplayer.sendMessage(chatDraft);
-    setChatDraft('');
+    const sent = multiplayer.sendMessage(chatDraft);
+    if (sent) {
+      setChatDraft('');
+    }
   };
   const handleSaveDisplayName = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2077,14 +2093,14 @@ function App() {
                 <input
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
-                  disabled={!multiplayer.isConfigured || multiplayer.status !== 'online' || chatLocationKey === 'unknown'}
+                  disabled={isChatDisabled}
                   maxLength={300}
                   className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
-                  placeholder={multiplayer.isConfigured ? 'Message this location' : 'Multiplayer offline'}
+                  placeholder={chatPlaceholder}
                 />
                 <button
                   type="submit"
-                  disabled={!chatDraft.trim() || !multiplayer.isConfigured || multiplayer.status !== 'online' || chatLocationKey === 'unknown'}
+                  disabled={!chatDraft.trim() || isChatDisabled}
                   className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   Send
