@@ -111,6 +111,11 @@ type Grid2Position = {
   innerFourthStart: number;
 };
 
+type StreetFocusCell = {
+  x: number;
+  y: number;
+};
+
 type PlayerLocation = MultiplayerPlayerLocation;
 
 const GRID2_WINDOW_SIZE = 16;
@@ -264,6 +269,34 @@ function getPlayerLocationForStreetPosition(
     ipAddress: getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, x, y),
     x,
     y,
+  };
+}
+
+function getStreetEntryForTargetCell(cell: GridCellBuilding): {
+  playerX: number;
+  playerY: number;
+  heading: StreetHeading;
+  focusCell: StreetFocusCell;
+} {
+  const targetX = clampStreetCell(cell.x);
+  const targetY = clampStreetCell(cell.y);
+  const candidates: Array<{ playerX: number; playerY: number; heading: StreetHeading }> = [
+    { playerX: targetX, playerY: targetY + 1, heading: 0 },
+    { playerX: targetX, playerY: targetY - 1, heading: 2 },
+    { playerX: targetX + 1, playerY: targetY, heading: 3 },
+    { playerX: targetX - 1, playerY: targetY, heading: 1 },
+  ];
+  const entry = candidates.find(
+    (candidate) =>
+      candidate.playerX >= 0 &&
+      candidate.playerX < STREET_GRID_SIZE &&
+      candidate.playerY >= 0 &&
+      candidate.playerY < STREET_GRID_SIZE
+  ) ?? { playerX: targetX, playerY: targetY, heading: 0 };
+
+  return {
+    ...entry,
+    focusCell: { x: targetX, y: targetY },
   };
 }
 
@@ -505,6 +538,8 @@ function App() {
   const [streetPlayerX, setStreetPlayerX] = useState<number>(7);
   const [streetPlayerY, setStreetPlayerY] = useState<number>(7);
   const [streetHeading, setStreetHeading] = useState<StreetHeading>(0);
+  const [streetTargetCell, setStreetTargetCell] = useState<GridCellBuilding | null>(null);
+  const [streetFocusCell, setStreetFocusCell] = useState<StreetFocusCell | null>(null);
   const [selectedTargetIp, setSelectedTargetIp] = useState<string>(
     () => {
       const initialLocation = getPlayerLocationForGridCell('grid1', 0, DEFAULT_GRID_POSITION, DEFAULT_GRID2_POSITION, DEFAULT_PLAYER_CELL.x, DEFAULT_PLAYER_CELL.y);
@@ -627,14 +662,23 @@ function App() {
       return;
     }
 
-    applyPlayerLocation(getPlayerLocationForStreetPosition(
-      streetPlayerX,
-      streetPlayerY,
-      gridSystemMode,
-      zoomLevel,
-      currentPosition,
-      grid2Position
-    ));
+    if (streetTargetCell) {
+      applyPlayerLocation({
+        kind: 'ip',
+        ipAddress: streetTargetCell.ipAddress,
+        x: clampStreetCell(streetTargetCell.x),
+        y: clampStreetCell(streetTargetCell.y),
+      });
+    } else {
+      applyPlayerLocation(getPlayerLocationForStreetPosition(
+        streetPlayerX,
+        streetPlayerY,
+        gridSystemMode,
+        zoomLevel,
+        currentPosition,
+        grid2Position
+      ));
+    }
   }, [
     layoutMode,
     buildingView,
@@ -644,6 +688,7 @@ function App() {
     zoomLevel,
     currentPosition,
     grid2Position,
+    streetTargetCell,
   ]);
 
   const websiteCandidate = useMemo(
@@ -659,6 +704,8 @@ function App() {
     const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
     setLayoutMode('grid');
     setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
     if (gridSystemMode === 'grid2') {
       const nextGrid2Position = {
         outerFirstOctet: firstOctet,
@@ -775,20 +822,20 @@ function App() {
   };
 
   const enterStreetAtCell = (cell: GridCellBuilding) => {
-    const x = clampStreetCell(cell.x);
-    const y = clampStreetCell(cell.y);
+    const entry = getStreetEntryForTargetCell(cell);
     setBuildingView(null);
     setLayoutMode('street');
-    setStreetPlayerX(x);
-    setStreetPlayerY(y);
-    applyPlayerLocation(getPlayerLocationForStreetPosition(
-      x,
-      y,
-      gridSystemMode,
-      zoomLevel,
-      currentPosition,
-      grid2Position
-    ), { selectedIp: cell.ipAddress });
+    setStreetTargetCell(cell);
+    setStreetFocusCell(entry.focusCell);
+    setStreetPlayerX(entry.playerX);
+    setStreetPlayerY(entry.playerY);
+    setStreetHeading(entry.heading);
+    applyPlayerLocation({
+      kind: 'ip',
+      ipAddress: cell.ipAddress,
+      x: clampStreetCell(cell.x),
+      y: clampStreetCell(cell.y),
+    }, { selectedIp: cell.ipAddress });
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
@@ -809,6 +856,8 @@ function App() {
       currentPosition,
       grid2Position
     );
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
     setStreetPlayerX(nextX);
     setStreetPlayerY(nextY);
     applyPlayerLocation(nextLocation, { selectedIp: ipAddress ?? nextLocation.ipAddress });
@@ -827,6 +876,7 @@ function App() {
   };
 
   const turnStreetBy = (delta: -1 | 1) => {
+    setStreetFocusCell(null);
     setStreetHeading((prev) => ((prev + delta + 4) % 4) as StreetHeading);
   };
 
@@ -870,17 +920,26 @@ function App() {
 
   const handleBack = () => {
     if (layoutMode === 'street') {
-      const nextLocation = getPlayerLocationForGridCell(
-        gridSystemMode,
-        zoomLevel,
-        currentPosition,
-        grid2Position,
-        streetPlayerX,
-        streetPlayerY
-      );
+      const nextLocation = streetTargetCell
+        ? {
+            kind: 'ip' as const,
+            ipAddress: streetTargetCell.ipAddress,
+            x: clampStreetCell(streetTargetCell.x),
+            y: clampStreetCell(streetTargetCell.y),
+          }
+        : getPlayerLocationForGridCell(
+            gridSystemMode,
+            zoomLevel,
+            currentPosition,
+            grid2Position,
+            streetPlayerX,
+            streetPlayerY
+          );
       applyPlayerLocation(nextLocation);
       setBuildingView(null);
       setLayoutMode('grid');
+      setStreetTargetCell(null);
+      setStreetFocusCell(null);
       return;
     }
 
@@ -924,6 +983,8 @@ function App() {
     );
     setLayoutMode('grid');
     setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
     setZoomLevel(0);
     setCurrentPosition(DEFAULT_GRID_POSITION);
     setGrid2Position(DEFAULT_GRID2_POSITION);
@@ -957,6 +1018,8 @@ function App() {
     }
     setLayoutMode('grid');
     setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
     setBottomInfoHtml('');
     applyPlayerLocation(nextPlayerLocation, {
       selectedIp: nextPlayerLocation.kind === 'ip'
@@ -1262,6 +1325,8 @@ function App() {
 
   const handleFlagClick = (building: BuildingViewState) => {
     setBuildingView(building);
+    setStreetTargetCell(building);
+    setStreetFocusCell({ x: clampStreetCell(building.x), y: clampStreetCell(building.y) });
     applyPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
     setCertificateLoadingIp(building.ipAddress);
     setExposureLoadingIp(building.ipAddress);
@@ -1363,6 +1428,7 @@ function App() {
 
   const handleExitBuildingView = () => {
     setBuildingView(null);
+    setStreetFocusCell(streetTargetCell ? { x: clampStreetCell(streetTargetCell.x), y: clampStreetCell(streetTargetCell.y) } : null);
     setCertificateLoadingIp(null);
     setExposureLoadingIp(null);
     setSshLaunchLoadingIp(null);
@@ -1463,6 +1529,8 @@ function App() {
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   });
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
+  const streetPanelTargetIp = streetTargetCell?.ipAddress ?? selectedTargetIp ?? activeTargetIp;
+  const streetPanelOrganizationName = streetTargetCell?.organizationName?.trim();
   const isChatDisabled =
     !multiplayer.isConfigured ||
     multiplayer.status !== 'online' ||
@@ -1967,8 +2035,42 @@ function App() {
             </div>
           </div>
         ) : layoutMode === 'street' ? (
-          <div className="flex-1 min-h-0 flex justify-center">
-            {renderStreetSceneCanvas(`street-${viewResetKey}`)}
+          <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
+              {renderStreetSceneCanvas(`street-${viewResetKey}`, streetFocusCell)}
+            </div>
+
+            <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+              <div className="font-bold text-lg">Street and Building View: {streetPanelTargetIp}</div>
+              {streetPanelOrganizationName && (
+                <div className="text-sm text-gray-700 mt-1">{streetPanelOrganizationName}</div>
+              )}
+              <div className="text-sm text-gray-600 mt-1">
+                Use "Return to Grid" to leave Street and Building View. Click a building to enter it.
+              </div>
+
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                >
+                  Return to Grid
+                </button>
+              </div>
+
+              {bottomInfoHtml && (
+                <div className="mt-4">
+                  <div className="font-semibold mb-2">Current information</div>
+                  <div
+                    className={infoDisplayMode === 'prose'
+                      ? "text-sm leading-relaxed [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2 [&_.text-gray-600]:text-gray-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-700]:text-red-700"
+                      : "space-y-2 text-sm leading-snug [&_.font-bold]:text-base [&_.font-bold]:mb-1 [&_.text-gray-400]:text-gray-600 [&_.text-gray-300]:text-gray-700 [&_.text-blue-300]:text-blue-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-300]:text-red-700 [&_.text-red-700]:text-red-700 [&_.bg-gray-800]:bg-gray-100 [&_.bg-gray-100]:bg-gray-100 [&_.bg-gray-800]:p-1.5 [&_.bg-gray-100]:p-1.5 [&_.bg-gray-800]:rounded [&_.bg-gray-100]:rounded"}
+                    dangerouslySetInnerHTML={{ __html: bottomInfoHtml }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex justify-center">
