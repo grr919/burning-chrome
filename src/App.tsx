@@ -1,11 +1,11 @@
-﻿import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid, { type GridCellBuilding } from './components/IPGrid';
 import {
   getExactLocationKey,
-  getMultiplayerRoomKey,
+  getMultiplayerGridKey,
   getPlayerLocationDisplay,
   useMultiplayerPresence,
   type MultiplayerCell,
@@ -592,13 +592,13 @@ function App() {
     playerLocation.kind === 'ip' || playerLocation.kind === 'building'
       ? playerLocation.ipAddress
       : activeTargetIp;
-  const multiplayerRoomKey = useMemo(
-    () => getMultiplayerRoomKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
+  const multiplayerGridKey = useMemo(
+    () => getMultiplayerGridKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
     [gridSystemMode, zoomLevel, currentPosition, grid2Position]
   );
   const chatLocationKey = useMemo(() => getExactLocationKey(playerLocation), [playerLocation]);
   const multiplayer = useMultiplayerPresence({
-    roomKey: multiplayerRoomKey,
+    gridKey: multiplayerGridKey,
     chatLocationKey,
     gridSystemMode,
     zoomLevel,
@@ -614,7 +614,7 @@ function App() {
   useEffect(() => {
     setPointerTarget(undefined);
     currentHoverCellRef.current = null;
-  }, [multiplayerRoomKey]);
+  }, [multiplayerGridKey]);
 
   useEffect(() => {
     if (layoutMode !== 'grid' || buildingView) {
@@ -2085,7 +2085,7 @@ function App() {
                   ))
                 ) : (
                   <div className="text-gray-500">
-                    {multiplayer.isConfigured ? 'No room messages yet.' : 'Supabase env vars not configured.'}
+                    {multiplayer.isConfigured ? 'No grid messages yet.' : 'Supabase env vars not configured.'}
                   </div>
                 )}
               </div>

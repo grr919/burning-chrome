@@ -133,7 +133,7 @@ Do not silently merge these concepts:
 - **selected target**: the IP address or building currently selected;
 - **player location**: where the local user is in the world;
 - **street/building location**: the location represented by street/building view;
-- **chat room/location**: the exact location used for message visibility;
+- **chat grid/location**: the exact location used for message visibility;
 - **presence location**: the location broadcast to other users;
 - **metadata target**: the IP or prefix whose cached data is being read.
 

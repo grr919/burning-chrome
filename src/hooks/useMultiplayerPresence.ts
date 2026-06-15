@@ -59,7 +59,7 @@ export type MultiplayerPresence = {
   lastSeenAt: string;
 };
 
-export type RoomChatMessage = {
+export type GridChatMessage = {
   id: string;
   userId: string;
   displayName: string;
@@ -70,7 +70,7 @@ export type RoomChatMessage = {
 };
 
 type UseMultiplayerPresenceInput = {
-  roomKey: string;
+  gridKey: string;
   chatLocationKey: string;
   gridSystemMode: MultiplayerGridSystemMode;
   zoomLevel: number;
@@ -183,7 +183,7 @@ export function getPlayerLocationDisplay(location?: MultiplayerPlayerLocation): 
   return 'Unknown location';
 }
 
-export function getMultiplayerRoomKey(
+export function getMultiplayerGridKey(
   gridSystemMode: MultiplayerGridSystemMode,
   zoomLevel: number,
   currentPosition: MultiplayerGridPosition,
@@ -200,7 +200,7 @@ export function getMultiplayerRoomKey(
 }
 
 export function useMultiplayerPresence({
-  roomKey,
+  gridKey,
   chatLocationKey,
   gridSystemMode,
   zoomLevel,
@@ -216,7 +216,7 @@ export function useMultiplayerPresence({
   );
   const [chatStatus, setChatStatus] = useState<'unavailable' | 'connecting' | 'ready'>('unavailable');
   const [others, setOthers] = useState<MultiplayerPresence[]>([]);
-  const [messages, setMessages] = useState<RoomChatMessage[]>([]);
+  const [messages, setMessages] = useState<GridChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const chatChannelRef = useRef<RealtimeChannel | null>(null);
   const isChatChannelReadyRef = useRef(false);
@@ -252,7 +252,7 @@ export function useMultiplayerPresence({
     }
 
     setStatus('connecting');
-    const channel = supabase.channel(`cyberspace:${roomKey}`, {
+    const channel = supabase.channel(`cyberspace:${gridKey}`, {
       config: {
         broadcast: { self: false },
         presence: { key: identity.userId },
@@ -294,7 +294,7 @@ export function useMultiplayerPresence({
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [roomKey, identity.userId]);
+  }, [gridKey, identity.userId]);
 
   useEffect(() => {
     setMessages([]);
@@ -320,7 +320,7 @@ export function useMultiplayerPresence({
           return;
         }
 
-        const message = chatPayload as RoomChatMessage;
+        const message = chatPayload as GridChatMessage;
         if (!message?.id || typeof message.body !== 'string') {
           return;
         }
@@ -368,7 +368,7 @@ export function useMultiplayerPresence({
       return false;
     }
 
-    const message: RoomChatMessage = {
+    const message: GridChatMessage = {
       id: createId(),
       userId: identity.userId,
       displayName: identity.displayName,
