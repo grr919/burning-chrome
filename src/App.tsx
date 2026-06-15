@@ -1646,9 +1646,9 @@ function App() {
                 event.preventDefault();
                 void runDomainSearch();
               }}
-              className="min-w-0 lg:px-4 lg:pt-1"
+              className="flex min-w-0 justify-center lg:px-4 lg:pt-1"
             >
-              <div className="flex min-w-0 max-w-xl gap-2">
+              <div className="flex w-full min-w-0 max-w-xl gap-2">
                 <input
                   type="search"
                   value={searchQuery}
