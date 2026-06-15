@@ -90,6 +90,14 @@ type DirectoryEntry = {
   url: string;
 };
 
+type DomainSearchResult = {
+  label: string;
+  domain?: string;
+  ip: string;
+  source?: string;
+  description?: string;
+};
+
 type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
@@ -136,6 +144,15 @@ function clampGrid2WindowStart(value: number): number {
 
 function clampStreetCell(value: number): number {
   return Math.max(0, Math.min(STREET_GRID_SIZE - 1, Math.round(value)));
+}
+
+function isValidIpv4(value: string): boolean {
+  const parts = value.trim().split('.');
+  return parts.length === 4 && parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false;
+    const octet = Number.parseInt(part, 10);
+    return octet >= 0 && octet <= 255 && String(octet) === part;
+  });
 }
 
 function Grid2ArrowIcon({ direction }: { direction: Grid2ArrowDirection }) {
@@ -515,6 +532,11 @@ function App() {
   const [pointerTarget, setPointerTarget] = useState<MultiplayerCell | undefined>(undefined);
   const [chatDraft, setChatDraft] = useState('');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<DomainSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [showSearchOverlay, setShowSearchOverlay] = useState(false);
 
   const ipColors = {
     reserved: '#2C3E50',
@@ -672,6 +694,68 @@ function App() {
           },
       { selectedIp: ipAddress }
     );
+  };
+
+  const normalizeSearchResults = (value: unknown): DomainSearchResult[] => {
+    if (!value || typeof value !== 'object' || !Array.isArray((value as { results?: unknown }).results)) {
+      return [];
+    }
+
+    return (value as { results: unknown[] }).results
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => {
+        const label = typeof item.label === 'string' ? item.label.trim() : '';
+        const ip = typeof item.ip === 'string' ? item.ip.trim() : '';
+        if (!label || !isValidIpv4(ip)) {
+          return null;
+        }
+        return {
+          label,
+          ip,
+          domain: typeof item.domain === 'string' && item.domain.trim() ? item.domain.trim() : undefined,
+          source: typeof item.source === 'string' && item.source.trim() ? item.source.trim() : undefined,
+          description: typeof item.description === 'string' && item.description.trim() ? item.description.trim() : undefined,
+        } satisfies DomainSearchResult;
+      })
+      .filter((item): item is DomainSearchResult => Boolean(item));
+  };
+
+  const runDomainSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError('');
+    setSearchResults([]);
+    setShowSearchOverlay(true);
+
+    try {
+      const response = await fetch(`/api/domain-search?q=${encodeURIComponent(query)}`);
+      const json = await response.json();
+      if (!response.ok) {
+        const message = json && typeof json.error === 'string' ? json.error : 'Search failed.';
+        throw new Error(message);
+      }
+      setSearchResults(normalizeSearchResults(json));
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Search failed.');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleSearchResultClick = (result: DomainSearchResult) => {
+    if (!isValidIpv4(result.ip)) {
+      setSearchError('Search returned an invalid IPv4 address.');
+      setShowSearchOverlay(true);
+      return;
+    }
+
+    setShowSearchOverlay(false);
+    setSearchError('');
+    moveToIpLocation(result.ip, 'ip');
   };
 
   const handleRemoteUserClick = (user: MultiplayerPresence) => {
@@ -1488,7 +1572,31 @@ function App() {
               <h1 className="text-2xl font-bold">Burning Chrome</h1>
             </div>
 
-            <div className="min-w-0 lg:px-4 lg:pt-1" />
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runDomainSearch();
+              }}
+              className="min-w-0 lg:px-4 lg:pt-1"
+            >
+              <div className="flex min-w-0 max-w-xl gap-2">
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search domain or organization..."
+                  className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                  aria-label="Search domain or organization"
+                />
+                <button
+                  type="submit"
+                  disabled={!searchQuery.trim() || searchLoading}
+                  className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  {searchLoading ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+            </form>
 
             <div className="flex flex-col items-start lg:items-end gap-3 lg:pl-4">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
@@ -1605,6 +1713,55 @@ function App() {
             </div>
           </div>
         </header>
+
+        {showSearchOverlay && (
+          <div className="fixed inset-x-4 top-28 bottom-28 z-40 flex items-start justify-center bg-black/20 p-4">
+            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-gray-400 bg-white text-gray-950 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                <div>
+                  <div className="text-base font-semibold">Search results</div>
+                  <div className="text-xs text-gray-600">{searchQuery.trim()}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSearchOverlay(false)}
+                  className="rounded border border-gray-400 bg-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-900 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="max-h-[60vh] overflow-auto p-4">
+                {searchLoading ? (
+                  <div className="text-sm text-gray-700">Searching...</div>
+                ) : searchError ? (
+                  <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{searchError}</div>
+                ) : searchResults.length === 0 ? (
+                  <div className="text-sm text-gray-700">No results found.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {searchResults.map((result) => (
+                      <button
+                        key={`${result.ip}-${result.domain ?? result.label}`}
+                        type="button"
+                        onClick={() => handleSearchResultClick(result)}
+                        className="block w-full rounded-md border border-gray-200 bg-gray-50 p-3 text-left shadow-sm hover:border-gray-400 hover:bg-gray-100 active:bg-gray-200"
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="font-semibold text-gray-950">{result.label}</span>
+                          <span className="font-mono text-sm text-gray-800">{result.ip}</span>
+                        </div>
+                        {result.domain && <div className="mt-1 text-sm text-blue-700">{result.domain}</div>}
+                        {result.description && <div className="mt-1 text-sm text-gray-700">{result.description}</div>}
+                        {result.source && <div className="mt-1 text-xs text-gray-500">Source: {result.source}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {buildingView ? (
           <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
