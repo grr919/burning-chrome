@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -12,6 +12,7 @@ import {
   type MultiplayerPresence,
   type MultiplayerPlayerLocation,
 } from './hooks/useMultiplayerPresence';
+import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 
 type GridPosition = {
   firstOctet: number;
@@ -129,6 +130,23 @@ const DEFAULT_GRID2_POSITION: Grid2Position = {
   innerThirdStart: 0,
   innerFourthStart: 0,
 };
+const MAX_AVATAR_FILE_BYTES = 10 * 1024 * 1024;
+const AVATAR_BUCKET = 'avatars';
+
+function validateAvatarFile(file: File): string | null {
+  if (!file.name.toLowerCase().endsWith('.glb')) {
+    return 'Choose a .glb avatar file.';
+  }
+  if (file.size > MAX_AVATAR_FILE_BYTES) {
+    return 'Avatar file must be 10 MB or smaller.';
+  }
+  return null;
+}
+
+function getAvatarStoragePath(userId: string): string {
+  const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
+  return `avatars/${safeUserId}/avatar.glb`;
+}
 const DEFAULT_GRID_POSITION: GridPosition = {
   firstOctet: 0,
   secondOctet: 0,
@@ -594,6 +612,8 @@ function App() {
   const [pointerTarget, setPointerTarget] = useState<MultiplayerCell | undefined>(undefined);
   const [chatDraft, setChatDraft] = useState('');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [avatarUploadStatus, setAvatarUploadStatus] = useState('');
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DomainSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -1602,6 +1622,63 @@ function App() {
     }
   };
 
+  const uploadAvatarGlb = async (file: File): Promise<string> => {
+    if (!supabase || !isSupabaseConfigured) {
+      throw new Error('Supabase Storage is not configured.');
+    }
+
+    const storagePath = getAvatarStoragePath(multiplayer.currentUser.userId);
+    const { error: uploadError } = await supabase.storage
+      .from(AVATAR_BUCKET)
+      .upload(storagePath, file, {
+        contentType: 'model/gltf-binary',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
+    if (!data.publicUrl) {
+      throw new Error('Avatar uploaded, but no public URL was returned.');
+    }
+
+    return data.publicUrl;
+  };
+
+  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const validationError = validateAvatarFile(file);
+    if (validationError) {
+      setAvatarUploadStatus(validationError);
+      return;
+    }
+
+    setIsAvatarUploading(true);
+    setAvatarUploadStatus('Uploading avatar...');
+    try {
+      const avatarUrl = await uploadAvatarGlb(file);
+      multiplayer.updateAvatarUrl(avatarUrl);
+      setAvatarUploadStatus('Custom avatar active');
+    } catch (error) {
+      console.error('Avatar upload failed', error);
+      setAvatarUploadStatus(`Avatar upload failed: ${error instanceof Error ? error.message : 'Storage unavailable'}`);
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  };
+
+  const handleClearAvatar = () => {
+    multiplayer.clearAvatar();
+    setAvatarUploadStatus('Using default avatar');
+  };
+
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
     onReturn: () => void,
@@ -1842,7 +1919,7 @@ function App() {
             onHoverInfoHtml={setBottomInfoHtml}
             onHoverCellChange={handlePointerTargetChange}
             infoDisplayMode={infoDisplayMode}
-            remoteUsers={multiplayer.others}
+            remoteUsers={[multiplayer.currentPresence, ...multiplayer.others]}
             onRemoteUserClick={handleRemoteUserClick}
             selectedBuildingIp={buildingView?.ipAddress}
             selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
@@ -2332,7 +2409,7 @@ function App() {
                   onHoverInfoHtml={setBottomInfoHtml}
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
-                  remoteUsers={multiplayer.others}
+                  remoteUsers={[multiplayer.currentPresence, ...multiplayer.others]}
                   onRemoteUserClick={handleRemoteUserClick}
                 />
                 <OrbitControls
@@ -2471,6 +2548,33 @@ function App() {
                   Save
                 </button>
               </form>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <label
+                  className="cursor-pointer rounded border border-gray-400 bg-gray-200 px-2 py-1 font-medium text-gray-900 shadow-sm hover:bg-gray-300"
+                  htmlFor="avatar-upload-input"
+                >
+                  Upload avatar (.glb)
+                </label>
+                <input
+                  id="avatar-upload-input"
+                  type="file"
+                  accept=".glb,model/gltf-binary"
+                  className="hidden"
+                  disabled={isAvatarUploading}
+                  onChange={handleAvatarUpload}
+                />
+                <button
+                  type="button"
+                  onClick={handleClearAvatar}
+                  disabled={!multiplayer.currentUser.avatarUrl || isAvatarUploading}
+                  className="rounded border border-gray-400 bg-gray-200 px-2 py-1 text-xs font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  Clear
+                </button>
+                <span className="text-gray-600">
+                  {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? 'Custom avatar active' : 'Default avatar')}
+                </span>
+              </div>
             </div>
 
             <div className="w-full lg:max-w-xl">

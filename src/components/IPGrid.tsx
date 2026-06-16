@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useIpMetadataCache, type CachedAsnMetadata, type CachedExposure, type CachedIpMetadata, type CachedReverseDns } from '../hooks/useIpMetadataCache';
 import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
@@ -73,6 +74,146 @@ type GridCellTarget = {
   cellBuilding: GridCellBuilding;
   hoverInfoHtml: string;
 };
+
+const avatarModelLoader = new GLTFLoader();
+const avatarModelCache = new Map<string, Promise<THREE.Group>>();
+
+function cloneAvatarScene(scene: THREE.Group): THREE.Group {
+  const clone = scene.clone(true);
+  clone.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) {
+      return;
+    }
+    mesh.geometry = mesh.geometry.clone();
+    if (Array.isArray(mesh.material)) {
+      mesh.material = mesh.material.map((material) => material.clone());
+    } else {
+      mesh.material = mesh.material.clone();
+    }
+  });
+  return clone;
+}
+
+function disposeAvatarScene(scene: THREE.Object3D): void {
+  scene.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) {
+      return;
+    }
+    mesh.geometry.dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.forEach((material) => material.dispose());
+  });
+}
+
+function normalizeAvatarScene(scene: THREE.Group): THREE.Group {
+  const clone = cloneAvatarScene(scene);
+  const box = new THREE.Box3().setFromObject(clone);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  const root = new THREE.Group();
+  const maxDimension = Math.max(size.x, size.y, size.z);
+  if (Number.isFinite(maxDimension) && maxDimension > 0) {
+    clone.position.sub(center);
+    root.scale.setScalar(0.74 / maxDimension);
+  } else {
+    root.scale.setScalar(0.48);
+  }
+  root.add(clone);
+  return root;
+}
+
+function loadAvatarScene(avatarUrl: string): Promise<THREE.Group> {
+  const cached = avatarModelCache.get(avatarUrl);
+  if (cached) {
+    return cached;
+  }
+
+  const request = new Promise<THREE.Group>((resolve, reject) => {
+    avatarModelLoader.load(
+      avatarUrl,
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      reject
+    );
+  }).catch((error) => {
+    avatarModelCache.delete(avatarUrl);
+    throw error;
+  });
+  avatarModelCache.set(avatarUrl, request);
+  return request;
+}
+
+function DefaultRemoteAvatar({ color }: { color: string }) {
+  return (
+    <mesh castShadow>
+      <sphereGeometry args={[0.36, 24, 24]} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.32} />
+    </mesh>
+  );
+}
+
+function UserAvatarModel({
+  avatarUrl,
+  fallback,
+}: {
+  avatarUrl?: string;
+  fallback: ReactNode;
+}) {
+  const [model, setModel] = useState<THREE.Group | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const modelRef = useRef<THREE.Group | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    if (modelRef.current) {
+      disposeAvatarScene(modelRef.current);
+      modelRef.current = null;
+    }
+    setModel(null);
+    setLoadFailed(false);
+
+    if (!avatarUrl) {
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void loadAvatarScene(avatarUrl)
+      .then((scene) => {
+        if (!isActive) {
+          return;
+        }
+        const normalized = normalizeAvatarScene(scene);
+        modelRef.current = normalized;
+        setModel(normalized);
+      })
+      .catch((error) => {
+        console.error('Avatar GLB failed to load', error);
+        if (isActive) {
+          setLoadFailed(true);
+        }
+      });
+
+    return () => {
+      isActive = false;
+      if (modelRef.current) {
+        disposeAvatarScene(modelRef.current);
+        modelRef.current = null;
+      }
+    };
+  }, [avatarUrl]);
+
+  if (!avatarUrl || loadFailed || !model) {
+    return <>{fallback}</>;
+  }
+
+  return <primitive object={model} />;
+}
 
 const DEFAULT_GRID2_POSITION: Grid2Position = {
   outerFirstOctet: 128,
@@ -527,7 +668,7 @@ function getAsnSummaryLabel(record?: AsnRecord | null): string {
   if (!record?.asn) {
     return 'ASN not loaded';
   }
-  return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
+  return `${normalizeAsn(record.asn)}${record.asnName ? ` - ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
 }
 
 function valueToDisplayText(value: unknown): string {
@@ -2463,7 +2604,7 @@ function IPGrid({
       ].filter(Boolean);
 
       const hoverInfoLines: string[] = [
-        `<div class="font-bold">${escapeHtml(headerParts.join(' — '))}</div>`,
+        `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
       ];
 
       if (isAsnLoading[ipAddress]) {
@@ -3532,10 +3673,10 @@ function IPGrid({
         }}
       >
         <group onClick={handleRemoteAvatarClick}>
-          <mesh castShadow>
-            <sphereGeometry args={[0.36, 24, 24]} />
-            <meshStandardMaterial color={user.color} emissive={user.color} emissiveIntensity={0.32} />
-          </mesh>
+          <UserAvatarModel
+            avatarUrl={user.avatarType !== 'default' ? user.avatarUrl : undefined}
+            fallback={<DefaultRemoteAvatar color={user.color} />}
+          />
         </group>
         <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.44, 0.64, 32]} />

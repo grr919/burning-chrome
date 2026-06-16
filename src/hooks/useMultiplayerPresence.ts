@@ -41,6 +41,8 @@ export type MultiplayerPresence = {
   userId: string;
   displayName: string;
   color: string;
+  avatarUrl?: string;
+  avatarType?: 'glb' | 'default';
   gridSystemMode: MultiplayerGridSystemMode;
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
@@ -78,6 +80,7 @@ type UseMultiplayerPresenceInput = {
 const USER_ID_KEY = 'cyberspace.userId';
 const DISPLAY_NAME_KEY = 'cyberspace.displayName';
 const USER_COLOR_KEY = 'cyberspace.userColor';
+const AVATAR_URL_KEY = 'cyberspace.avatarUrl';
 const AVATAR_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2', '#be123c', '#65a30d'];
 
 function readStorage(key: string): string | null {
@@ -90,6 +93,12 @@ function readStorage(key: string): string | null {
 function writeStorage(key: string, value: string): void {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(key, value);
+  }
+}
+
+function removeStorage(key: string): void {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(key);
   }
 }
 
@@ -119,7 +128,9 @@ function getOrCreateIdentity() {
     writeStorage(USER_COLOR_KEY, color);
   }
 
-  return { userId, displayName, color };
+  const avatarUrl = readStorage(AVATAR_URL_KEY)?.trim() || undefined;
+
+  return { userId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
 }
 
 function isPresence(value: unknown): value is MultiplayerPresence {
@@ -219,6 +230,7 @@ export function useMultiplayerPresence({
 
   const payload = useMemo<MultiplayerPresence>(() => ({
     ...identity,
+    avatarType: identity.avatarUrl ? 'glb' : 'default',
     gridSystemMode,
     zoomLevel,
     currentPosition,
@@ -383,15 +395,34 @@ export function useMultiplayerPresence({
     return true;
   }, []);
 
+  const updateAvatarUrl = useCallback((avatarUrl: string): boolean => {
+    const cleaned = avatarUrl.trim();
+    if (!cleaned) {
+      return false;
+    }
+
+    writeStorage(AVATAR_URL_KEY, cleaned);
+    setIdentity((current) => ({ ...current, avatarUrl: cleaned, avatarType: 'glb' }));
+    return true;
+  }, []);
+
+  const clearAvatar = useCallback((): void => {
+    removeStorage(AVATAR_URL_KEY);
+    setIdentity((current) => ({ ...current, avatarUrl: undefined, avatarType: 'default' }));
+  }, []);
+
   return {
     isConfigured: isSupabaseConfigured,
     status,
     currentUser: identity,
+    currentPresence: payload,
     others,
     messages,
     isChatReady: chatStatus === 'ready',
     chatStatus,
     sendMessage,
     updateDisplayName,
+    updateAvatarUrl,
+    clearAvatar,
   };
 }
