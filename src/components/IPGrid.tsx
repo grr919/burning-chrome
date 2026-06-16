@@ -3442,6 +3442,10 @@ function IPGrid({
       key="flat-grid-target-plane"
       position={[0, groundY + 7, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        updateFlatGridTarget(event);
+      }}
       onPointerMove={(event) => {
         event.stopPropagation();
         updateFlatGridTarget(event);
