@@ -185,7 +185,8 @@ function dedupePresenceBySessionId(items: MultiplayerPresence[]): MultiplayerPre
   return [...bySessionId.values()];
 }
 
-const DEBUG_PRESENCE = true;
+const DEBUG_PRESENCE = false;
+const DEBUG_REMOTE_AVATARS = false;
 
 function getPresenceDebugLocation(presence: MultiplayerPresence): string {
   const location = presence.playerLocation;
@@ -196,7 +197,7 @@ function getPresenceDebugLocation(presence: MultiplayerPresence): string {
 }
 
 function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
-  if (!DEBUG_PRESENCE) {
+  if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS) {
     return;
   }
 
@@ -320,12 +321,13 @@ export function useMultiplayerPresence({
         }
 
         const state = channel.presenceState() as Record<string, unknown[]>;
-        if (DEBUG_PRESENCE) {
+        if (DEBUG_PRESENCE || DEBUG_REMOTE_AVATARS) {
           console.info('DEBUG_PRESENCE raw presence state', state);
         }
         const raw = Object.values(state)
           .flat()
           .filter(isPresence);
+        logPresenceDebug('DEBUG_REMOTE_AVATARS raw remote presence records', raw);
         const uniqueBeforeSelfFilter = dedupePresenceBySessionId(raw);
         logPresenceDebug('DEBUG_PRESENCE unique users before self filter', uniqueBeforeSelfFilter);
         const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.sessionId !== identity.sessionId);

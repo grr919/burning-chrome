@@ -132,7 +132,8 @@ const DEFAULT_GRID2_POSITION: Grid2Position = {
 };
 const MAX_AVATAR_FILE_BYTES = 10 * 1024 * 1024;
 const AVATAR_BUCKET = 'avatars';
-const DEBUG_PRESENCE = true;
+const DEBUG_PRESENCE = false;
+const DEBUG_REMOTE_AVATARS = false;
 
 function validateAvatarFile(file: File): string | null {
   if (!file.name.toLowerCase().endsWith('.glb')) {
@@ -1583,7 +1584,7 @@ function App() {
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   }), [chatLocationKey, multiplayer.others]);
   useEffect(() => {
-    if (!DEBUG_PRESENCE) {
+    if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS) {
       return;
     }
 
@@ -1719,6 +1720,17 @@ function App() {
     try {
       const { publicUrl, verificationWarning } = await uploadAvatarGlb(file);
       multiplayer.updateAvatarUrl(publicUrl);
+      if (DEBUG_REMOTE_AVATARS) {
+        console.info('DEBUG_REMOTE_AVATARS local presence avatar update', {
+          sessionId: multiplayer.currentUser.sessionId,
+          userId: multiplayer.currentUser.userId,
+          name: multiplayer.currentUser.displayName,
+          avatarUrl: Boolean(publicUrl),
+          avatarType: 'glb',
+          location: playerLocationIp,
+          gridMode: gridSystemMode,
+        });
+      }
       setAvatarUploadStatus(verificationWarning ?? 'Avatar uploaded');
     } catch (error) {
       console.error('Avatar upload failed', error);

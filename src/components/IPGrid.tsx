@@ -77,6 +77,7 @@ type GridCellTarget = {
 
 const avatarModelLoader = new GLTFLoader();
 const avatarModelCache = new Map<string, Promise<THREE.Group>>();
+const DEBUG_REMOTE_AVATARS = false;
 
 function cloneAvatarScene(scene: THREE.Group): THREE.Group {
   const clone = scene.clone(true);
@@ -188,12 +189,18 @@ function UserAvatarModel({
         if (!isActive) {
           return;
         }
+        if (DEBUG_REMOTE_AVATARS) {
+          console.info('DEBUG_REMOTE_AVATARS GLB load success', { avatarUrl });
+        }
         const normalized = normalizeAvatarScene(scene);
         modelRef.current = normalized;
         setModel(normalized);
       })
       .catch((error) => {
         console.error('Avatar GLB failed to load', error);
+        if (DEBUG_REMOTE_AVATARS) {
+          console.info('DEBUG_REMOTE_AVATARS GLB load failure', { avatarUrl, error });
+        }
         if (isActive) {
           setLoadFailed(true);
         }
@@ -3649,6 +3656,15 @@ function IPGrid({
     const xOffset = Math.cos(angle) * spread;
     const zOffset = Math.sin(angle) * spread;
     const locationLabel = getAvatarLocationDisplay(user);
+    if (DEBUG_REMOTE_AVATARS) {
+      console.info('DEBUG_REMOTE_AVATARS avatar render attempt', {
+        sessionId: user.sessionId,
+        userId: user.userId,
+        name: user.displayName,
+        avatarUrl: Boolean(user.avatarUrl),
+        avatarType: user.avatarType,
+      });
+    }
     const handleRemoteAvatarClick = (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
       onRemoteUserClick?.(user);
@@ -3674,7 +3690,7 @@ function IPGrid({
       >
         <group onClick={handleRemoteAvatarClick}>
           <UserAvatarModel
-            avatarUrl={user.avatarType !== 'default' ? user.avatarUrl : undefined}
+            avatarUrl={user.avatarUrl}
             fallback={<DefaultRemoteAvatar color={user.color} />}
           />
         </group>
