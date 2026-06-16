@@ -2494,7 +2494,7 @@ function App() {
               renderStreetAndBuildingInfoPanel(
                 streetTargetCell,
                 handleBack,
-                'Use "Return to Grid" to leave Street and Building View. Click a building to enter it.'
+                'Use "Return to Grid" to leave Street and Building View.'
               )
             ) : (
               <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
@@ -2503,7 +2503,7 @@ function App() {
                   <div className="text-sm text-gray-700 mt-1">{streetPanelOrganizationName}</div>
                 )}
                 <div className="text-sm text-gray-600 mt-1">
-                  Use "Return to Grid" to leave Street and Building View. Click a building to enter it.
+                  Use "Return to Grid" to leave Street and Building View.
                 </div>
 
                 <div className="mt-3">
