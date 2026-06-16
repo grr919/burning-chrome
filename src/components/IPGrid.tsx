@@ -75,6 +75,8 @@ type GridCellTarget = {
   hoverInfoHtml: string;
 };
 
+type FlatGridTargetEvent = ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>;
+
 const avatarModelLoader = new GLTFLoader();
 const avatarModelCache = new Map<string, Promise<THREE.Group>>();
 const DEBUG_REMOTE_AVATARS = false;
@@ -2470,6 +2472,8 @@ function IPGrid({
     );
   };
 
+  const flatGridTargeting = !onBuildingClick;
+  const gridTargetCells = new Map<string, GridCellTarget>();
   const cubes = [];
 
   for (let y = 0; y < gridSize; y += 1) {
@@ -2865,6 +2869,7 @@ function IPGrid({
         organizationName: rdapRecord?.org ?? rdapRecord?.networkName,
       };
       const cellTarget: GridCellTarget = { cellKey, cubeId, cellBuilding, hoverInfoHtml };
+      gridTargetCells.set(cellKey, cellTarget);
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
@@ -2935,11 +2940,11 @@ function IPGrid({
           <mesh
             position={[0, 0.125, 0]}
             rotation={[-Math.PI / 2, 0, 0]}
-            onClick={handleCellSingleClick}
-            onDoubleClick={handleCellDoubleClick}
-            onPointerOver={handleCellPointer('sidewalk')}
-            onPointerMove={handleCellPointer('sidewalk')}
-            onPointerOut={handleCellPointerOut}
+            onClick={flatGridTargeting ? undefined : handleCellSingleClick}
+            onDoubleClick={flatGridTargeting ? undefined : handleCellDoubleClick}
+            onPointerOver={flatGridTargeting ? undefined : handleCellPointer('sidewalk')}
+            onPointerMove={flatGridTargeting ? undefined : handleCellPointer('sidewalk')}
+            onPointerOut={flatGridTargeting ? undefined : handleCellPointerOut}
           >
             <planeGeometry args={[spacing - 0.04, spacing - 0.04]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
@@ -2948,11 +2953,11 @@ function IPGrid({
           <group position={[0, hoverLift, 0]} scale={[hoverScale, hoverScale, hoverScale]}>
             <mesh
               position={[0, hitboxHeight / 2, 0]}
-              onClick={handleBuildingSingleClick}
-              onDoubleClick={handleBuildingDoubleClick}
-              onPointerOver={handleCellPointer('building')}
-              onPointerMove={handleCellPointer('building')}
-              onPointerOut={handleCellPointerOut}
+              onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
+              onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
+              onPointerOver={flatGridTargeting ? undefined : handleCellPointer('building')}
+              onPointerMove={flatGridTargeting ? undefined : handleCellPointer('building')}
+              onPointerOut={flatGridTargeting ? undefined : handleCellPointerOut}
             >
               <boxGeometry
                 args={[
@@ -3608,10 +3613,10 @@ function IPGrid({
                 width={Math.min(0.34, facadeWidth * 0.34)}
                 height={Math.min(0.24, facadeWidth * 0.24)}
                 position={[0, facadeFlagY, facadeFlagZ]}
-                onClick={handleBuildingSingleClick}
-                onDoubleClick={handleBuildingDoubleClick}
-                onPointerOver={handleCellPointer('building')}
-                onPointerOut={handleCellPointerOut}
+                onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
+                onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
+                onPointerOver={flatGridTargeting ? undefined : handleCellPointer('building')}
+                onPointerOut={flatGridTargeting ? undefined : handleCellPointerOut}
               />
             )}
 
@@ -3642,6 +3647,86 @@ function IPGrid({
       );
     }
   }
+
+  const flatGridGroundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
+  const getFlatGridTarget = (event: FlatGridTargetEvent) => {
+    const point = new THREE.Vector3();
+    if (!event.ray.intersectPlane(flatGridGroundPlane, point)) {
+      return null;
+    }
+
+    const x = Math.floor((point.x + offset + spacing / 2) / spacing);
+    const y = Math.floor((point.z + offset + spacing / 2) / spacing);
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
+      return null;
+    }
+
+    return gridTargetCells.get(`${x}-${y}`) ?? null;
+  };
+
+  const updateFlatGridTarget = (event: FlatGridTargetEvent) => {
+    const target = getFlatGridTarget(event);
+    if (!target) {
+      clearCellHover();
+      return null;
+    }
+
+    setActiveCellHover(target, 'square');
+    return target;
+  };
+
+  const handleFlatGridClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const target = getFlatGridTarget(event);
+    if (!target) {
+      return;
+    }
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+    }
+    clickTimerRef.current = window.setTimeout(() => {
+      onCellClick(target.cellBuilding);
+      clickTimerRef.current = null;
+    }, 180);
+  };
+
+  const handleFlatGridDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const target = getFlatGridTarget(event);
+    if (!target) {
+      return;
+    }
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    onCellDoubleClick(target.cellBuilding);
+  };
+
+  const flatGridTargetPlane = flatGridTargeting ? (
+    <mesh
+      key="flat-grid-target-plane"
+      position={[0, groundY + 0.08, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        updateFlatGridTarget(event);
+      }}
+      onPointerMove={(event) => {
+        event.stopPropagation();
+        updateFlatGridTarget(event);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        clearCellHover();
+      }}
+      onClick={handleFlatGridClick}
+      onDoubleClick={handleFlatGridDoubleClick}
+    >
+      <planeGeometry args={[gridExtent, gridExtent]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  ) : null;
 
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
@@ -3774,6 +3859,7 @@ function IPGrid({
     <>
       {createStreetGrid()}
       {cubes}
+      {flatGridTargetPlane}
       {remoteAvatarMarkers}
     </>
   );
