@@ -2644,7 +2644,7 @@ function App() {
               </span>
             </div>
 
-            <div className="w-full lg:max-w-xl">
+            <div className="w-full lg:max-w-xl lg:justify-self-end">
               <div className="max-h-16 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
                 {multiplayer.messages.length > 0 ? (
                   multiplayer.messages.map((message) => (
