@@ -12,7 +12,7 @@ import {
   type MultiplayerPresence,
   type MultiplayerPlayerLocation,
 } from './hooks/useMultiplayerPresence';
-import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
+import { isSupabaseConfigured, supabase, supabaseUrlHost } from './lib/supabaseClient';
 
 type GridPosition = {
   firstOctet: number;
@@ -145,7 +145,7 @@ function validateAvatarFile(file: File): string | null {
 
 function getAvatarStoragePath(userId: string): string {
   const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
-  return `avatars/${safeUserId}/avatar.glb`;
+  return `${safeUserId}/avatar.glb`;
 }
 const DEFAULT_GRID_POSITION: GridPosition = {
   firstOctet: 0,
@@ -1622,29 +1622,53 @@ function App() {
     }
   };
 
-  const uploadAvatarGlb = async (file: File): Promise<string> => {
+  const uploadAvatarGlb = async (file: File): Promise<{ publicUrl: string; verificationWarning?: string }> => {
     if (!supabase || !isSupabaseConfigured) {
       throw new Error('Supabase Storage is not configured.');
     }
 
-    const storagePath = getAvatarStoragePath(multiplayer.currentUser.userId);
-    const { error: uploadError } = await supabase.storage
+    const userId = multiplayer.currentUser.userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
+    const storagePath = getAvatarStoragePath(userId);
+    console.info('Avatar upload target', {
+      supabaseHost: supabaseUrlHost,
+      bucket: AVATAR_BUCKET,
+      path: storagePath,
+    });
+
+    const uploadResult = await supabase.storage
       .from(AVATAR_BUCKET)
       .upload(storagePath, file, {
         contentType: 'model/gltf-binary',
         upsert: true,
       });
+    console.info('Avatar upload result', uploadResult);
 
-    if (uploadError) {
-      throw uploadError;
+    if (uploadResult.error) {
+      throw uploadResult.error;
+    }
+
+    let verificationWarning: string | undefined;
+    const listResult = await supabase.storage.from(AVATAR_BUCKET).list(userId);
+    console.info('Avatar post-upload listing result', listResult);
+    if (listResult.error) {
+      console.warn('Avatar upload verification list failed', listResult.error);
+    } else if (!listResult.data?.some((item) => item.name === 'avatar.glb')) {
+      verificationWarning = 'Avatar uploaded, but verification did not find avatar.glb in the expected folder.';
+      console.warn('Avatar upload verification did not find avatar.glb in expected folder', {
+        bucket: AVATAR_BUCKET,
+        folder: userId,
+        path: storagePath,
+        listData: listResult.data,
+      });
     }
 
     const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
     if (!data.publicUrl) {
       throw new Error('Avatar uploaded, but no public URL was returned.');
     }
+    console.info('Avatar public URL', data.publicUrl);
 
-    return data.publicUrl;
+    return { publicUrl: data.publicUrl, verificationWarning };
   };
 
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1663,9 +1687,9 @@ function App() {
     setIsAvatarUploading(true);
     setAvatarUploadStatus('Uploading avatar...');
     try {
-      const avatarUrl = await uploadAvatarGlb(file);
-      multiplayer.updateAvatarUrl(avatarUrl);
-      setAvatarUploadStatus('Custom avatar active');
+      const { publicUrl, verificationWarning } = await uploadAvatarGlb(file);
+      multiplayer.updateAvatarUrl(publicUrl);
+      setAvatarUploadStatus(verificationWarning ?? 'Avatar uploaded');
     } catch (error) {
       console.error('Avatar upload failed', error);
       setAvatarUploadStatus(`Avatar upload failed: ${error instanceof Error ? error.message : 'Storage unavailable'}`);

@@ -5,6 +5,20 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
+function getSupabaseUrlHost(value?: string): string {
+  if (!value) {
+    return 'not-configured';
+  }
+
+  try {
+    return new URL(value).host;
+  } catch {
+    return 'invalid-url';
+  }
+}
+
+export const supabaseUrlHost = getSupabaseUrlHost(supabaseUrl);
+
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl as string, supabaseAnonKey as string)
   : null;
