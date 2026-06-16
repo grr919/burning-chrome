@@ -2372,7 +2372,10 @@ function IPGrid({
       const blockVariant = ['square', 'round', 'hex', 'courtyard'][blockVariantIndex] as 'square' | 'round' | 'hex' | 'courtyard';
       const tooltipX = x < gridSize / 2 ? towerWidth / 2 + 0.82 : -(towerWidth / 2 + 3.1);
       const tooltipY = roofTopY + 0.16;
-      const facadeFlagY = Math.min(Math.max(0.28, roofTopY * 0.42), roofTopY - 0.18);
+      const facadeFlagY = Math.min(
+        Math.max(0.85, roofTopY * 0.68),
+        Math.max(0.85, roofTopY - 0.24)
+      );
       const facadeFlagZ =
         buildingFamily === 'tower'
           ? towerDepth / 2 + 0.012
