@@ -100,6 +100,7 @@ const AVATAR_URL_KEY = 'cyberspace.avatarUrl';
 const AVATAR_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2', '#be123c', '#65a30d'];
 const PRESENCE_CHANNEL = 'cyberspace-presence-global';
 const PRESENCE_STALE_MS = 45_000;
+const PRESENCE_HEARTBEAT_MS = 15_000;
 
 function readStorage(key: string): string | null {
   if (typeof window === 'undefined') {
@@ -281,6 +282,23 @@ function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
   });
 }
 
+function logSinglePresenceDebug(label: string, presence: MultiplayerPresence) {
+  if (!DEBUG_PRESENCE && !DEBUG_AVATAR_PIPELINE) {
+    return;
+  }
+
+  console.info(label, {
+    presenceId: presence.presenceId,
+    name: presence.displayName,
+    playerLocation: presence.playerLocation,
+    selectedIp: presence.selectedIp,
+    locationKey: presence.locationKey,
+    lastSeenAt: presence.lastSeenAt,
+    avatarUrl: presence.avatarUrl,
+    avatarType: presence.avatarType,
+  });
+}
+
 function getChatChannelName(chatLocationKey: string): string {
   const safeKey = encodeURIComponent(chatLocationKey)
     .replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -402,6 +420,17 @@ export function useMultiplayerPresence({
     payloadRef.current = payload;
   }, [payload]);
 
+  const publishPresence = useCallback(async (channel: RealtimeChannel, nextPayload: MultiplayerPresence) => {
+    const fullPayload = { ...nextPayload, lastSeenAt: new Date().toISOString() };
+    logSinglePresenceDebug('DEBUG_PRESENCE local presence publish', fullPayload);
+    await channel.track(fullPayload);
+    void channel.send({
+      type: 'broadcast',
+      event: 'presence-update',
+      payload: fullPayload,
+    });
+  }, []);
+
   useEffect(() => {
     setOthers([]);
 
@@ -439,13 +468,28 @@ export function useMultiplayerPresence({
 
     channel
       .on('presence', { event: 'sync' }, syncPresenceState)
+      .on('broadcast', { event: 'presence-update' }, ({ payload: broadcastPayload }) => {
+        if (!isActive || !isPresence(broadcastPayload) || broadcastPayload.presenceId === identity.presenceId) {
+          return;
+        }
+
+        logSinglePresenceDebug('DEBUG_PRESENCE received presence-update broadcast', broadcastPayload);
+        setOthers((current) => {
+          const freshCurrent = current.filter(isPresenceFresh);
+          logPresenceDebug('DEBUG_PRESENCE broadcast merge before self filter', freshCurrent);
+          const nextRemoteUsers = dedupePresenceRecords([...freshCurrent, broadcastPayload])
+            .filter((presence) => isPresenceFresh(presence) && presence.presenceId !== identity.presenceId);
+          logPresenceDebug('DEBUG_PRESENCE broadcast merge after self filter', nextRemoteUsers);
+          return nextRemoteUsers;
+        });
+      })
       .subscribe(async (nextStatus) => {
         if (!isActive) {
           return;
         }
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('online');
-          await channel.track({ ...payloadRef.current, lastSeenAt: new Date().toISOString() });
+          await publishPresence(channel, payloadRef.current);
         } else if (nextStatus === 'CHANNEL_ERROR' || nextStatus === 'TIMED_OUT') {
           setStatus('error');
         }
@@ -459,7 +503,7 @@ export function useMultiplayerPresence({
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [identity.presenceId]);
+  }, [identity.presenceId, publishPresence]);
 
   useEffect(() => {
     const channel = channelRef.current;
@@ -467,8 +511,23 @@ export function useMultiplayerPresence({
       return;
     }
 
-    void channel.track({ ...payload, lastSeenAt: new Date().toISOString() });
-  }, [payload, status]);
+    void publishPresence(channel, payload);
+  }, [payload, publishPresence, status]);
+
+  useEffect(() => {
+    const channel = channelRef.current;
+    if (!channel || status !== 'online') {
+      return;
+    }
+
+    const heartbeat = window.setInterval(() => {
+      void publishPresence(channel, payloadRef.current);
+    }, PRESENCE_HEARTBEAT_MS);
+
+    return () => {
+      window.clearInterval(heartbeat);
+    };
+  }, [publishPresence, status]);
 
   useEffect(() => {
     setMessages([]);
