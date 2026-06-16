@@ -92,6 +92,78 @@ type IPGridProps = {
   selectedBuildingCountryCodeLabel?: string;
 };
 
+type WallMountedFlagProps = {
+  imageUrl: string;
+  countryCodeLabel?: string;
+  width: number;
+  height: number;
+  position: [number, number, number];
+  onClick?: (event: ThreeEvent<MouseEvent>) => void;
+  onDoubleClick?: (event: ThreeEvent<MouseEvent>) => void;
+};
+
+function WallMountedFlag({
+  imageUrl,
+  countryCodeLabel,
+  width,
+  height,
+  position,
+  onClick,
+  onDoubleClick,
+}: WallMountedFlagProps) {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let loadedTexture: THREE.Texture | null = null;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    setTexture(null);
+    loader.load(
+      imageUrl,
+      (nextTexture) => {
+        if (disposed) {
+          nextTexture.dispose();
+          return;
+        }
+        nextTexture.colorSpace = THREE.SRGBColorSpace;
+        nextTexture.needsUpdate = true;
+        loadedTexture = nextTexture;
+        setTexture(nextTexture);
+      },
+      undefined,
+      () => {
+        if (!disposed) {
+          setTexture(null);
+        }
+      }
+    );
+
+    return () => {
+      disposed = true;
+      loadedTexture?.dispose();
+    };
+  }, [imageUrl]);
+
+  if (!texture) {
+    return null;
+  }
+
+  return (
+    <mesh
+      position={position}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onPointerOver={onClick ? () => { document.body.style.cursor = 'pointer'; } : undefined}
+      onPointerOut={onClick ? () => { document.body.style.cursor = 'auto'; } : undefined}
+      userData={{ label: countryCodeLabel ?? 'National flag' }}
+    >
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial map={texture} depthTest depthWrite side={THREE.FrontSide} toneMapped={false} />
+    </mesh>
+  );
+}
+
 type RdapEntity = {
   roles: string[];
   name?: string;
@@ -2303,12 +2375,12 @@ function IPGrid({
       const facadeFlagY = Math.min(Math.max(0.28, roofTopY * 0.42), roofTopY - 0.18);
       const facadeFlagZ =
         buildingFamily === 'tower'
-          ? towerDepth / 2 + 0.035
+          ? towerDepth / 2 + 0.012
         : buildingFamily === 'block'
-            ? blockDepth / 2 + 0.035
+            ? blockDepth / 2 + 0.012
             : buildingFamily === 'stepped'
-              ? steppedDepth / 2 + 0.045
-              : fortDepth / 2 + 0.045;
+              ? steppedDepth / 2 + 0.012
+              : fortDepth / 2 + 0.012;
       const facadeWidth = buildingFamily === 'tower' ? towerWidth : buildingFamily === 'block' ? blockWidth : buildingFamily === 'stepped' ? steppedWidth : fortWidth;
       const facadeDepth = buildingFamily === 'tower' ? towerDepth : buildingFamily === 'block' ? blockDepth : buildingFamily === 'stepped' ? steppedDepth : fortDepth;
 
@@ -3292,59 +3364,15 @@ function IPGrid({
             })}
 
             {visibleFlagImageUrl && (
-              <Html
-                position={[0, facadeFlagY, facadeFlagZ + 0.035]}
-                transform
-                distanceFactor={8}
-                style={{ pointerEvents: flatGridTargeting ? 'none' : 'auto' }}
-              >
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (clickTimerRef.current !== null) {
-                      window.clearTimeout(clickTimerRef.current);
-                    }
-                    clickTimerRef.current = window.setTimeout(() => {
-                      (onBuildingClick ?? onCellClick)(cellBuilding);
-                      clickTimerRef.current = null;
-                    }, 180);
-                  }}
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                    if (clickTimerRef.current !== null) {
-                      window.clearTimeout(clickTimerRef.current);
-                      clickTimerRef.current = null;
-                    }
-                    (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(cellBuilding);
-                  }}
-                  style={{
-                    width: '20px',
-                    height: '14px',
-                    padding: 0,
-                    border: '1px solid rgba(255,255,255,0.5)',
-                    borderRadius: '1px',
-                    background: 'transparent',
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.65))',
-                    userSelect: 'none',
-                    pointerEvents: flatGridTargeting ? 'none' : 'auto',
-                    cursor: 'pointer',
-                  }}
-                  title="Open Street and Building View"
-                  type="button"
-                >
-                  <img
-                    src={visibleFlagImageUrl}
-                    alt={visibleCountryCodeLabel || 'National flag'}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: '1px',
-                      display: 'block',
-                    }}
-                  />
-                </button>
-              </Html>
+              <WallMountedFlag
+                imageUrl={visibleFlagImageUrl}
+                countryCodeLabel={visibleCountryCodeLabel}
+                width={Math.min(0.34, facadeWidth * 0.34)}
+                height={Math.min(0.24, facadeWidth * 0.24)}
+                position={[0, facadeFlagY, facadeFlagZ]}
+                onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
+                onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
+              />
             )}
 
             {windowBands}
