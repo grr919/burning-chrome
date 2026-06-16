@@ -1622,6 +1622,10 @@ function App() {
     const userLocationKey = user.locationKey;
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   }), [chatLocationKey, multiplayer.others]);
+  const avatarUsers = useMemo(
+    () => [multiplayer.currentPresence, ...multiplayer.others],
+    [multiplayer.currentPresence, multiplayer.others]
+  );
   useEffect(() => {
     if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
@@ -1645,8 +1649,10 @@ function App() {
       before: summarizeUsers(multiplayer.others),
       afterCount: nearbyUsers.length,
       after: summarizeUsers(nearbyUsers),
+      avatarRenderCount: avatarUsers.length,
+      avatarUsers: summarizeUsers(avatarUsers),
     });
-  }, [chatLocationKey, multiplayer.others, nearbyUsers]);
+  }, [chatLocationKey, multiplayer.others, nearbyUsers, avatarUsers]);
   useEffect(() => {
     if (!DEBUG_AVATAR_PIPELINE) {
       return;
@@ -2069,7 +2075,8 @@ function App() {
             onHoverInfoHtml={setBottomInfoHtml}
             onHoverCellChange={handlePointerTargetChange}
             infoDisplayMode={infoDisplayMode}
-            remoteUsers={[multiplayer.currentPresence, ...nearbyUsers]}
+            // Visual avatar rendering must receive all active users. Do not replace this with `nearbyUsers`; exact-location filtering is only for chat/proximity UI.
+            remoteUsers={avatarUsers}
             onRemoteUserClick={handleRemoteUserClick}
             selectedBuildingIp={buildingView?.ipAddress}
             selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
@@ -2559,7 +2566,8 @@ function App() {
                   onHoverInfoHtml={setBottomInfoHtml}
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
-                  remoteUsers={[multiplayer.currentPresence, ...nearbyUsers]}
+                  // Visual avatar rendering must receive all active users. Do not replace this with `nearbyUsers`; exact-location filtering is only for chat/proximity UI.
+                  remoteUsers={avatarUsers}
                   onRemoteUserClick={handleRemoteUserClick}
                 />
                 <OrbitControls
