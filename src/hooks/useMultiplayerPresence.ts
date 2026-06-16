@@ -124,6 +124,27 @@ function createId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function getAvatarUrlDebugInfo(avatarUrl?: string) {
+  const value = avatarUrl?.trim() ?? '';
+  const lowerValue = value.toLowerCase();
+  return {
+    avatarUrlExists: Boolean(value),
+    avatarUrl: value,
+    startsWithHttp: /^https?:\/\//i.test(value),
+    startsWithBlob: lowerValue.startsWith('blob:'),
+    startsWithFile: lowerValue.startsWith('file:'),
+    startsWithLocalhost:
+      lowerValue.includes('localhost') ||
+      lowerValue.includes('127.0.0.1') ||
+      lowerValue.includes('[::1]'),
+  };
+}
+
+function isPublishableAvatarUrl(avatarUrl: string): boolean {
+  const info = getAvatarUrlDebugInfo(avatarUrl);
+  return info.startsWithHttp && !info.startsWithBlob && !info.startsWithFile && !info.startsWithLocalhost;
+}
+
 function getOrCreateIdentity() {
   let userId = readStorage(USER_ID_KEY);
   if (!userId) {
@@ -149,7 +170,11 @@ function getOrCreateIdentity() {
     writeStorage(USER_COLOR_KEY, color);
   }
 
-  const avatarUrl = readStorage(AVATAR_URL_KEY)?.trim() || undefined;
+  const savedAvatarUrl = readStorage(AVATAR_URL_KEY)?.trim() || undefined;
+  const avatarUrl = savedAvatarUrl && isPublishableAvatarUrl(savedAvatarUrl) ? savedAvatarUrl : undefined;
+  if (savedAvatarUrl && !avatarUrl) {
+    removeStorage(AVATAR_URL_KEY);
+  }
 
   return { userId, sessionId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
 }
@@ -193,6 +218,7 @@ function dedupePresenceBySessionId(items: MultiplayerPresence[]): MultiplayerPre
 
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
+const DEBUG_AVATAR_PIPELINE = false;
 
 function getPresenceDebugLocation(presence: MultiplayerPresence): string {
   const location = presence.playerLocation;
@@ -203,7 +229,7 @@ function getPresenceDebugLocation(presence: MultiplayerPresence): string {
 }
 
 function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
-  if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS) {
+  if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
     return;
   }
 
@@ -216,7 +242,7 @@ function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
       location: getPresenceDebugLocation(presence),
       gridMode: presence.gridSystemMode,
       viewMode: presence.playerLocation?.kind ?? 'unknown',
-      avatarUrl: Boolean(presence.avatarUrl),
+      ...getAvatarUrlDebugInfo(presence.avatarUrl),
     })),
   });
 }
@@ -327,13 +353,13 @@ export function useMultiplayerPresence({
         }
 
         const state = channel.presenceState() as Record<string, unknown[]>;
-        if (DEBUG_PRESENCE || DEBUG_REMOTE_AVATARS) {
-          console.info('DEBUG_PRESENCE raw presence state', state);
+        if (DEBUG_PRESENCE || DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+          console.info('DEBUG_AVATAR_PIPELINE raw presence state', state);
         }
         const raw = Object.values(state)
           .flat()
           .filter(isPresence);
-        logPresenceDebug('DEBUG_REMOTE_AVATARS raw remote presence records', raw);
+        logPresenceDebug('DEBUG_AVATAR_PIPELINE raw remote presence records', raw);
         const uniqueBeforeSelfFilter = dedupePresenceBySessionId(raw);
         logPresenceDebug('DEBUG_PRESENCE unique users before self filter', uniqueBeforeSelfFilter);
         const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.sessionId !== identity.sessionId);
@@ -463,6 +489,10 @@ export function useMultiplayerPresence({
   const updateAvatarUrl = useCallback((avatarUrl: string): boolean => {
     const cleaned = avatarUrl.trim();
     if (!cleaned) {
+      return false;
+    }
+    if (!isPublishableAvatarUrl(cleaned)) {
+      console.warn('Rejected non-public avatar URL for presence', getAvatarUrlDebugInfo(cleaned));
       return false;
     }
 

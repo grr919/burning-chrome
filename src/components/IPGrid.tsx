@@ -78,6 +78,23 @@ type GridCellTarget = {
 const avatarModelLoader = new GLTFLoader();
 const avatarModelCache = new Map<string, Promise<THREE.Group>>();
 const DEBUG_REMOTE_AVATARS = false;
+const DEBUG_AVATAR_PIPELINE = false;
+
+function getAvatarUrlDebugInfo(avatarUrl?: string) {
+  const value = avatarUrl?.trim() ?? '';
+  const lowerValue = value.toLowerCase();
+  return {
+    avatarUrlExists: Boolean(value),
+    avatarUrl: value,
+    startsWithHttp: /^https?:\/\//i.test(value),
+    startsWithBlob: lowerValue.startsWith('blob:'),
+    startsWithFile: lowerValue.startsWith('file:'),
+    startsWithLocalhost:
+      lowerValue.includes('localhost') ||
+      lowerValue.includes('127.0.0.1') ||
+      lowerValue.includes('[::1]'),
+  };
+}
 
 function cloneAvatarScene(scene: THREE.Group): THREE.Group {
   const clone = scene.clone(true);
@@ -161,9 +178,11 @@ function DefaultRemoteAvatar({ color }: { color: string }) {
 function UserAvatarModel({
   avatarUrl,
   fallback,
+  debugUser,
 }: {
   avatarUrl?: string;
   fallback: ReactNode;
+  debugUser?: { userId: string; sessionId: string; name: string };
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -184,13 +203,23 @@ function UserAvatarModel({
       };
     }
 
+    if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+      console.info('DEBUG_AVATAR_PIPELINE GLB load start', {
+        ...debugUser,
+        ...getAvatarUrlDebugInfo(avatarUrl),
+      });
+    }
+
     void loadAvatarScene(avatarUrl)
       .then((scene) => {
         if (!isActive) {
           return;
         }
-        if (DEBUG_REMOTE_AVATARS) {
-          console.info('DEBUG_REMOTE_AVATARS GLB load success', { avatarUrl });
+        if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+          console.info('DEBUG_AVATAR_PIPELINE GLB load success', {
+            ...debugUser,
+            ...getAvatarUrlDebugInfo(avatarUrl),
+          });
         }
         const normalized = normalizeAvatarScene(scene);
         modelRef.current = normalized;
@@ -198,8 +227,12 @@ function UserAvatarModel({
       })
       .catch((error) => {
         console.error('Avatar GLB failed to load', error);
-        if (DEBUG_REMOTE_AVATARS) {
-          console.info('DEBUG_REMOTE_AVATARS GLB load failure', { avatarUrl, error });
+        if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+          console.info('DEBUG_AVATAR_PIPELINE GLB load failure', {
+            ...debugUser,
+            ...getAvatarUrlDebugInfo(avatarUrl),
+            error,
+          });
         }
         if (isActive) {
           setLoadFailed(true);
@@ -3656,12 +3689,12 @@ function IPGrid({
     const xOffset = Math.cos(angle) * spread;
     const zOffset = Math.sin(angle) * spread;
     const locationLabel = getAvatarLocationDisplay(user);
-    if (DEBUG_REMOTE_AVATARS) {
-      console.info('DEBUG_REMOTE_AVATARS avatar render attempt', {
+    if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+      console.info('DEBUG_AVATAR_PIPELINE avatar render attempt', {
         sessionId: user.sessionId,
         userId: user.userId,
         name: user.displayName,
-        avatarUrl: Boolean(user.avatarUrl),
+        ...getAvatarUrlDebugInfo(user.avatarUrl),
         avatarType: user.avatarType,
       });
     }
@@ -3692,6 +3725,11 @@ function IPGrid({
           <UserAvatarModel
             avatarUrl={user.avatarUrl}
             fallback={<DefaultRemoteAvatar color={user.color} />}
+            debugUser={{
+              userId: user.userId,
+              sessionId: user.sessionId,
+              name: user.displayName,
+            }}
           />
         </group>
         <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>

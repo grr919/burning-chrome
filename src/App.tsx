@@ -134,6 +134,7 @@ const MAX_AVATAR_FILE_BYTES = 10 * 1024 * 1024;
 const AVATAR_BUCKET = 'avatars';
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
+const DEBUG_AVATAR_PIPELINE = false;
 
 function validateAvatarFile(file: File): string | null {
   if (!file.name.toLowerCase().endsWith('.glb')) {
@@ -148,6 +149,33 @@ function validateAvatarFile(file: File): string | null {
 function getAvatarStoragePath(userId: string): string {
   const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
   return `${safeUserId}/avatar.glb`;
+}
+
+function getVersionedAvatarUrl(publicUrl: string): string {
+  const version = Date.now().toString();
+  try {
+    const url = new URL(publicUrl);
+    url.searchParams.set('v', version);
+    return url.toString();
+  } catch {
+    return `${publicUrl}${publicUrl.includes('?') ? '&' : '?'}v=${version}`;
+  }
+}
+
+function getAvatarUrlDebugInfo(avatarUrl?: string) {
+  const value = avatarUrl?.trim() ?? '';
+  const lowerValue = value.toLowerCase();
+  return {
+    avatarUrlExists: Boolean(value),
+    avatarUrl: value,
+    startsWithHttp: /^https?:\/\//i.test(value),
+    startsWithBlob: lowerValue.startsWith('blob:'),
+    startsWithFile: lowerValue.startsWith('file:'),
+    startsWithLocalhost:
+      lowerValue.includes('localhost') ||
+      lowerValue.includes('127.0.0.1') ||
+      lowerValue.includes('[::1]'),
+  };
 }
 const DEFAULT_GRID_POSITION: GridPosition = {
   firstOctet: 0,
@@ -1584,7 +1612,7 @@ function App() {
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   }), [chatLocationKey, multiplayer.others]);
   useEffect(() => {
-    if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS) {
+    if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
     }
 
@@ -1596,7 +1624,7 @@ function App() {
       selectedIp: user.selectedIp,
       gridMode: user.gridSystemMode,
       viewMode: user.playerLocation?.kind ?? 'unknown',
-      avatarUrl: Boolean(user.avatarUrl),
+      ...getAvatarUrlDebugInfo(user.avatarUrl),
     }));
 
     console.info('DEBUG_PRESENCE nearby filter', {
@@ -1697,9 +1725,10 @@ function App() {
     if (!data.publicUrl) {
       throw new Error('Avatar uploaded, but no public URL was returned.');
     }
-    console.info('Avatar public URL', data.publicUrl);
+    const versionedPublicUrl = getVersionedAvatarUrl(data.publicUrl);
+    console.info('Avatar public URL', versionedPublicUrl);
 
-    return { publicUrl: data.publicUrl, verificationWarning };
+    return { publicUrl: versionedPublicUrl, verificationWarning };
   };
 
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1720,12 +1749,12 @@ function App() {
     try {
       const { publicUrl, verificationWarning } = await uploadAvatarGlb(file);
       multiplayer.updateAvatarUrl(publicUrl);
-      if (DEBUG_REMOTE_AVATARS) {
-        console.info('DEBUG_REMOTE_AVATARS local presence avatar update', {
+      if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+        console.info('DEBUG_AVATAR_PIPELINE local presence avatar update', {
           sessionId: multiplayer.currentUser.sessionId,
           userId: multiplayer.currentUser.userId,
           name: multiplayer.currentUser.displayName,
-          avatarUrl: Boolean(publicUrl),
+          ...getAvatarUrlDebugInfo(publicUrl),
           avatarType: 'glb',
           location: playerLocationIp,
           gridMode: gridSystemMode,
