@@ -3763,6 +3763,18 @@ function IPGrid({
     }
 
     if (!cell) {
+      if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
+        console.info('DEBUG_AVATAR_PIPELINE avatar skipped offscreen', {
+          presenceId: user.presenceId,
+          sessionId: user.sessionId,
+          userId: user.userId,
+          name: user.displayName,
+          playerLocation,
+          selectedIp: user.selectedIp,
+          locationKey: user.locationKey,
+          ...getAvatarUrlDebugInfo(user.avatarUrl),
+        });
+      }
       return [];
     }
 
@@ -3782,6 +3794,10 @@ function IPGrid({
         name: user.displayName,
         ...getAvatarUrlDebugInfo(user.avatarUrl),
         avatarType: user.avatarType,
+        playerLocation,
+        selectedIp: user.selectedIp,
+        locationKey: user.locationKey,
+        renderCell: cell,
       });
     }
     const handleRemoteAvatarClick = (event: ThreeEvent<MouseEvent>) => {
