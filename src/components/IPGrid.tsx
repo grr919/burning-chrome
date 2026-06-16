@@ -59,6 +59,21 @@ export type GridCellBuilding = {
   organizationName?: string;
 };
 
+type CellHoverPart = 'square' | 'sidewalk' | 'building';
+
+type HoveredCellState = {
+  cellKey: string;
+  ipAddress: string;
+  part: CellHoverPart;
+};
+
+type GridCellTarget = {
+  cellKey: string;
+  cubeId: string;
+  cellBuilding: GridCellBuilding;
+  hoverInfoHtml: string;
+};
+
 const DEFAULT_GRID2_POSITION: Grid2Position = {
   outerFirstOctet: 128,
   outerSecondOctet: 220,
@@ -100,6 +115,8 @@ type WallMountedFlagProps = {
   position: [number, number, number];
   onClick?: (event: ThreeEvent<MouseEvent>) => void;
   onDoubleClick?: (event: ThreeEvent<MouseEvent>) => void;
+  onPointerOver?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerOut?: (event: ThreeEvent<PointerEvent>) => void;
 };
 
 function WallMountedFlag({
@@ -110,6 +127,8 @@ function WallMountedFlag({
   position,
   onClick,
   onDoubleClick,
+  onPointerOver,
+  onPointerOut,
 }: WallMountedFlagProps) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
@@ -154,8 +173,8 @@ function WallMountedFlag({
       position={position}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      onPointerOver={onClick ? () => { document.body.style.cursor = 'pointer'; } : undefined}
-      onPointerOut={onClick ? () => { document.body.style.cursor = 'auto'; } : undefined}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
       userData={{ label: countryCodeLabel ?? 'National flag' }}
     >
       <planeGeometry args={[width, height]} />
@@ -1563,8 +1582,10 @@ function IPGrid({
   const offset = (gridSize * spacing) / 2 - spacing / 2;
   const gridExtent = gridSize * spacing;
 
-  const [hoveredCube, setHoveredCube] = useState<string | null>(null);
-  const [hoveredIpAddress, setHoveredIpAddress] = useState<string | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<HoveredCellState | null>(null);
+  const hoveredCellRef = useRef<HoveredCellState | null>(null);
+  const hoveredIpAddress = hoveredCell?.ipAddress ?? null;
+  const hoveredCellKey = hoveredCell?.cellKey ?? null;
   const [rdapInfo, setRdapInfo] = useState<Record<string, RdapRecord>>({});
   const [reverseDnsInfo, setReverseDnsInfo] = useState<Record<string, ReverseDnsRecord>>({});
   const [exposureInfo, setExposureInfo] = useState<Record<string, ExposureRecord>>({});
@@ -1579,7 +1600,36 @@ function IPGrid({
     if (clickTimerRef.current !== null) {
       window.clearTimeout(clickTimerRef.current);
     }
+    document.body.style.cursor = 'auto';
   }, []);
+
+  const setActiveCellHover = (target: GridCellTarget, part: CellHoverPart) => {
+    const nextHover = {
+      cellKey: target.cellKey,
+      ipAddress: target.cellBuilding.ipAddress,
+      part,
+    };
+    hoveredCellRef.current = nextHover;
+    document.body.style.cursor = 'pointer';
+    setHoveredCell((current) => (
+      current?.cellKey === nextHover.cellKey &&
+      current.ipAddress === nextHover.ipAddress &&
+      current.part === nextHover.part
+        ? current
+        : nextHover
+    ));
+    onHoverCellChange?.(target.cellBuilding);
+    onHoverInfoHtml?.(target.hoverInfoHtml);
+  };
+
+  const clearCellHover = (cellKey?: string) => {
+    if (cellKey && hoveredCellRef.current?.cellKey !== cellKey) {
+      return;
+    }
+    hoveredCellRef.current = null;
+    document.body.style.cursor = 'auto';
+    setHoveredCell(null);
+  };
 
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
@@ -2231,8 +2281,6 @@ function IPGrid({
     );
   };
 
-  const flatGridTargeting = !onBuildingClick;
-  const gridTargetCells = new Map<string, { cellBuilding: GridCellBuilding; hoverInfoHtml: string; cubeId: string }>();
   const cubes = [];
 
   for (let y = 0; y < gridSize; y += 1) {
@@ -2359,10 +2407,12 @@ function IPGrid({
               : towerRoofTopY;
 
       const hitboxHeight = roofTopY + 0.08;
-      const cellHitboxHeight = Math.max(1.2, roofTopY + 0.28);
       const cellX = x;
       const cellY = y;
-      const hoverScale = hoveredCube === cubeId ? 1.03 : 1;
+      const cellKey = `${cellX}-${cellY}`;
+      const isHovered = hoveredCellKey === cellKey;
+      const hoverLift = isHovered ? 0.035 : 0;
+      const hoverScale = isHovered ? 1.018 : 1;
       const blockDoorWidth = 0.14 + pseudoRandom(seed + 201) * 0.08;
       const blockDoorHeight = 0.18 + pseudoRandom(seed + 202) * 0.08;
       const blockStairSteps = 2 + Math.floor(pseudoRandom(seed + 203) * 3);
@@ -2390,6 +2440,8 @@ function IPGrid({
       const buildingBodyColor = visualStyle.bodyColor;
       const trimColor = visualStyle.trimColor;
       const roofColor = visualStyle.roofColor;
+      const hoveredSquareBaseColor = isHovered ? shadeColor(squareBaseColor, 18) : squareBaseColor;
+      const sidewalkBaseColor = isHovered ? '#1f2937' : '#111827';
       const windowColor = visualStyle.windowColor;
       const architecturalStyleLabel = toTitleCaseStyleLabel(organizationCategory);
 
@@ -2623,10 +2675,11 @@ function IPGrid({
         asnColor,
         organizationName: rdapRecord?.org ?? rdapRecord?.networkName,
       };
-      gridTargetCells.set(`${cellX}-${cellY}`, { cellBuilding, hoverInfoHtml, cubeId });
+      const cellTarget: GridCellTarget = { cellKey, cubeId, cellBuilding, hoverInfoHtml };
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
+        setActiveCellHover(cellTarget, 'building');
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
@@ -2638,6 +2691,7 @@ function IPGrid({
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
+        setActiveCellHover(cellTarget, 'building');
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
@@ -2647,6 +2701,7 @@ function IPGrid({
 
       const handleCellSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
+        setActiveCellHover(cellTarget, 'square');
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
@@ -2658,6 +2713,7 @@ function IPGrid({
 
       const handleCellDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
+        setActiveCellHover(cellTarget, 'square');
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
@@ -2665,59 +2721,49 @@ function IPGrid({
         onCellDoubleClick(cellBuilding);
       };
 
+      const handleCellPointer = (part: CellHoverPart) => (event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        setActiveCellHover(cellTarget, part);
+      };
+
+      const handleCellPointerOut = (event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        clearCellHover(cellKey);
+      };
+
       cubes.push(
         <group key={cubeId} position={[xPos, groundY, zPos]}>
-          <mesh position={[0, 0.035, 0]} receiveShadow>
+          <mesh position={[0, 0.035 + hoverLift, 0]} receiveShadow>
             <boxGeometry args={[spacing - sidewalkInset, 0.07, spacing - sidewalkInset]} />
-            <meshStandardMaterial color={squareBaseColor} />
+            <meshStandardMaterial color={hoveredSquareBaseColor} />
           </mesh>
 
-          <mesh position={[0, 0.07, 0]} receiveShadow>
+          <mesh position={[0, 0.07 + hoverLift, 0]} receiveShadow>
             <boxGeometry args={[cubeSize + 0.1, 0.04, cubeSize + 0.1]} />
-            <meshStandardMaterial color="#111827" />
+            <meshStandardMaterial color={sidewalkBaseColor} />
           </mesh>
 
           <mesh
-            position={[0, onBuildingClick ? 0.055 : cellHitboxHeight / 2, 0]}
-            onClick={flatGridTargeting ? undefined : handleCellSingleClick}
-            onDoubleClick={flatGridTargeting ? undefined : handleCellDoubleClick}
-            onPointerOver={flatGridTargeting ? undefined : (event) => {
-              event.stopPropagation();
-              document.body.style.cursor = 'pointer';
-              setHoveredCube(cubeId);
-              setHoveredIpAddress(ipAddress);
-              onHoverCellChange?.(cellBuilding);
-              onHoverInfoHtml?.(hoverInfoHtml);
-            }}
-            onPointerMove={flatGridTargeting ? undefined : (event) => {
-              event.stopPropagation();
-              document.body.style.cursor = 'pointer';
-              setHoveredCube(cubeId);
-              setHoveredIpAddress(ipAddress);
-              onHoverCellChange?.(cellBuilding);
-              onHoverInfoHtml?.(hoverInfoHtml);
-            }}
-            onPointerOut={flatGridTargeting ? undefined : (event) => {
-              event.stopPropagation();
-              document.body.style.cursor = 'auto';
-              setHoveredCube(null);
-            }}
+            position={[0, 0.125, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            onClick={handleCellSingleClick}
+            onDoubleClick={handleCellDoubleClick}
+            onPointerOver={handleCellPointer('sidewalk')}
+            onPointerMove={handleCellPointer('sidewalk')}
+            onPointerOut={handleCellPointerOut}
           >
-            <boxGeometry args={[spacing - 0.08, onBuildingClick ? 0.11 : cellHitboxHeight, spacing - 0.08]} />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            <planeGeometry args={[spacing - 0.04, spacing - 0.04]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
 
-          <group scale={[hoverScale, hoverScale, hoverScale]}>
+          <group position={[0, hoverLift, 0]} scale={[hoverScale, hoverScale, hoverScale]}>
             <mesh
               position={[0, hitboxHeight / 2, 0]}
-              onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
-              onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
-              onPointerOver={flatGridTargeting ? undefined : () => {
-                document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={flatGridTargeting ? undefined : () => {
-                document.body.style.cursor = 'auto';
-              }}
+              onClick={handleBuildingSingleClick}
+              onDoubleClick={handleBuildingDoubleClick}
+              onPointerOver={handleCellPointer('building')}
+              onPointerMove={handleCellPointer('building')}
+              onPointerOut={handleCellPointerOut}
             >
               <boxGeometry
                 args={[
@@ -3373,8 +3419,10 @@ function IPGrid({
                 width={Math.min(0.34, facadeWidth * 0.34)}
                 height={Math.min(0.24, facadeWidth * 0.24)}
                 position={[0, facadeFlagY, facadeFlagZ]}
-                onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
-                onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
+                onClick={handleBuildingSingleClick}
+                onDoubleClick={handleBuildingDoubleClick}
+                onPointerOver={handleCellPointer('building')}
+                onPointerOut={handleCellPointerOut}
               />
             )}
 
@@ -3392,7 +3440,7 @@ function IPGrid({
             </Text>
           </group>
 
-          {hoveredCube === cubeId && (
+          {isHovered && (
             <Html fullscreen>
               <div
                 data-info-panel="true"
@@ -3405,94 +3453,6 @@ function IPGrid({
       );
     }
   }
-
-  type FlatGridTargetEvent = ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>;
-
-  const flatGridGroundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
-  const getFlatGridTarget = (event: FlatGridTargetEvent) => {
-    const point = new THREE.Vector3();
-    if (!event.ray.intersectPlane(flatGridGroundPlane, point)) {
-      return null;
-    }
-
-    const x = Math.floor((point.x + offset + spacing / 2) / spacing);
-    const y = Math.floor((point.z + offset + spacing / 2) / spacing);
-    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
-      return null;
-    }
-
-    return gridTargetCells.get(`${x}-${y}`) ?? null;
-  };
-
-  const updateFlatGridTarget = (event: FlatGridTargetEvent) => {
-    const target = getFlatGridTarget(event);
-    if (!target) {
-      document.body.style.cursor = 'auto';
-      setHoveredCube(null);
-      return null;
-    }
-
-    document.body.style.cursor = 'pointer';
-    setHoveredCube(target.cubeId);
-    setHoveredIpAddress(target.cellBuilding.ipAddress);
-    onHoverCellChange?.(target.cellBuilding);
-    onHoverInfoHtml?.(target.hoverInfoHtml);
-    return target;
-  };
-
-  const handleFlatGridClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    const fallbackTarget = getFlatGridTarget(event);
-    if (!fallbackTarget) {
-      return;
-    }
-    if (clickTimerRef.current !== null) {
-      window.clearTimeout(clickTimerRef.current);
-    }
-    clickTimerRef.current = window.setTimeout(() => {
-      onCellClick(fallbackTarget.cellBuilding);
-      clickTimerRef.current = null;
-    }, 180);
-  };
-
-  const handleFlatGridDoubleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    const fallbackTarget = getFlatGridTarget(event);
-    if (!fallbackTarget) {
-      return;
-    }
-    if (clickTimerRef.current !== null) {
-      window.clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = null;
-    }
-    onCellDoubleClick(fallbackTarget.cellBuilding);
-  };
-
-  const flatGridTargetPlane = flatGridTargeting ? (
-    <mesh
-      key="flat-grid-target-plane"
-      position={[0, groundY + 0.08, 0]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      onPointerOver={(event) => {
-        event.stopPropagation();
-        updateFlatGridTarget(event);
-      }}
-      onPointerMove={(event) => {
-        event.stopPropagation();
-        updateFlatGridTarget(event);
-      }}
-      onPointerOut={(event) => {
-        event.stopPropagation();
-        document.body.style.cursor = 'auto';
-        setHoveredCube(null);
-      }}
-      onClick={handleFlatGridClick}
-      onDoubleClick={handleFlatGridDoubleClick}
-    >
-      <planeGeometry args={[gridExtent, gridExtent]} />
-      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-    </mesh>
-  ) : null;
 
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
@@ -3606,7 +3566,6 @@ function IPGrid({
     <>
       {createStreetGrid()}
       {cubes}
-      {flatGridTargetPlane}
       {remoteAvatarMarkers}
     </>
   );
