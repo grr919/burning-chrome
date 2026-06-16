@@ -490,6 +490,24 @@ function getStreetBuildingWorldPosition(x: number, y: number): { x: number; z: n
   };
 }
 
+function getFocusedStreetCameraPosition(focusCell: StreetFocusCell, heading: StreetHeading): { x: number; z: number } {
+  const target = getStreetBuildingWorldPosition(focusCell.x, focusCell.y);
+
+  if (heading === 0) {
+    return { x: target.x, z: target.z + STREET_GRID_SPACING };
+  }
+
+  if (heading === 2) {
+    return { x: target.x, z: target.z - STREET_GRID_SPACING };
+  }
+
+  if (heading === 1) {
+    return { x: target.x - STREET_GRID_SPACING, z: target.z };
+  }
+
+  return { x: target.x + STREET_GRID_SPACING, z: target.z };
+}
+
 function getStreetHeadingVector(heading: StreetHeading): { dx: number; dy: number } {
   if (heading === 1) {
     return { dx: 1, dy: 0 };
@@ -520,7 +538,9 @@ function StreetGridCamera({
     const position = getStreetCellWorldPosition(streetPlayerX, streetPlayerY);
     const headingVector = getStreetHeadingVector(heading);
     const focusPosition = focusCell ? getStreetBuildingWorldPosition(focusCell.x, focusCell.y) : null;
-    camera.position.set(position.x, 1.55, position.z);
+    const cameraPosition = focusCell ? getFocusedStreetCameraPosition(focusCell, heading) : position;
+    camera.up.set(0, 1, 0);
+    camera.position.set(cameraPosition.x, 1.55, cameraPosition.z);
     camera.lookAt(
       focusPosition ? focusPosition.x : position.x + headingVector.dx * STREET_GRID_SPACING * 3,
       focusPosition ? 1.05 : 1.35,
