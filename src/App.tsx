@@ -1032,7 +1032,7 @@ function App() {
   };
 
   const handleStreetBuildingClick = (cell: GridCellBuilding) => {
-    handleFlagClick(cell);
+    handleEnterBuildingView(cell);
   };
 
   const handleCellDoubleClick = (cell: GridCellBuilding) => {
@@ -1470,7 +1470,7 @@ function App() {
   ]);
 
 
-  const handleFlagClick = (building: BuildingViewState) => {
+  const handleEnterBuildingView = (building: BuildingViewState) => {
     setBuildingView(building);
     setStreetTargetCell(building);
     setStreetFocusCell({ x: clampStreetCell(building.x), y: clampStreetCell(building.y) });
