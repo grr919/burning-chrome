@@ -1617,6 +1617,7 @@ function App() {
     }
 
     const summarizeUsers = (users: MultiplayerPresence[]) => users.map((user) => ({
+      presenceId: user.presenceId,
       sessionId: user.sessionId,
       userId: user.userId,
       name: user.displayName,
@@ -1635,6 +1636,19 @@ function App() {
       after: summarizeUsers(nearbyUsers),
     });
   }, [chatLocationKey, multiplayer.others, nearbyUsers]);
+  useEffect(() => {
+    if (!DEBUG_AVATAR_PIPELINE) {
+      return;
+    }
+    console.info('DEBUG_AVATAR_PIPELINE local currentPresence', {
+      presenceId: multiplayer.currentPresence.presenceId,
+      sessionId: multiplayer.currentPresence.sessionId,
+      userId: multiplayer.currentPresence.userId,
+      name: multiplayer.currentPresence.displayName,
+      avatarType: multiplayer.currentPresence.avatarType,
+      ...getAvatarUrlDebugInfo(multiplayer.currentPresence.avatarUrl),
+    });
+  }, [multiplayer.currentPresence]);
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const streetPanelTargetIp = streetTargetCell?.ipAddress ?? selectedTargetIp ?? activeTargetIp;
   const streetPanelOrganizationName = streetTargetCell?.organizationName?.trim();
@@ -1684,6 +1698,9 @@ function App() {
     const userId = multiplayer.currentUser.userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
     const storagePath = getAvatarStoragePath(userId);
     console.info('Avatar upload target', {
+      userId: multiplayer.currentUser.userId,
+      sessionId: multiplayer.currentUser.sessionId,
+      presenceId: multiplayer.currentUser.presenceId,
       fileName: file.name,
       browserFileType: file.type,
       targetContentType: 'model/gltf-binary',
@@ -1691,6 +1708,20 @@ function App() {
       bucket: AVATAR_BUCKET,
       path: storagePath,
     });
+    const sharedUserIdUsers = multiplayer.others.filter((user) => user.userId === multiplayer.currentUser.userId);
+    if (sharedUserIdUsers.length > 0) {
+      console.warn('Avatar upload path is shared by multiple live clients with the same userId', {
+        userId: multiplayer.currentUser.userId,
+        sessionId: multiplayer.currentUser.sessionId,
+        presenceId: multiplayer.currentUser.presenceId,
+        path: storagePath,
+        otherClients: sharedUserIdUsers.map((user) => ({
+          sessionId: user.sessionId,
+          presenceId: user.presenceId,
+          name: user.displayName,
+        })),
+      });
+    }
 
     // Browsers may report .glb files as application/octet-stream, so force the GLB MIME type.
     const uploadResult = await supabase.storage
@@ -1726,7 +1757,13 @@ function App() {
       throw new Error('Avatar uploaded, but no public URL was returned.');
     }
     const versionedPublicUrl = getVersionedAvatarUrl(data.publicUrl);
-    console.info('Avatar public URL', versionedPublicUrl);
+    console.info('Avatar public URL', {
+      userId: multiplayer.currentUser.userId,
+      sessionId: multiplayer.currentUser.sessionId,
+      presenceId: multiplayer.currentUser.presenceId,
+      path: storagePath,
+      publicUrl: versionedPublicUrl,
+    });
 
     return { publicUrl: versionedPublicUrl, verificationWarning };
   };
@@ -1748,9 +1785,11 @@ function App() {
     setAvatarUploadStatus('Uploading avatar...');
     try {
       const { publicUrl, verificationWarning } = await uploadAvatarGlb(file);
-      multiplayer.updateAvatarUrl(publicUrl);
+      const wasAvatarUrlAccepted = multiplayer.updateAvatarUrl(publicUrl);
       if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
         console.info('DEBUG_AVATAR_PIPELINE local presence avatar update', {
+          accepted: wasAvatarUrlAccepted,
+          presenceId: multiplayer.currentUser.presenceId,
           sessionId: multiplayer.currentUser.sessionId,
           userId: multiplayer.currentUser.userId,
           name: multiplayer.currentUser.displayName,
@@ -1759,6 +1798,11 @@ function App() {
           location: playerLocationIp,
           gridMode: gridSystemMode,
         });
+      }
+      if (!wasAvatarUrlAccepted) {
+        console.warn('Avatar public URL was not accepted for presence', getAvatarUrlDebugInfo(publicUrl));
+        setAvatarUploadStatus('Avatar uploaded to Storage, but the public URL was not accepted for presence.');
+        return;
       }
       setAvatarUploadStatus(verificationWarning ?? 'Avatar uploaded');
     } catch (error) {

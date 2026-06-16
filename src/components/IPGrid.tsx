@@ -182,7 +182,7 @@ function UserAvatarModel({
 }: {
   avatarUrl?: string;
   fallback: ReactNode;
-  debugUser?: { userId: string; sessionId: string; name: string };
+  debugUser?: { userId: string; sessionId: string; presenceId: string; name: string };
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -3691,6 +3691,7 @@ function IPGrid({
     const locationLabel = getAvatarLocationDisplay(user);
     if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
       console.info('DEBUG_AVATAR_PIPELINE avatar render attempt', {
+        presenceId: user.presenceId,
         sessionId: user.sessionId,
         userId: user.userId,
         name: user.displayName,
@@ -3705,7 +3706,7 @@ function IPGrid({
 
     return [
       <group
-        key={`remote-user-${user.sessionId}`}
+        key={`remote-user-${user.presenceId || user.sessionId}`}
         position={[
           cell.x * spacing - offset + xOffset,
           groundY + 3.22 + stackIndex * 0.22,
@@ -3728,6 +3729,7 @@ function IPGrid({
             debugUser={{
               userId: user.userId,
               sessionId: user.sessionId,
+              presenceId: user.presenceId,
               name: user.displayName,
             }}
           />

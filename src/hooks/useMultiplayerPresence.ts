@@ -40,6 +40,7 @@ export type MultiplayerPlayerLocation =
 export type MultiplayerPresence = {
   userId: string;
   sessionId: string;
+  presenceId: string;
   displayName: string;
   color: string;
   avatarUrl?: string;
@@ -176,7 +177,9 @@ function getOrCreateIdentity() {
     removeStorage(AVATAR_URL_KEY);
   }
 
-  return { userId, sessionId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
+  const presenceId = createId();
+
+  return { userId, sessionId, presenceId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
 }
 
 function isPresence(value: unknown): value is MultiplayerPresence {
@@ -189,31 +192,36 @@ function isPresence(value: unknown): value is MultiplayerPresence {
   );
 }
 
-function dedupePresenceBySessionId(items: MultiplayerPresence[]): MultiplayerPresence[] {
-  const bySessionId = new Map<string, MultiplayerPresence>();
+function shouldReplacePresenceRecord(previous: MultiplayerPresence, next: MultiplayerPresence): boolean {
+  const previousTime = Date.parse(previous.lastSeenAt || '');
+  const nextTime = Date.parse(next.lastSeenAt || '');
+  const nextHasAvatar = Boolean(next.avatarUrl);
+  const previousHasAvatar = Boolean(previous.avatarUrl);
+
+  return (
+    (nextHasAvatar && !previousHasAvatar) ||
+    !Number.isFinite(previousTime) ||
+    (Number.isFinite(nextTime) && nextTime >= previousTime)
+  );
+}
+
+function dedupePresenceRecords(items: MultiplayerPresence[]): MultiplayerPresence[] {
+  const byPresenceKey = new Map<string, MultiplayerPresence>();
 
   for (const item of items) {
-    const previous = bySessionId.get(item.sessionId);
+    const key = item.presenceId || `session:${item.sessionId}`;
+    const previous = byPresenceKey.get(key);
     if (!previous) {
-      bySessionId.set(item.sessionId, item);
+      byPresenceKey.set(key, item);
       continue;
     }
 
-    const previousTime = Date.parse(previous.lastSeenAt || '');
-    const nextTime = Date.parse(item.lastSeenAt || '');
-    const nextHasAvatar = Boolean(item.avatarUrl);
-    const previousHasAvatar = Boolean(previous.avatarUrl);
-
-    if (
-      (nextHasAvatar && !previousHasAvatar) ||
-      !Number.isFinite(previousTime) ||
-      (Number.isFinite(nextTime) && nextTime >= previousTime)
-    ) {
-      bySessionId.set(item.sessionId, item);
+    if (shouldReplacePresenceRecord(previous, item)) {
+      byPresenceKey.set(key, item);
     }
   }
 
-  return [...bySessionId.values()];
+  return [...byPresenceKey.values()];
 }
 
 const DEBUG_PRESENCE = false;
@@ -236,6 +244,7 @@ function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
   console.info(label, {
     count: items.length,
     records: items.map((presence) => ({
+      presenceId: presence.presenceId,
       sessionId: presence.sessionId,
       userId: presence.userId,
       name: presence.displayName,
@@ -308,6 +317,20 @@ export function useMultiplayerPresence({
   const chatLocationKeyRef = useRef(chatLocationKey);
 
   useEffect(() => {
+    if (!DEBUG_AVATAR_PIPELINE) {
+      return;
+    }
+    console.info('DEBUG_AVATAR_PIPELINE local identity', {
+      presenceId: identity.presenceId,
+      sessionId: identity.sessionId,
+      userId: identity.userId,
+      name: identity.displayName,
+      avatarType: identity.avatarType,
+      ...getAvatarUrlDebugInfo(identity.avatarUrl),
+    });
+  }, [identity]);
+
+  useEffect(() => {
     chatLocationKeyRef.current = chatLocationKey;
     setMessages([]);
   }, [chatLocationKey]);
@@ -341,7 +364,7 @@ export function useMultiplayerPresence({
     const channel = supabase.channel(`cyberspace:${gridKey}`, {
       config: {
         broadcast: { self: false },
-        presence: { key: identity.sessionId },
+        presence: { key: identity.presenceId },
       },
     });
     channelRef.current = channel;
@@ -360,9 +383,13 @@ export function useMultiplayerPresence({
           .flat()
           .filter(isPresence);
         logPresenceDebug('DEBUG_AVATAR_PIPELINE raw remote presence records', raw);
-        const uniqueBeforeSelfFilter = dedupePresenceBySessionId(raw);
+        const uniqueBeforeSelfFilter = dedupePresenceRecords(raw);
         logPresenceDebug('DEBUG_PRESENCE unique users before self filter', uniqueBeforeSelfFilter);
-        const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.sessionId !== identity.sessionId);
+        const remoteUsers = uniqueBeforeSelfFilter.filter((presence) =>
+          presence.presenceId
+            ? presence.presenceId !== identity.presenceId
+            : presence.sessionId !== identity.sessionId
+        );
         logPresenceDebug('DEBUG_PRESENCE remote users after self filter', remoteUsers);
         setOthers(remoteUsers);
       })
@@ -387,7 +414,7 @@ export function useMultiplayerPresence({
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [gridKey, identity.sessionId]);
+  }, [gridKey, identity.presenceId, identity.sessionId]);
 
   useEffect(() => {
     setMessages([]);
