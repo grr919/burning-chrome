@@ -2553,7 +2553,7 @@ function App() {
         )}
 
         <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-sm p-2">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,auto)_minmax(320px,1.35fr)] lg:items-start">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={`inline-block h-2.5 w-2.5 rounded-full ${
@@ -2614,33 +2614,34 @@ function App() {
                   Save
                 </button>
               </form>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <label
-                  className="cursor-pointer rounded border border-gray-400 bg-gray-200 px-2 py-1 font-medium text-gray-900 shadow-sm hover:bg-gray-300"
-                  htmlFor="avatar-upload-input"
-                >
-                  Upload avatar (.glb)
-                </label>
-                <input
-                  id="avatar-upload-input"
-                  type="file"
-                  accept=".glb,model/gltf-binary"
-                  className="hidden"
-                  disabled={isAvatarUploading}
-                  onChange={handleAvatarUpload}
-                />
-                <button
-                  type="button"
-                  onClick={handleClearAvatar}
-                  disabled={!multiplayer.currentUser.avatarUrl || isAvatarUploading}
-                  className="rounded border border-gray-400 bg-gray-200 px-2 py-1 text-xs font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  Clear
-                </button>
-                <span className="text-gray-600">
-                  {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? 'Custom avatar active' : 'Default avatar')}
-                </span>
-              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs lg:px-2">
+              <label
+                className="cursor-pointer rounded border border-gray-400 bg-gray-200 px-2 py-1 font-medium text-gray-900 shadow-sm hover:bg-gray-300"
+                htmlFor="avatar-upload-input"
+              >
+                Upload avatar (.glb)
+              </label>
+              <input
+                id="avatar-upload-input"
+                type="file"
+                accept=".glb,model/gltf-binary"
+                className="hidden"
+                disabled={isAvatarUploading}
+                onChange={handleAvatarUpload}
+              />
+              <button
+                type="button"
+                onClick={handleClearAvatar}
+                disabled={!multiplayer.currentUser.avatarUrl || isAvatarUploading}
+                className="rounded border border-gray-400 bg-gray-200 px-2 py-1 text-xs font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                Clear
+              </button>
+              <span className="text-center text-gray-600">
+                {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? 'Custom avatar active' : 'Default avatar')}
+              </span>
             </div>
 
             <div className="w-full lg:max-w-xl">

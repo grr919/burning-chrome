@@ -3706,21 +3706,24 @@ function IPGrid({
               borderRadius: '4px',
               boxShadow: '0 2px 8px rgba(0,0,0,0.28)',
               color: '#111827',
-              fontSize: '18px',
-              maxWidth: '192px',
+              display: 'flex',
+              fontSize: '13px',
+              gap: '6px',
+              lineHeight: 1.1,
+              maxWidth: '360px',
               overflow: 'hidden',
-              padding: '4px 10px',
+              padding: '2px 8px',
               textOverflow: 'ellipsis',
-              whiteSpace: 'normal',
+              whiteSpace: 'nowrap',
             }}
             title={`${user.displayName} at ${locationLabel}`}
           >
-            <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.displayName}
-            </div>
-            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            </span>
+            <span style={{ color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {locationLabel}
-            </div>
+            </span>
           </div>
         </Html>
       </group>,
