@@ -3471,7 +3471,7 @@ function IPGrid({
   const flatGridTargetPlane = flatGridTargeting ? (
     <mesh
       key="flat-grid-target-plane"
-      position={[0, groundY + 7, 0]}
+      position={[0, groundY + 0.08, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
       onPointerOver={(event) => {
         event.stopPropagation();
