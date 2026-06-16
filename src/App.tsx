@@ -2391,10 +2391,10 @@ function App() {
 
         {!buildingView && (
           <div
-            className="shrink-0 rounded-lg shadow-lg border border-gray-300 min-h-[96px] max-h-[18vh] px-3 py-2"
+            className="shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
-            <div className="max-h-[calc(18vh-1rem)] overflow-auto">
+            <div className="h-full overflow-auto">
               {bottomInfoHtml ? (
                 <div
                   className={infoDisplayMode === 'prose'

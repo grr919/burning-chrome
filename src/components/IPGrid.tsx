@@ -508,7 +508,7 @@ function getAsnSummaryLabel(record?: AsnRecord | null): string {
   if (!record?.asn) {
     return 'ASN not loaded';
   }
-  return `${normalizeAsn(record.asn)}${record.asnName ? ` — ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
+  return `${normalizeAsn(record.asn)}${record.asnName ? ` - ${record.asnName}` : ''}${record.route ? ` (${record.route})` : ''}`;
 }
 
 function valueToDisplayText(value: unknown): string {
@@ -2403,7 +2403,7 @@ function IPGrid({
       ].filter(Boolean);
 
       const hoverInfoLines: string[] = [
-        `<div class="font-bold">${escapeHtml(headerParts.join(' — '))}</div>`,
+        `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
       ];
 
       if (isAsnLoading[ipAddress]) {
@@ -3471,7 +3471,7 @@ function IPGrid({
   const flatGridTargetPlane = flatGridTargeting ? (
     <mesh
       key="flat-grid-target-plane"
-      position={[0, groundY + 7, 0]}
+      position={[0, groundY + 0.08, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
       onPointerOver={(event) => {
         event.stopPropagation();
