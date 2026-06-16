@@ -3411,30 +3411,30 @@ function IPGrid({
 
   const handleFlatGridClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    const target = updateFlatGridTarget(event);
-    if (!target) {
+    const fallbackTarget = getFlatGridTarget(event);
+    if (!fallbackTarget) {
       return;
     }
     if (clickTimerRef.current !== null) {
       window.clearTimeout(clickTimerRef.current);
     }
     clickTimerRef.current = window.setTimeout(() => {
-      onCellClick(target.cellBuilding);
+      onCellClick(fallbackTarget.cellBuilding);
       clickTimerRef.current = null;
     }, 180);
   };
 
   const handleFlatGridDoubleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    const target = updateFlatGridTarget(event);
-    if (!target) {
+    const fallbackTarget = getFlatGridTarget(event);
+    if (!fallbackTarget) {
       return;
     }
     if (clickTimerRef.current !== null) {
       window.clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
     }
-    onCellDoubleClick(target.cellBuilding);
+    onCellDoubleClick(fallbackTarget.cellBuilding);
   };
 
   const flatGridTargetPlane = flatGridTargeting ? (
