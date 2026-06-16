@@ -3656,7 +3656,7 @@ function IPGrid({
 
     return [
       <group
-        key={`remote-user-${user.userId}`}
+        key={`remote-user-${user.sessionId}`}
         position={[
           cell.x * spacing - offset + xOffset,
           groundY + 3.22 + stackIndex * 0.22,

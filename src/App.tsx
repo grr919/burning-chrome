@@ -132,6 +132,7 @@ const DEFAULT_GRID2_POSITION: Grid2Position = {
 };
 const MAX_AVATAR_FILE_BYTES = 10 * 1024 * 1024;
 const AVATAR_BUCKET = 'avatars';
+const DEBUG_PRESENCE = true;
 
 function validateAvatarFile(file: File): string | null {
   if (!file.name.toLowerCase().endsWith('.glb')) {
@@ -1577,10 +1578,34 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const nearbyUsers = multiplayer.others.filter((user) => {
+  const nearbyUsers = useMemo(() => multiplayer.others.filter((user) => {
     const userLocationKey = getExactLocationKey(user.playerLocation);
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
-  });
+  }), [chatLocationKey, multiplayer.others]);
+  useEffect(() => {
+    if (!DEBUG_PRESENCE) {
+      return;
+    }
+
+    const summarizeUsers = (users: MultiplayerPresence[]) => users.map((user) => ({
+      sessionId: user.sessionId,
+      userId: user.userId,
+      name: user.displayName,
+      locationKey: getExactLocationKey(user.playerLocation),
+      selectedIp: user.selectedIp,
+      gridMode: user.gridSystemMode,
+      viewMode: user.playerLocation?.kind ?? 'unknown',
+      avatarUrl: Boolean(user.avatarUrl),
+    }));
+
+    console.info('DEBUG_PRESENCE nearby filter', {
+      chatLocationKey,
+      beforeCount: multiplayer.others.length,
+      before: summarizeUsers(multiplayer.others),
+      afterCount: nearbyUsers.length,
+      after: summarizeUsers(nearbyUsers),
+    });
+  }, [chatLocationKey, multiplayer.others, nearbyUsers]);
   const userLocationLabel = getPlayerLocationDisplay(playerLocation);
   const streetPanelTargetIp = streetTargetCell?.ipAddress ?? selectedTargetIp ?? activeTargetIp;
   const streetPanelOrganizationName = streetTargetCell?.organizationName?.trim();
@@ -2540,7 +2565,7 @@ function App() {
                       {nearbyUsers.map((user, index) => {
                         const displayName = user.displayName?.trim() || 'Explorer';
                         return (
-                          <span key={user.userId}>
+                          <span key={user.sessionId}>
                             {index > 0 && ', '}
                             <button
                               type="button"
