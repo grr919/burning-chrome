@@ -3,6 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 export type MultiplayerGridSystemMode = 'grid1' | 'grid2';
+export type MultiplayerViewMode = 'grid' | 'street' | 'building';
 
 export type MultiplayerGridPosition = {
   firstOctet: number;
@@ -46,6 +47,7 @@ export type MultiplayerPresence = {
   avatarUrl?: string;
   avatarType?: 'glb' | 'default';
   gridSystemMode: MultiplayerGridSystemMode;
+  viewMode: MultiplayerViewMode;
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
   grid2Position: MultiplayerGrid2Position;
@@ -53,6 +55,7 @@ export type MultiplayerPresence = {
   pointerTarget?: MultiplayerCell;
   hoveredCell?: MultiplayerCell;
   selectedIp?: string;
+  locationKey: string;
   chatLocationKey?: string;
   lastSeenAt: string;
 };
@@ -71,6 +74,7 @@ type UseMultiplayerPresenceInput = {
   gridKey: string;
   chatLocationKey: string;
   gridSystemMode: MultiplayerGridSystemMode;
+  viewMode: MultiplayerViewMode;
   zoomLevel: number;
   currentPosition: MultiplayerGridPosition;
   grid2Position: MultiplayerGrid2Position;
@@ -79,12 +83,46 @@ type UseMultiplayerPresenceInput = {
   selectedIp?: string;
 };
 
+export type MultiplayerLocationContext = {
+  gridSystemMode: MultiplayerGridSystemMode;
+  viewMode: MultiplayerViewMode;
+  zoomLevel: number;
+  currentPosition: MultiplayerGridPosition;
+  grid2Position: MultiplayerGrid2Position;
+};
+
+type MultiplayerPresenceRow = {
+  presence_id: string;
+  session_id: string;
+  user_id: string;
+  display_name: string;
+  color: string;
+  avatar_url: string | null;
+  avatar_type: 'glb' | 'default' | null;
+  location_key: string;
+  grid_system_mode: MultiplayerGridSystemMode;
+  view_mode: MultiplayerViewMode;
+  zoom_level: number;
+  current_position: MultiplayerGridPosition;
+  grid2_position: MultiplayerGrid2Position;
+  player_location: MultiplayerPlayerLocation | null;
+  pointer_target: MultiplayerCell | null;
+  hovered_cell: MultiplayerCell | null;
+  selected_ip: string | null;
+  chat_location_key: string | null;
+  last_seen: string;
+};
+
 const USER_ID_KEY = 'cyberspace.userId';
 const SESSION_ID_KEY = 'cyberspace.sessionId';
+const PRESENCE_ID_KEY = 'cyberspace.presenceId';
 const DISPLAY_NAME_KEY = 'cyberspace.displayName';
 const USER_COLOR_KEY = 'cyberspace.userColor';
 const AVATAR_URL_KEY = 'cyberspace.avatarUrl';
 const AVATAR_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2', '#be123c', '#65a30d'];
+const PRESENCE_TABLE = 'multiplayer_presence';
+const PRESENCE_STALE_MS = 45_000;
+const PRESENCE_HEARTBEAT_MS = 15_000;
 
 function readStorage(key: string): string | null {
   if (typeof window === 'undefined') {
@@ -177,19 +215,13 @@ function getOrCreateIdentity() {
     removeStorage(AVATAR_URL_KEY);
   }
 
-  const presenceId = createId();
+  let presenceId = readSessionStorage(PRESENCE_ID_KEY);
+  if (!presenceId) {
+    presenceId = createId();
+    writeSessionStorage(PRESENCE_ID_KEY, presenceId);
+  }
 
   return { userId, sessionId, presenceId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
-}
-
-function isPresence(value: unknown): value is MultiplayerPresence {
-  return Boolean(
-    value &&
-    typeof value === 'object' &&
-    typeof (value as MultiplayerPresence).userId === 'string' &&
-    typeof (value as MultiplayerPresence).sessionId === 'string' &&
-    typeof (value as MultiplayerPresence).displayName === 'string'
-  );
 }
 
 function shouldReplacePresenceRecord(previous: MultiplayerPresence, next: MultiplayerPresence): boolean {
@@ -224,6 +256,59 @@ function dedupePresenceRecords(items: MultiplayerPresence[]): MultiplayerPresenc
   return [...byPresenceKey.values()];
 }
 
+function isPresenceFresh(presence: MultiplayerPresence, now = Date.now()): boolean {
+  const lastSeen = Date.parse(presence.lastSeenAt || '');
+  return Number.isFinite(lastSeen) && now - lastSeen <= PRESENCE_STALE_MS;
+}
+
+function toPresenceRow(presence: MultiplayerPresence): MultiplayerPresenceRow {
+  return {
+    presence_id: presence.presenceId,
+    session_id: presence.sessionId,
+    user_id: presence.userId,
+    display_name: presence.displayName,
+    color: presence.color,
+    avatar_url: presence.avatarUrl ?? null,
+    avatar_type: presence.avatarType ?? 'default',
+    location_key: presence.locationKey,
+    grid_system_mode: presence.gridSystemMode,
+    view_mode: presence.viewMode,
+    zoom_level: presence.zoomLevel,
+    current_position: presence.currentPosition,
+    grid2_position: presence.grid2Position,
+    player_location: presence.playerLocation ?? null,
+    pointer_target: presence.pointerTarget ?? null,
+    hovered_cell: presence.hoveredCell ?? null,
+    selected_ip: presence.selectedIp ?? null,
+    chat_location_key: presence.chatLocationKey ?? null,
+    last_seen: presence.lastSeenAt,
+  };
+}
+
+function rowToPresence(row: MultiplayerPresenceRow): MultiplayerPresence {
+  return {
+    userId: row.user_id,
+    sessionId: row.session_id,
+    presenceId: row.presence_id,
+    displayName: row.display_name,
+    color: row.color,
+    avatarUrl: row.avatar_url ?? undefined,
+    avatarType: row.avatar_type ?? (row.avatar_url ? 'glb' : 'default'),
+    gridSystemMode: row.grid_system_mode,
+    viewMode: row.view_mode,
+    zoomLevel: row.zoom_level,
+    currentPosition: row.current_position,
+    grid2Position: row.grid2_position,
+    playerLocation: row.player_location ?? undefined,
+    pointerTarget: row.pointer_target ?? undefined,
+    hoveredCell: row.hovered_cell ?? undefined,
+    selectedIp: row.selected_ip ?? undefined,
+    locationKey: row.location_key,
+    chatLocationKey: row.chat_location_key ?? undefined,
+    lastSeenAt: row.last_seen,
+  };
+}
+
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
 const DEBUG_AVATAR_PIPELINE = false;
@@ -250,7 +335,7 @@ function logPresenceDebug(label: string, items: MultiplayerPresence[]) {
       name: presence.displayName,
       location: getPresenceDebugLocation(presence),
       gridMode: presence.gridSystemMode,
-      viewMode: presence.playerLocation?.kind ?? 'unknown',
+      viewMode: presence.viewMode,
       ...getAvatarUrlDebugInfo(presence.avatarUrl),
     })),
   });
@@ -263,10 +348,19 @@ function getChatChannelName(chatLocationKey: string): string {
   return `cyberspace-chat:${safeKey || 'unknown'}`;
 }
 
-export function getExactLocationKey(location?: MultiplayerPlayerLocation): string {
+export function getExactLocationKey(location?: MultiplayerPlayerLocation, context?: MultiplayerLocationContext): string {
   if (!location) return 'unknown';
-  if (location.kind === 'ip') return `ip:${location.ipAddress}`;
-  if (location.kind === 'building') return `building:${location.ipAddress}`;
+  const gridKey = context
+    ? `${context.viewMode}:${getMultiplayerGridKey(context.gridSystemMode, context.zoomLevel, context.currentPosition, context.grid2Position)}:`
+    : '';
+  if (location.kind === 'ip') {
+    const coordinates =
+      typeof location.x === 'number' && typeof location.y === 'number'
+        ? `:cell-${location.x}-${location.y}`
+        : '';
+    return `${gridKey}ip:${location.ipAddress}${coordinates}`;
+  }
+  if (location.kind === 'building') return `${gridKey}building:${location.ipAddress}:outside`;
   return 'unknown';
 }
 
@@ -294,9 +388,8 @@ export function getMultiplayerGridKey(
 }
 
 export function useMultiplayerPresence({
-  gridKey,
-  chatLocationKey,
   gridSystemMode,
+  viewMode,
   zoomLevel,
   currentPosition,
   grid2Position,
@@ -314,7 +407,19 @@ export function useMultiplayerPresence({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const chatChannelRef = useRef<RealtimeChannel | null>(null);
   const isChatChannelReadyRef = useRef(false);
-  const chatLocationKeyRef = useRef(chatLocationKey);
+  const chatLocationKeyRef = useRef('unknown');
+  const locationContext = useMemo<MultiplayerLocationContext>(() => ({
+    gridSystemMode,
+    viewMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+  }), [gridSystemMode, viewMode, zoomLevel, currentPosition, grid2Position]);
+  const locationKey = useMemo(
+    () => getExactLocationKey(playerLocation, locationContext),
+    [playerLocation, locationContext]
+  );
+  const activeChatLocationKey = locationKey;
 
   useEffect(() => {
     if (!DEBUG_AVATAR_PIPELINE) {
@@ -331,14 +436,15 @@ export function useMultiplayerPresence({
   }, [identity]);
 
   useEffect(() => {
-    chatLocationKeyRef.current = chatLocationKey;
+    chatLocationKeyRef.current = activeChatLocationKey;
     setMessages([]);
-  }, [chatLocationKey]);
+  }, [activeChatLocationKey]);
 
   const payload = useMemo<MultiplayerPresence>(() => ({
     ...identity,
     avatarType: identity.avatarUrl ? 'glb' : 'default',
     gridSystemMode,
+    viewMode,
     zoomLevel,
     currentPosition,
     grid2Position,
@@ -346,88 +452,176 @@ export function useMultiplayerPresence({
     pointerTarget,
     hoveredCell: pointerTarget,
     selectedIp,
-    chatLocationKey,
+    locationKey,
+    chatLocationKey: locationKey,
     lastSeenAt: new Date().toISOString(),
-  }), [identity, gridSystemMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, chatLocationKey]);
+  }), [identity, gridSystemMode, viewMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, locationKey]);
+  const payloadRef = useRef(payload);
 
   useEffect(() => {
-    setMessages([]);
+    payloadRef.current = payload;
+  }, [payload]);
+
+  const readActivePresence = useCallback(async () => {
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    const cutoff = new Date(Date.now() - PRESENCE_STALE_MS).toISOString();
+    const { data, error } = await supabase
+      .from(PRESENCE_TABLE)
+      .select('*')
+      .gt('last_seen', cutoff)
+      .order('last_seen', { ascending: false });
+
+    if (error) {
+      console.warn('Unable to read multiplayer presence records.', error);
+      setStatus('error');
+      return;
+    }
+
+    const remoteUsers = dedupePresenceRecords(((data ?? []) as MultiplayerPresenceRow[])
+      .map(rowToPresence)
+      .filter((presence) =>
+        isPresenceFresh(presence) &&
+        (presence.presenceId
+          ? presence.presenceId !== identity.presenceId
+          : presence.sessionId !== identity.sessionId)
+      ));
+    logPresenceDebug('DEBUG_PRESENCE authoritative remote records', remoteUsers);
+    setOthers(remoteUsers);
+  }, [identity.presenceId, identity.sessionId]);
+
+  const upsertPresence = useCallback(async (nextPresence: MultiplayerPresence) => {
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    const currentPresence = {
+      ...nextPresence,
+      locationKey: nextPresence.locationKey || getExactLocationKey(nextPresence.playerLocation, {
+        gridSystemMode: nextPresence.gridSystemMode,
+        viewMode: nextPresence.viewMode,
+        zoomLevel: nextPresence.zoomLevel,
+        currentPosition: nextPresence.currentPosition,
+        grid2Position: nextPresence.grid2Position,
+      }),
+      chatLocationKey: nextPresence.locationKey || nextPresence.chatLocationKey,
+      lastSeenAt: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from(PRESENCE_TABLE)
+      .upsert(toPresenceRow(currentPresence), { onConflict: 'presence_id' });
+
+    if (error) {
+      console.warn('Unable to publish multiplayer presence record.', error);
+      setStatus('error');
+      return;
+    }
+
+    if (DEBUG_PRESENCE) {
+      console.info('DEBUG_PRESENCE upserted authoritative presence', {
+        presenceId: currentPresence.presenceId,
+        locationKey: currentPresence.locationKey,
+        displayName: currentPresence.displayName,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     setOthers([]);
-    let isActive = true;
 
     if (!supabase || !isSupabaseConfigured) {
       setStatus('offline');
       return;
     }
 
+    let isActive = true;
     setStatus('connecting');
-    const channel = supabase.channel(`cyberspace:${gridKey}`, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: identity.presenceId },
-      },
-    });
-    channelRef.current = channel;
+    void readActivePresence();
 
-    channel
-      .on('presence', { event: 'sync' }, () => {
+    const channel = supabase
+      .channel('cyberspace-presence-records')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: PRESENCE_TABLE },
+        () => {
+          if (isActive) {
+            void readActivePresence();
+          }
+        }
+      )
+      .subscribe((nextStatus) => {
         if (!isActive) {
           return;
         }
-
-        const state = channel.presenceState() as Record<string, unknown[]>;
-        if (DEBUG_PRESENCE || DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
-          console.info('DEBUG_AVATAR_PIPELINE raw presence state', state);
-        }
-        const raw = Object.values(state)
-          .flat()
-          .filter(isPresence);
-        logPresenceDebug('DEBUG_AVATAR_PIPELINE raw remote presence records', raw);
-        const uniqueBeforeSelfFilter = dedupePresenceRecords(raw);
-        logPresenceDebug('DEBUG_PRESENCE unique users before self filter', uniqueBeforeSelfFilter);
-        const remoteUsers = uniqueBeforeSelfFilter.filter((presence) =>
-          presence.presenceId
-            ? presence.presenceId !== identity.presenceId
-            : presence.sessionId !== identity.sessionId
-        );
-        logPresenceDebug('DEBUG_PRESENCE remote users after self filter', remoteUsers);
-        setOthers(remoteUsers);
-      })
-      .subscribe(async (nextStatus) => {
-        if (!isActive) {
-          return;
-        }
-
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('online');
-          await channel.track(payload);
+          void readActivePresence();
         } else if (nextStatus === 'CHANNEL_ERROR' || nextStatus === 'TIMED_OUT') {
           setStatus('error');
         }
       });
+    channelRef.current = channel;
 
     return () => {
       isActive = false;
       if (channelRef.current === channel) {
         channelRef.current = null;
       }
-      void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [gridKey, identity.presenceId, identity.sessionId]);
+  }, [readActivePresence]);
+
+  useEffect(() => {
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    void upsertPresence(payload);
+  }, [payload, upsertPresence]);
+
+  useEffect(() => {
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    const heartbeat = window.setInterval(() => {
+      void upsertPresence(payloadRef.current);
+      void readActivePresence();
+    }, PRESENCE_HEARTBEAT_MS);
+
+    const deletePresence = () => {
+      void supabase
+        .from(PRESENCE_TABLE)
+        .delete()
+        .eq('presence_id', identity.presenceId);
+    };
+
+    window.addEventListener('pagehide', deletePresence);
+    window.addEventListener('beforeunload', deletePresence);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener('pagehide', deletePresence);
+      window.removeEventListener('beforeunload', deletePresence);
+      deletePresence();
+    };
+  }, [identity.presenceId, readActivePresence, upsertPresence]);
 
   useEffect(() => {
     setMessages([]);
     isChatChannelReadyRef.current = false;
     setChatStatus('unavailable');
 
-    if (!supabase || !isSupabaseConfigured || chatLocationKey === 'unknown') {
+    if (!supabase || !isSupabaseConfigured || activeChatLocationKey === 'unknown') {
       return;
     }
 
     let isActive = true;
     setChatStatus('connecting');
-    const chatChannel = supabase.channel(getChatChannelName(chatLocationKey), {
+    const chatChannel = supabase.channel(getChatChannelName(activeChatLocationKey), {
       config: {
         broadcast: { self: false },
       },
@@ -467,23 +661,14 @@ export function useMultiplayerPresence({
       }
       void supabase.removeChannel(chatChannel);
     };
-  }, [chatLocationKey]);
-
-  useEffect(() => {
-    const channel = channelRef.current;
-    if (!channel || status !== 'online') {
-      return;
-    }
-
-    void channel.track({ ...payload, lastSeenAt: new Date().toISOString() });
-  }, [payload, status]);
+  }, [activeChatLocationKey]);
 
   const sendMessage = useCallback((body: string) => {
     const trimmed = body.trim().slice(0, 300);
     const chatChannel = chatChannelRef.current;
-    if (!trimmed || !chatChannel || !isChatChannelReadyRef.current || status !== 'online' || chatLocationKey === 'unknown') {
+    if (!trimmed || !chatChannel || !isChatChannelReadyRef.current || status !== 'online' || activeChatLocationKey === 'unknown') {
       if (trimmed) {
-        console.warn('Chat message not sent because exact-location chat is not ready.', { chatLocationKey });
+        console.warn('Chat message not sent because exact-location chat is not ready.', { chatLocationKey: activeChatLocationKey });
       }
       return false;
     }
@@ -495,12 +680,12 @@ export function useMultiplayerPresence({
       color: identity.color,
       body: trimmed,
       createdAt: new Date().toISOString(),
-      locationKey: chatLocationKey,
+      locationKey: activeChatLocationKey,
     };
     setMessages((prev) => [...prev, message].slice(-40));
     void chatChannel.send({ type: 'broadcast', event: 'chat', payload: message });
     return true;
-  }, [chatLocationKey, identity, status]);
+  }, [activeChatLocationKey, identity, status]);
 
   const updateDisplayName = useCallback((nextName: string): boolean => {
     const cleaned = nextName.trim().slice(0, 24);

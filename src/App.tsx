@@ -708,11 +708,22 @@ function App() {
     () => getMultiplayerGridKey(gridSystemMode, zoomLevel, currentPosition, grid2Position),
     [gridSystemMode, zoomLevel, currentPosition, grid2Position]
   );
-  const chatLocationKey = useMemo(() => getExactLocationKey(playerLocation), [playerLocation]);
+  const multiplayerViewMode = buildingView ? 'building' : layoutMode === 'street' ? 'street' : 'grid';
+  const chatLocationKey = useMemo(
+    () => getExactLocationKey(playerLocation, {
+      gridSystemMode,
+      viewMode: multiplayerViewMode,
+      zoomLevel,
+      currentPosition,
+      grid2Position,
+    }),
+    [playerLocation, gridSystemMode, multiplayerViewMode, zoomLevel, currentPosition, grid2Position]
+  );
   const multiplayer = useMultiplayerPresence({
     gridKey: multiplayerGridKey,
     chatLocationKey,
     gridSystemMode,
+    viewMode: multiplayerViewMode,
     zoomLevel,
     currentPosition,
     grid2Position,
@@ -1608,7 +1619,7 @@ function App() {
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
   const nearbyUsers = useMemo(() => multiplayer.others.filter((user) => {
-    const userLocationKey = getExactLocationKey(user.playerLocation);
+    const userLocationKey = user.locationKey;
     return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
   }), [chatLocationKey, multiplayer.others]);
   useEffect(() => {
@@ -1621,10 +1632,10 @@ function App() {
       sessionId: user.sessionId,
       userId: user.userId,
       name: user.displayName,
-      locationKey: getExactLocationKey(user.playerLocation),
+      locationKey: user.locationKey,
       selectedIp: user.selectedIp,
       gridMode: user.gridSystemMode,
-      viewMode: user.playerLocation?.kind ?? 'unknown',
+      viewMode: user.viewMode,
       ...getAvatarUrlDebugInfo(user.avatarUrl),
     }));
 
@@ -2058,7 +2069,7 @@ function App() {
             onHoverInfoHtml={setBottomInfoHtml}
             onHoverCellChange={handlePointerTargetChange}
             infoDisplayMode={infoDisplayMode}
-            remoteUsers={[multiplayer.currentPresence, ...multiplayer.others]}
+            remoteUsers={[multiplayer.currentPresence, ...nearbyUsers]}
             onRemoteUserClick={handleRemoteUserClick}
             selectedBuildingIp={buildingView?.ipAddress}
             selectedBuildingFlagImageUrl={buildingView?.flagImageUrl}
@@ -2548,7 +2559,7 @@ function App() {
                   onHoverInfoHtml={setBottomInfoHtml}
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
-                  remoteUsers={[multiplayer.currentPresence, ...multiplayer.others]}
+                  remoteUsers={[multiplayer.currentPresence, ...nearbyUsers]}
                   onRemoteUserClick={handleRemoteUserClick}
                 />
                 <OrbitControls
