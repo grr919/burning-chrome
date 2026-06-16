@@ -1630,16 +1630,21 @@ function App() {
     const userId = multiplayer.currentUser.userId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'user';
     const storagePath = getAvatarStoragePath(userId);
     console.info('Avatar upload target', {
+      fileName: file.name,
+      browserFileType: file.type,
+      targetContentType: 'model/gltf-binary',
       supabaseHost: supabaseUrlHost,
       bucket: AVATAR_BUCKET,
       path: storagePath,
     });
 
+    // Browsers may report .glb files as application/octet-stream, so force the GLB MIME type.
     const uploadResult = await supabase.storage
       .from(AVATAR_BUCKET)
       .upload(storagePath, file, {
-        contentType: 'model/gltf-binary',
         upsert: true,
+        contentType: 'model/gltf-binary',
+        cacheControl: '3600',
       });
     console.info('Avatar upload result', uploadResult);
 
