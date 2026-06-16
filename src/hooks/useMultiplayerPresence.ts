@@ -242,6 +242,47 @@ function dedupePresenceRecords(items: MultiplayerPresence[]): MultiplayerPresenc
   return [...byPresenceKey.values()];
 }
 
+function mergePresenceRecord(
+  currentUsers: MultiplayerPresence[],
+  incomingPresence: MultiplayerPresence,
+  localPresenceId: string,
+  source: 'presence-sync' | 'presence-update'
+): MultiplayerPresence[] {
+  const freshCurrent = currentUsers.filter(isPresenceFresh);
+  if (incomingPresence.presenceId === localPresenceId || !isPresenceFresh(incomingPresence)) {
+    return freshCurrent;
+  }
+
+  const existingRecord = freshCurrent.find((presence) => presence.presenceId === incomingPresence.presenceId);
+  const shouldAccept = !existingRecord || shouldReplacePresenceRecord(existingRecord, incomingPresence);
+
+  if (DEBUG_PRESENCE) {
+    console.info('DEBUG_PRESENCE remote presence merge', {
+      source,
+      presenceId: incomingPresence.presenceId,
+      name: incomingPresence.displayName,
+      accepted: shouldAccept,
+      incomingLocationKey: incomingPresence.locationKey,
+      incomingPlayerLocation: incomingPresence.playerLocation,
+      incomingSelectedIp: incomingPresence.selectedIp,
+      incomingLastSeenAt: incomingPresence.lastSeenAt,
+      existingLocationKey: existingRecord?.locationKey,
+      existingPlayerLocation: existingRecord?.playerLocation,
+      existingSelectedIp: existingRecord?.selectedIp,
+      existingLastSeenAt: existingRecord?.lastSeenAt,
+    });
+  }
+
+  if (!shouldAccept) {
+    return freshCurrent;
+  }
+
+  return dedupePresenceRecords([
+    ...freshCurrent.filter((presence) => presence.presenceId !== incomingPresence.presenceId),
+    incomingPresence,
+  ]).filter((presence) => isPresenceFresh(presence) && presence.presenceId !== localPresenceId);
+}
+
 function isPresence(value: unknown): value is MultiplayerPresence {
   return Boolean(
     value &&
@@ -472,7 +513,12 @@ export function useMultiplayerPresence({
       logPresenceDebug('DEBUG_PRESENCE active remote users before self filter', uniqueBeforeSelfFilter);
       const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.presenceId !== identity.presenceId);
       logPresenceDebug('DEBUG_PRESENCE active remote users after self filter', remoteUsers);
-      setOthers(remoteUsers);
+      setOthers((current) =>
+        remoteUsers.reduce(
+          (nextUsers, presence) => mergePresenceRecord(nextUsers, presence, identity.presenceId, 'presence-sync'),
+          current.filter(isPresenceFresh)
+        )
+      );
     };
 
     channel
@@ -484,21 +530,7 @@ export function useMultiplayerPresence({
 
         logSinglePresenceDebug('DEBUG_PRESENCE received presence-update broadcast', broadcastPayload);
         setOthers((current) => {
-          const freshCurrent = current.filter(isPresenceFresh);
-          const previousRecord = freshCurrent.find((presence) => presence.presenceId === broadcastPayload.presenceId);
-          if (DEBUG_PRESENCE || DEBUG_AVATAR_PIPELINE) {
-            console.info('DEBUG_PRESENCE presence-update merge decision', {
-              presenceId: broadcastPayload.presenceId,
-              replacedExisting: Boolean(previousRecord),
-              oldLocationKey: previousRecord?.locationKey,
-              newLocationKey: broadcastPayload.locationKey,
-              oldPlayerLocation: previousRecord?.playerLocation,
-              newPlayerLocation: broadcastPayload.playerLocation,
-            });
-          }
-          logPresenceDebug('DEBUG_PRESENCE broadcast merge before self filter', freshCurrent);
-          const nextRemoteUsers = dedupePresenceRecords([...freshCurrent, broadcastPayload])
-            .filter((presence) => isPresenceFresh(presence) && presence.presenceId !== identity.presenceId);
+          const nextRemoteUsers = mergePresenceRecord(current, broadcastPayload, identity.presenceId, 'presence-update');
           logPresenceDebug('DEBUG_PRESENCE broadcast merge after self filter', nextRemoteUsers);
           return nextRemoteUsers;
         });
