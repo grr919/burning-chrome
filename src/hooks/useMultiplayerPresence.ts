@@ -176,8 +176,14 @@ function dedupePresenceBySessionId(items: MultiplayerPresence[]): MultiplayerPre
 
     const previousTime = Date.parse(previous.lastSeenAt || '');
     const nextTime = Date.parse(item.lastSeenAt || '');
+    const nextHasAvatar = Boolean(item.avatarUrl);
+    const previousHasAvatar = Boolean(previous.avatarUrl);
 
-    if (!Number.isFinite(previousTime) || (Number.isFinite(nextTime) && nextTime >= previousTime)) {
+    if (
+      (nextHasAvatar && !previousHasAvatar) ||
+      !Number.isFinite(previousTime) ||
+      (Number.isFinite(nextTime) && nextTime >= previousTime)
+    ) {
       bySessionId.set(item.sessionId, item);
     }
   }
