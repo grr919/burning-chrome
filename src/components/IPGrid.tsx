@@ -1584,6 +1584,7 @@ function IPGrid({
 
   const [hoveredCell, setHoveredCell] = useState<HoveredCellState | null>(null);
   const hoveredCellRef = useRef<HoveredCellState | null>(null);
+  const lastInfoBoxCellRef = useRef<GridCellTarget | null>(null);
   const hoveredIpAddress = hoveredCell?.ipAddress ?? null;
   const hoveredCellKey = hoveredCell?.cellKey ?? null;
   const [rdapInfo, setRdapInfo] = useState<Record<string, RdapRecord>>({});
@@ -1620,6 +1621,7 @@ function IPGrid({
     ));
     onHoverCellChange?.(target.cellBuilding);
     onHoverInfoHtml?.(target.hoverInfoHtml);
+    lastInfoBoxCellRef.current = target;
   };
 
   const clearCellHover = (cellKey?: string) => {
@@ -1630,6 +1632,12 @@ function IPGrid({
     document.body.style.cursor = 'auto';
     setHoveredCell(null);
   };
+
+  // Click navigation intentionally uses the last cell displayed in the information box,
+  // not the mesh that received the click.
+  const getDisplayedClickCell = (fallback: GridCellBuilding): GridCellBuilding => (
+    lastInfoBoxCellRef.current?.cellBuilding ?? fallback
+  );
 
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
@@ -2679,46 +2687,46 @@ function IPGrid({
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        setActiveCellHover(cellTarget, 'building');
+        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
         clickTimerRef.current = window.setTimeout(() => {
-          (onBuildingClick ?? onCellClick)(cellBuilding);
+          (onBuildingClick ?? onCellClick)(clickCell);
           clickTimerRef.current = null;
         }, 180);
       };
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        setActiveCellHover(cellTarget, 'building');
+        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
         }
-        (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(cellBuilding);
+        (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(clickCell);
       };
 
       const handleCellSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        setActiveCellHover(cellTarget, 'square');
+        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
         clickTimerRef.current = window.setTimeout(() => {
-          onCellClick(cellBuilding);
+          onCellClick(clickCell);
           clickTimerRef.current = null;
         }, 180);
       };
 
       const handleCellDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        setActiveCellHover(cellTarget, 'square');
+        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
         }
-        onCellDoubleClick(cellBuilding);
+        onCellDoubleClick(clickCell);
       };
 
       const handleCellPointer = (part: CellHoverPart) => (event: ThreeEvent<PointerEvent>) => {
