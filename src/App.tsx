@@ -1052,6 +1052,46 @@ function App() {
     enterStreetAtCell(targetCell);
   };
 
+  const handleEnterStreetViewFromMenu = () => {
+    if (playerLocation.kind !== 'ip') {
+      return;
+    }
+
+    const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(playerLocation.ipAddress);
+    const x = gridSystemMode === 'grid2'
+      ? fourthOctet - grid2Position.innerFourthStart
+      : zoomLevel === 0
+        ? firstOctet % GRID_SIZE
+        : zoomLevel === 1
+          ? secondOctet % GRID_SIZE
+          : zoomLevel === 2
+            ? thirdOctet % GRID_SIZE
+            : fourthOctet % GRID_SIZE;
+    const y = gridSystemMode === 'grid2'
+      ? thirdOctet - grid2Position.innerThirdStart
+      : zoomLevel === 0
+        ? Math.floor(firstOctet / GRID_SIZE)
+        : zoomLevel === 1
+          ? Math.floor(secondOctet / GRID_SIZE)
+          : zoomLevel === 2
+            ? Math.floor(thirdOctet / GRID_SIZE)
+            : Math.floor(fourthOctet / GRID_SIZE);
+
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+      return;
+    }
+
+    enterStreetAtCell({
+      x,
+      y,
+      ipAddress: playerLocation.ipAddress,
+      label: y * GRID_SIZE + x,
+      color: getIPColor(firstOctet, secondOctet, thirdOctet, fourthOctet),
+      buildingFamily: 'block',
+      buildingHeight: 1,
+    });
+  };
+
   const updateStreetPlayerPosition = (x: number, y: number, ipAddress?: string) => {
     const nextX = clampStreetCell(x);
     const nextY = clampStreetCell(y);
@@ -2217,6 +2257,19 @@ function App() {
                       >
                         Re-Center the Camera
                       </button>
+                      {layoutMode === 'grid' && playerLocation.kind === 'ip' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleEnterStreetViewFromMenu();
+                            setIsOptionsOpen(false);
+                          }}
+                          className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                          role="menuitem"
+                        >
+                          Enter Street View
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
