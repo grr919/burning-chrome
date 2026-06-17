@@ -2120,7 +2120,7 @@ function App() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search domain or organization..."
+                  placeholder="Search by domain or IP address..."
                   className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
                   aria-label="Search domain or organization"
                 />
