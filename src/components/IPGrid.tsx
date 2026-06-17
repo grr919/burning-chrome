@@ -3731,15 +3731,31 @@ function IPGrid({
   const avatarCellCounts = new Map<string, number>();
   const remoteAvatarMarkers = remoteUsers.flatMap((user) => {
     const playerLocation = user.playerLocation;
-    const playerIp =
+    const playerLocationIp =
       playerLocation?.kind === 'ip' || playerLocation?.kind === 'building'
         ? playerLocation.ipAddress
-        : user.selectedIp;
-    const selectedCellIndex = playerIp
-      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === playerIp)
+        : undefined;
+    const playerLocationCellIndex = playerLocationIp
+      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === playerLocationIp)
+      : -1;
+    const selectedIpCellIndex = user.selectedIp
+      ? visibleLookupAddresses.findIndex((address) => address.ipAddress === user.selectedIp)
       : -1;
     let cell: { x: number; y: number; ipAddress: string } | undefined;
-    if (
+    let skipReason = 'IP not visible in current grid';
+    if (playerLocationCellIndex >= 0) {
+      cell = {
+        x: playerLocationCellIndex % gridSize,
+        y: Math.floor(playerLocationCellIndex / gridSize),
+        ipAddress: visibleLookupAddresses[playerLocationCellIndex].ipAddress,
+      };
+    } else if (selectedIpCellIndex >= 0) {
+      cell = {
+        x: selectedIpCellIndex % gridSize,
+        y: Math.floor(selectedIpCellIndex / gridSize),
+        ipAddress: visibleLookupAddresses[selectedIpCellIndex].ipAddress,
+      };
+    } else if (
       playerLocation?.kind === 'ip' &&
       typeof playerLocation.x === 'number' &&
       typeof playerLocation.y === 'number' &&
@@ -3754,21 +3770,22 @@ function IPGrid({
         y: playerLocation.y,
         ipAddress: playerLocation.ipAddress,
       };
-    } else if (selectedCellIndex >= 0) {
-      cell = {
-        x: selectedCellIndex % gridSize,
-        y: Math.floor(selectedCellIndex / gridSize),
-        ipAddress: visibleLookupAddresses[selectedCellIndex].ipAddress,
-      };
+    } else if (!playerLocation && !user.selectedIp) {
+      skipReason = 'no playerLocation or selectedIp';
+    } else if (!playerLocation) {
+      skipReason = 'no playerLocation';
+    } else if (!user.selectedIp) {
+      skipReason = 'no selectedIp';
     }
 
     if (!cell) {
       if (DEBUG_REMOTE_AVATARS || DEBUG_AVATAR_PIPELINE) {
-        console.info('DEBUG_AVATAR_PIPELINE avatar skipped offscreen', {
+        console.info('DEBUG_AVATAR_PIPELINE avatar skipped', {
           presenceId: user.presenceId,
           sessionId: user.sessionId,
           userId: user.userId,
           name: user.displayName,
+          skipReason,
           playerLocation,
           selectedIp: user.selectedIp,
           locationKey: user.locationKey,

@@ -320,6 +320,31 @@ function getPlayerLocationForStreetPosition(
   };
 }
 
+function getEffectivePresenceLocationKey(presence: Pick<MultiplayerPresence, 'playerLocation' | 'selectedIp' | 'locationKey'>): string {
+  const location = presence.playerLocation;
+  if (location?.kind === 'ip') {
+    return `ip:${location.ipAddress}`;
+  }
+  if (location?.kind === 'building') {
+    return `building:${location.ipAddress}`;
+  }
+  if (presence.selectedIp) {
+    return `ip:${presence.selectedIp}`;
+  }
+
+  const rawLocationMatch = presence.locationKey.match(/(?:^|:)(ip|building):([^:]+)/);
+  return rawLocationMatch ? `${rawLocationMatch[1]}:${rawLocationMatch[2]}` : 'unknown';
+}
+
+function areUsersAtSameEffectiveLocation(
+  localPresence: Pick<MultiplayerPresence, 'playerLocation' | 'selectedIp' | 'locationKey'>,
+  remotePresence: Pick<MultiplayerPresence, 'playerLocation' | 'selectedIp' | 'locationKey'>
+): boolean {
+  const localLocationKey = getEffectivePresenceLocationKey(localPresence);
+  const remoteLocationKey = getEffectivePresenceLocationKey(remotePresence);
+  return localLocationKey !== 'unknown' && localLocationKey === remoteLocationKey;
+}
+
 function getStreetEntryForTargetCell(cell: GridCellBuilding): {
   playerX: number;
   playerY: number;
@@ -1618,10 +1643,10 @@ function App() {
       ? 'Offline'
       : multiplayer.status.charAt(0).toUpperCase() + multiplayer.status.slice(1)
     : 'Offline';
-  const nearbyUsers = useMemo(() => multiplayer.others.filter((user) => {
-    const userLocationKey = user.locationKey;
-    return userLocationKey !== 'unknown' && userLocationKey === chatLocationKey;
-  }), [chatLocationKey, multiplayer.others]);
+  const nearbyUsers = useMemo(
+    () => multiplayer.others.filter((user) => areUsersAtSameEffectiveLocation(multiplayer.currentPresence, user)),
+    [multiplayer.currentPresence, multiplayer.others]
+  );
   const avatarUsers = useMemo(
     () => [multiplayer.currentPresence, ...multiplayer.others],
     [multiplayer.currentPresence, multiplayer.others]
@@ -1637,14 +1662,20 @@ function App() {
       userId: user.userId,
       name: user.displayName,
       locationKey: user.locationKey,
+      effectiveLocationKey: getEffectivePresenceLocationKey(user),
       selectedIp: user.selectedIp,
+      playerLocation: user.playerLocation,
       gridMode: user.gridSystemMode,
       viewMode: user.viewMode,
+      nearbyMatch: areUsersAtSameEffectiveLocation(multiplayer.currentPresence, user),
       ...getAvatarUrlDebugInfo(user.avatarUrl),
     }));
 
     console.info('DEBUG_PRESENCE nearby filter', {
       chatLocationKey,
+      localEffectiveLocationKey: getEffectivePresenceLocationKey(multiplayer.currentPresence),
+      localPlayerLocation: multiplayer.currentPresence.playerLocation,
+      localSelectedIp: multiplayer.currentPresence.selectedIp,
       beforeCount: multiplayer.others.length,
       before: summarizeUsers(multiplayer.others),
       afterCount: nearbyUsers.length,
@@ -1652,7 +1683,7 @@ function App() {
       avatarRenderCount: avatarUsers.length,
       avatarUsers: summarizeUsers(avatarUsers),
     });
-  }, [chatLocationKey, multiplayer.others, nearbyUsers, avatarUsers]);
+  }, [chatLocationKey, multiplayer.currentPresence, multiplayer.others, nearbyUsers, avatarUsers]);
   useEffect(() => {
     if (!DEBUG_AVATAR_PIPELINE) {
       return;
