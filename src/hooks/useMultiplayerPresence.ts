@@ -371,6 +371,12 @@ export function getExactLocationKey(location?: MultiplayerPlayerLocation, contex
   return 'unknown';
 }
 
+export function getCanonicalChatLocationKey(location?: MultiplayerPlayerLocation): string {
+  if (!location) return 'unknown';
+  if (location.kind === 'ip' || location.kind === 'building') return location.ipAddress;
+  return 'unknown';
+}
+
 export function getPlayerLocationDisplay(location?: MultiplayerPlayerLocation): string {
   if (!location) return 'Unknown location';
   if (location.kind === 'ip') return location.ipAddress;
@@ -395,6 +401,7 @@ export function getMultiplayerGridKey(
 }
 
 export function useMultiplayerPresence({
+  chatLocationKey,
   gridSystemMode,
   viewMode,
   zoomLevel,
@@ -426,7 +433,7 @@ export function useMultiplayerPresence({
     () => getExactLocationKey(playerLocation, locationContext),
     [playerLocation, locationContext]
   );
-  const activeChatLocationKey = locationKey;
+  const activeChatLocationKey = chatLocationKey;
 
   useEffect(() => {
     if (!DEBUG_AVATAR_PIPELINE) {
@@ -460,9 +467,9 @@ export function useMultiplayerPresence({
     hoveredCell: pointerTarget,
     selectedIp,
     locationKey,
-    chatLocationKey: locationKey,
+    chatLocationKey: activeChatLocationKey,
     lastSeenAt: new Date().toISOString(),
-  }), [identity, gridSystemMode, viewMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, locationKey]);
+  }), [identity, gridSystemMode, viewMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, locationKey, activeChatLocationKey]);
   const payloadRef = useRef(payload);
 
   useEffect(() => {

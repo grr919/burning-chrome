@@ -4,7 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import IPGrid, { type GridCellBuilding } from './components/IPGrid';
 import {
-  getExactLocationKey,
+  getCanonicalChatLocationKey,
   getMultiplayerGridKey,
   getPlayerLocationDisplay,
   useMultiplayerPresence,
@@ -735,14 +735,8 @@ function App() {
   );
   const multiplayerViewMode = buildingView ? 'building' : layoutMode === 'street' ? 'street' : 'grid';
   const chatLocationKey = useMemo(
-    () => getExactLocationKey(playerLocation, {
-      gridSystemMode,
-      viewMode: multiplayerViewMode,
-      zoomLevel,
-      currentPosition,
-      grid2Position,
-    }),
-    [playerLocation, gridSystemMode, multiplayerViewMode, zoomLevel, currentPosition, grid2Position]
+    () => getCanonicalChatLocationKey(playerLocation),
+    [playerLocation]
   );
   const multiplayer = useMultiplayerPresence({
     gridKey: multiplayerGridKey,
