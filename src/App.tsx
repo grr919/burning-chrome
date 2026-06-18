@@ -269,6 +269,15 @@ function getGridAwareIpFromCell(
   return getIpFromCell(zoomLevel, currentPosition, x, y);
 }
 
+function getVisibleCoordinateRangeLabel(
+  gridSystemMode: GridSystemMode,
+  zoomLevel: number,
+  currentPosition: GridPosition,
+  grid2Position: Grid2Position
+): string {
+  return `${getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, 0, 0)} to ${getGridAwareIpFromCell(gridSystemMode, zoomLevel, currentPosition, grid2Position, GRID_SIZE - 1, GRID_SIZE - 1)}`;
+}
+
 function getPlayerLocationForGridCell(
   gridSystemMode: GridSystemMode,
   zoomLevel: number,
@@ -1672,6 +1681,12 @@ function App() {
   };
 
   const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
+  const visibleCoordinateRangeLabel = getVisibleCoordinateRangeLabel(
+    gridSystemMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position
+  );
   const multiplayerStatusLabel = multiplayer.isConfigured
     ? multiplayer.status === 'error'
       ? 'Offline'
@@ -2658,6 +2673,9 @@ function App() {
                   target={[0, 0, 0]}
                 />
               </Canvas>
+              <div className="pointer-events-none absolute left-3 top-3 z-10 font-bold text-black">
+                {visibleCoordinateRangeLabel}
+              </div>
               {gridSystemMode === 'grid2' && (
                 <>
                   <button
