@@ -2,6 +2,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import IPGrid, { type GridCellBuilding } from './components/IPGrid';
 import {
   getCanonicalChatLocationKey,
@@ -141,6 +142,8 @@ const BOOKMARKS_STORAGE_PREFIX = 'cyberspace.bookmarks';
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
 const DEBUG_AVATAR_PIPELINE = false;
+const miniAvatarModelLoader = new GLTFLoader();
+const miniAvatarModelCache = new Map<string, Promise<THREE.Group>>();
 
 function validateAvatarFile(file: File): string | null {
   if (!file.name.toLowerCase().endsWith('.glb')) {
@@ -213,6 +216,98 @@ function writeStoredBookmarks(userId: string, bookmarks: BookmarkEntry[]): void 
   }
 
   window.localStorage.setItem(getBookmarksStorageKey(userId), JSON.stringify(bookmarks));
+}
+
+function cloneMiniAvatarScene(scene: THREE.Group): THREE.Group {
+  return scene.clone(true);
+}
+
+function normalizeMiniAvatarScene(scene: THREE.Group): THREE.Group {
+  const clone = cloneMiniAvatarScene(scene);
+  const box = new THREE.Box3().setFromObject(clone);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  const root = new THREE.Group();
+  const maxDimension = Math.max(size.x, size.y, size.z);
+  if (Number.isFinite(maxDimension) && maxDimension > 0) {
+    clone.position.sub(center);
+    root.scale.setScalar(1.35 / maxDimension);
+  }
+  root.add(clone);
+  return root;
+}
+
+function loadMiniAvatarScene(avatarUrl: string): Promise<THREE.Group> {
+  const cached = miniAvatarModelCache.get(avatarUrl);
+  if (cached) {
+    return cached;
+  }
+
+  const request = new Promise<THREE.Group>((resolve, reject) => {
+    miniAvatarModelLoader.load(avatarUrl, (gltf) => resolve(gltf.scene), undefined, reject);
+  }).catch((error) => {
+    miniAvatarModelCache.delete(avatarUrl);
+    throw error;
+  });
+  miniAvatarModelCache.set(avatarUrl, request);
+  return request;
+}
+
+function MiniDefaultAvatar({ color }: { color: string }) {
+  return (
+    <mesh>
+      <sphereGeometry args={[0.56, 24, 24]} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.28} />
+    </mesh>
+  );
+}
+
+function MiniCustomAvatar({ avatarUrl, color }: { avatarUrl?: string; color: string }) {
+  const [model, setModel] = useState<THREE.Group | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    setModel(null);
+
+    if (!avatarUrl) {
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void loadMiniAvatarScene(avatarUrl)
+      .then((scene) => {
+        if (isActive) {
+          setModel(normalizeMiniAvatarScene(scene));
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setModel(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [avatarUrl]);
+
+  return model ? <primitive object={model} /> : <MiniDefaultAvatar color={color} />;
+}
+
+function MiniUserAvatar({ user }: { user: MultiplayerPresence }) {
+  return (
+    <div className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-gray-300 bg-white" aria-hidden="true">
+      <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }}>
+        <ambientLight intensity={0.85} />
+        <directionalLight position={[2, 2, 3]} intensity={0.9} />
+        <MiniCustomAvatar avatarUrl={user.avatarUrl} color={user.color} />
+      </Canvas>
+    </div>
+  );
 }
 
 function getAvatarUrlDebugInfo(avatarUrl?: string) {
@@ -2034,25 +2129,26 @@ function App() {
 
   const renderWhoPanel = () => (
     <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
-      <div className="font-bold text-lg">who</div>
+      <div className="font-bold text-lg">Who</div>
       <div className="mt-3 space-y-2">
         {whoPanelUsers.length > 0 ? (
           whoPanelUsers.map((user) => {
             const displayName = user.displayName?.trim() || 'Explorer';
             const ipAddress = getPresenceIpLocation(user);
             return (
-              <div key={user.presenceId || user.sessionId} className="rounded bg-gray-100 p-2 text-sm">
-                <div className="font-semibold text-gray-900 break-words">{displayName}</div>
+              <div key={user.presenceId || user.sessionId} className="flex min-w-0 items-center gap-2 rounded bg-gray-100 p-2 text-sm">
+                <MiniUserAvatar user={user} />
+                <div className="min-w-0 flex-1 truncate font-semibold text-gray-900">{displayName}</div>
                 {ipAddress ? (
                   <button
                     type="button"
                     onClick={() => handleRemoteUserClick(user)}
-                    className="mt-1 block font-mono text-xs text-blue-700 underline break-all hover:text-blue-900"
+                    className="shrink-0 font-mono text-xs text-blue-700 underline break-all hover:text-blue-900"
                   >
                     {ipAddress}
                   </button>
                 ) : (
-                  <div className="mt-1 text-xs text-gray-600">Unknown location</div>
+                  <div className="shrink-0 text-xs text-gray-600">Unknown location</div>
                 )}
               </div>
             );
@@ -2506,7 +2602,7 @@ function App() {
                         className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
                         role="menuitem"
                       >
-                        who
+                        Who
                       </button>
                       <button
                         type="button"
