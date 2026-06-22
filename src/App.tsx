@@ -99,6 +99,11 @@ type DomainSearchResult = {
   description?: string;
 };
 
+type BookmarkEntry = {
+  ipAddress: string;
+  organizationName?: string;
+};
+
 type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
@@ -132,6 +137,7 @@ const DEFAULT_GRID2_POSITION: Grid2Position = {
 };
 const MAX_AVATAR_FILE_BYTES = 10 * 1024 * 1024;
 const AVATAR_BUCKET = 'avatars';
+const BOOKMARKS_STORAGE_PREFIX = 'cyberspace.bookmarks';
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
 const DEBUG_AVATAR_PIPELINE = false;
@@ -160,6 +166,53 @@ function getVersionedAvatarUrl(publicUrl: string): string {
   } catch {
     return `${publicUrl}${publicUrl.includes('?') ? '&' : '?'}v=${version}`;
   }
+}
+
+function getBookmarksStorageKey(userId: string): string {
+  return `${BOOKMARKS_STORAGE_PREFIX}.${userId}`;
+}
+
+function readStoredBookmarks(userId: string): BookmarkEntry[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(getBookmarksStorageKey(userId));
+    if (!storedValue) {
+      return [];
+    }
+    const parsedValue = JSON.parse(storedValue);
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    return parsedValue
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => {
+        const ipAddress = typeof item.ipAddress === 'string' && isValidIpv4(item.ipAddress) ? item.ipAddress : '';
+        if (!ipAddress || seen.has(ipAddress)) {
+          return null;
+        }
+        seen.add(ipAddress);
+        const organizationName = typeof item.organizationName === 'string' && item.organizationName.trim()
+          ? item.organizationName.trim()
+          : undefined;
+        return { ipAddress, organizationName };
+      })
+      .filter((item): item is BookmarkEntry => Boolean(item));
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredBookmarks(userId: string, bookmarks: BookmarkEntry[]): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(getBookmarksStorageKey(userId), JSON.stringify(bookmarks));
 }
 
 function getAvatarUrlDebugInfo(avatarUrl?: string) {
@@ -661,6 +714,9 @@ function App() {
   const [viewResetKey, setViewResetKey] = useState(0);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [showWhoPanel, setShowWhoPanel] = useState(false);
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
+  const [bookmarksStorageUserId, setBookmarksStorageUserId] = useState<string | null>(null);
 
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -763,6 +819,16 @@ function App() {
   useEffect(() => {
     setDisplayNameDraft(multiplayer.currentUser.displayName);
   }, [multiplayer.currentUser.displayName]);
+  useEffect(() => {
+    setBookmarks(readStoredBookmarks(multiplayer.currentUser.userId));
+    setBookmarksStorageUserId(multiplayer.currentUser.userId);
+  }, [multiplayer.currentUser.userId]);
+  useEffect(() => {
+    if (bookmarksStorageUserId !== multiplayer.currentUser.userId) {
+      return;
+    }
+    writeStoredBookmarks(multiplayer.currentUser.userId, bookmarks);
+  }, [bookmarks, bookmarksStorageUserId, multiplayer.currentUser.userId]);
   useEffect(() => {
     setPointerTarget(undefined);
     currentHoverCellRef.current = null;
@@ -950,6 +1016,40 @@ function App() {
     if (location.kind === 'building') {
       moveToIpLocation(location.ipAddress, 'building');
     }
+  };
+
+  const getCurrentBookmarkOrganizationName = (): string | undefined => {
+    const matchingCells = [
+      currentHoverCellRef.current,
+      streetTargetCell,
+      buildingView,
+    ];
+    const matchingCell = matchingCells.find((cell) => cell?.ipAddress === playerLocationIp);
+    return matchingCell?.organizationName?.trim() || undefined;
+  };
+
+  const handleAddBookmark = () => {
+    if (!isValidIpv4(playerLocationIp)) {
+      return;
+    }
+
+    const organizationName = getCurrentBookmarkOrganizationName();
+    setBookmarks((current) => {
+      const existing = current.find((bookmark) => bookmark.ipAddress === playerLocationIp);
+      if (existing) {
+        if (!existing.organizationName && organizationName) {
+          return current.map((bookmark) => (
+            bookmark.ipAddress === playerLocationIp ? { ...bookmark, organizationName } : bookmark
+          ));
+        }
+        return current;
+      }
+      return [...current, { ipAddress: playerLocationIp, organizationName }];
+    });
+  };
+
+  const handleBookmarkClick = (bookmark: BookmarkEntry) => {
+    moveToIpLocation(bookmark.ipAddress, 'ip');
   };
 
   const loadStreetTargetDetails = (target: { ipAddress: string }) => {
@@ -1716,6 +1816,7 @@ function App() {
     [multiplayer.currentPresence, multiplayer.others]
   );
   const whoPanelUsers = avatarUsers;
+  const showGridSidePanel = showWhoPanel || showBookmarksPanel;
   useEffect(() => {
     if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
@@ -1958,6 +2059,41 @@ function App() {
           })
         ) : (
           <div className="text-sm text-gray-600">No users online.</div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderBookmarksPanel = () => (
+    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-bold text-lg">Your Saved Locations</div>
+        <button
+          type="button"
+          onClick={handleAddBookmark}
+          className="shrink-0 px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+        >
+          Add this Location
+        </button>
+      </div>
+      <div className="mt-3 space-y-2">
+        {bookmarks.length > 0 ? (
+          bookmarks.map((bookmark) => (
+            <div key={bookmark.ipAddress} className="rounded bg-gray-100 p-2 text-sm">
+              <button
+                type="button"
+                onClick={() => handleBookmarkClick(bookmark)}
+                className="block font-mono text-xs text-blue-700 underline break-all hover:text-blue-900"
+              >
+                {bookmark.ipAddress}
+              </button>
+              {bookmark.organizationName && (
+                <div className="mt-1 text-sm text-gray-700 break-words">{bookmark.organizationName}</div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-gray-600">No saved locations.</div>
         )}
       </div>
     </div>
@@ -2359,6 +2495,7 @@ function App() {
                         type="button"
                         onClick={() => {
                           setShowWhoPanel(true);
+                          setShowBookmarksPanel(false);
                           setLayoutMode('grid');
                           setBuildingView(null);
                           setStreetTargetCell(null);
@@ -2370,6 +2507,23 @@ function App() {
                         role="menuitem"
                       >
                         who
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowBookmarksPanel(true);
+                          setShowWhoPanel(false);
+                          setLayoutMode('grid');
+                          setBuildingView(null);
+                          setStreetTargetCell(null);
+                          setStreetFocusCell(null);
+                          setBottomInfoHtml('');
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        Bookmarks
                       </button>
                       <button
                         type="button"
@@ -2694,10 +2848,10 @@ function App() {
             )}
           </div>
         ) : (
-          <div className={`flex-1 min-h-0 flex ${showWhoPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
+          <div className={`flex-1 min-h-0 flex ${showGridSidePanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
             <div
               ref={gridContainerRef}
-              className={`${showWhoPanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'} rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]`}
+              className={`${showGridSidePanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'} rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]`}
             >
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
@@ -2782,6 +2936,7 @@ function App() {
               )}
             </div>
             {showWhoPanel && renderWhoPanel()}
+            {showBookmarksPanel && renderBookmarksPanel()}
           </div>
         )}
 
