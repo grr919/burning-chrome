@@ -660,6 +660,7 @@ function App() {
   );
   const [viewResetKey, setViewResetKey] = useState(0);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [showWhoPanel, setShowWhoPanel] = useState(false);
 
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -921,9 +922,23 @@ function App() {
     moveToIpLocation(result.ip, 'ip');
   };
 
+  const getPresenceIpLocation = (user: MultiplayerPresence): string | null => {
+    if (user.playerLocation?.kind === 'ip' || user.playerLocation?.kind === 'building') {
+      return user.playerLocation.ipAddress;
+    }
+    if (user.selectedIp && isValidIpv4(user.selectedIp)) {
+      return user.selectedIp;
+    }
+    return null;
+  };
+
   const handleRemoteUserClick = (user: MultiplayerPresence) => {
     const location = user.playerLocation;
+    const fallbackIp = getPresenceIpLocation(user);
     if (!location) {
+      if (fallbackIp) {
+        moveToIpLocation(fallbackIp, 'ip');
+      }
       return;
     }
 
@@ -1700,6 +1715,7 @@ function App() {
     () => [multiplayer.currentPresence, ...multiplayer.others],
     [multiplayer.currentPresence, multiplayer.others]
   );
+  const whoPanelUsers = avatarUsers;
   useEffect(() => {
     if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
@@ -1914,6 +1930,38 @@ function App() {
     multiplayer.clearAvatar();
     setAvatarUploadStatus('Using default avatar');
   };
+
+  const renderWhoPanel = () => (
+    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+      <div className="font-bold text-lg">who</div>
+      <div className="mt-3 space-y-2">
+        {whoPanelUsers.length > 0 ? (
+          whoPanelUsers.map((user) => {
+            const displayName = user.displayName?.trim() || 'Explorer';
+            const ipAddress = getPresenceIpLocation(user);
+            return (
+              <div key={user.presenceId || user.sessionId} className="rounded bg-gray-100 p-2 text-sm">
+                <div className="font-semibold text-gray-900 break-words">{displayName}</div>
+                {ipAddress ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoteUserClick(user)}
+                    className="mt-1 block font-mono text-xs text-blue-700 underline break-all hover:text-blue-900"
+                  >
+                    {ipAddress}
+                  </button>
+                ) : (
+                  <div className="mt-1 text-xs text-gray-600">Unknown location</div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-sm text-gray-600">No users online.</div>
+        )}
+      </div>
+    </div>
+  );
 
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
@@ -2310,6 +2358,22 @@ function App() {
                       <button
                         type="button"
                         onClick={() => {
+                          setShowWhoPanel(true);
+                          setLayoutMode('grid');
+                          setBuildingView(null);
+                          setStreetTargetCell(null);
+                          setStreetFocusCell(null);
+                          setBottomInfoHtml('');
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        who
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setInfoDisplayMode((prev) => (prev === 'structured' ? 'prose' : 'structured'));
                           setIsOptionsOpen(false);
                         }}
@@ -2630,10 +2694,10 @@ function App() {
             )}
           </div>
         ) : (
-          <div className="flex-1 min-h-0 flex justify-center">
+          <div className={`flex-1 min-h-0 flex ${showWhoPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
             <div
               ref={gridContainerRef}
-              className="relative w-full h-full min-h-[260px] rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+              className={`${showWhoPanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'} rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]`}
             >
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
@@ -2717,6 +2781,7 @@ function App() {
                 </>
               )}
             </div>
+            {showWhoPanel && renderWhoPanel()}
           </div>
         )}
 
