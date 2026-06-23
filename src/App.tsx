@@ -814,11 +814,13 @@ function App() {
   );
   const [viewResetKey, setViewResetKey] = useState(0);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showWhoPanel, setShowWhoPanel] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [bookmarksStorageUserId, setBookmarksStorageUserId] = useState<string | null>(null);
 
+  const appContainerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
@@ -917,6 +919,17 @@ function App() {
     playerLocation,
     selectedIp: playerLocationIp,
   });
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+
+    handleFullscreenChange();
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
   useEffect(() => {
     setDisplayNameDraft(multiplayer.currentUser.displayName);
   }, [multiplayer.currentUser.displayName]);
@@ -1395,6 +1408,15 @@ function App() {
     }
   };
 
+  const handleToggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+
+    const fullscreenTarget = appContainerRef.current ?? document.documentElement;
+    void fullscreenTarget.requestFullscreen();
+  };
 
   const handleBack = () => {
     if (layoutMode === 'street') {
@@ -2478,7 +2500,7 @@ function App() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-white text-black flex flex-col">
+    <div ref={appContainerRef} className="h-screen overflow-hidden bg-white text-black flex flex-col">
       <div className="flex-1 min-h-0 p-3 flex flex-col gap-3">
         <header className="shrink-0 bg-white text-black p-3 rounded-lg">
           <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
@@ -2569,6 +2591,17 @@ function App() {
                         role="menuitem"
                       >
                         Re-Center the Camera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleToggleFullscreen();
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
                       </button>
                       {layoutMode === 'grid' && playerLocation.kind === 'ip' && (
                         <button
