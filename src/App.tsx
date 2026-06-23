@@ -103,6 +103,7 @@ type DomainSearchResult = {
 type BookmarkEntry = {
   ipAddress: string;
   organizationName?: string;
+  note: string;
 };
 
 type LayoutMode = 'grid' | 'street';
@@ -192,17 +193,22 @@ function readStoredBookmarks(userId: string): BookmarkEntry[] {
 
     const seen = new Set<string>();
     return parsedValue
-      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .filter((item): item is string | Record<string, unknown> => typeof item === 'string' || Boolean(item && typeof item === 'object'))
       .map((item) => {
-        const ipAddress = typeof item.ipAddress === 'string' && isValidIpv4(item.ipAddress) ? item.ipAddress : '';
+        const ipAddress = typeof item === 'string'
+          ? item
+          : typeof item.ipAddress === 'string' && isValidIpv4(item.ipAddress)
+            ? item.ipAddress
+            : '';
         if (!ipAddress || seen.has(ipAddress)) {
           return null;
         }
         seen.add(ipAddress);
-        const organizationName = typeof item.organizationName === 'string' && item.organizationName.trim()
+        const organizationName = typeof item !== 'string' && typeof item.organizationName === 'string' && item.organizationName.trim()
           ? item.organizationName.trim()
           : undefined;
-        return { ipAddress, organizationName };
+        const note = typeof item !== 'string' && typeof item.note === 'string' ? item.note : '';
+        return { ipAddress, organizationName, note };
       })
       .filter((item): item is BookmarkEntry => Boolean(item));
   } catch {
@@ -1139,12 +1145,18 @@ function App() {
         }
         return current;
       }
-      return [...current, { ipAddress: playerLocationIp, organizationName }];
+      return [...current, { ipAddress: playerLocationIp, organizationName, note: '' }];
     });
   };
 
   const handleBookmarkClick = (bookmark: BookmarkEntry) => {
     moveToIpLocation(bookmark.ipAddress, 'ip');
+  };
+
+  const handleBookmarkNoteChange = (ipAddress: string, note: string) => {
+    setBookmarks((current) => current.map((bookmark) => (
+      bookmark.ipAddress === ipAddress ? { ...bookmark, note } : bookmark
+    )));
   };
 
   const loadStreetTargetDetails = (target: { ipAddress: string }) => {
@@ -2186,6 +2198,12 @@ function App() {
               {bookmark.organizationName && (
                 <div className="mt-1 text-sm text-gray-700 break-words">{bookmark.organizationName}</div>
               )}
+              <input
+                type="text"
+                value={bookmark.note}
+                onChange={(event) => handleBookmarkNoteChange(bookmark.ipAddress, event.target.value)}
+                className="mt-2 w-full rounded border border-gray-300 px-2 py-1 text-xs text-gray-900"
+              />
             </div>
           ))
         ) : (
