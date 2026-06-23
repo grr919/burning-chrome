@@ -2557,7 +2557,7 @@ function App() {
                     Menu
                   </button>
                   {isOptionsOpen && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
+                    <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-visible rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
                       <button
                         type="button"
                         onClick={() => {
@@ -2683,25 +2683,26 @@ function App() {
                       >
                         {infoDisplayMode === 'prose' ? 'Switch to Data Mode' : 'Switch to Prose Mode'}
                       </button>
+                      <div className="relative group">
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                          role="menuitem"
+                        >
+                          Info and Instructions
+                        </button>
+                        <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
+                          <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
+                          <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
+                          <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
+                          <p className="mt-2">{getInstructionText()}</p>
+                          <p className="mt-2 text-xs text-gray-700">Faint street streaks are ambient visual motion. Brighter routing streaks represent recent BGP events affecting visible ASN neighborhoods when such events are available.</p>
+                          <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
+                          <p className="mt-1 text-xs text-gray-700">Selected routing target: {activeTargetIp}</p>
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
-                <div className="relative group">
-                  <button
-                    type="button"
-                    className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-                  >
-                    Info and Instructions
-                  </button>
-                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
-                    <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
-                    <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
-                    <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
-                    <p className="mt-2">{getInstructionText()}</p>
-                    <p className="mt-2 text-xs text-gray-700">Faint street streaks are ambient visual motion. Brighter routing streaks represent recent BGP events affecting visible ASN neighborhoods when such events are available.</p>
-                    <p className="mt-3 text-xs text-gray-700">Current height source: Shodan InternetDB</p>
-                    <p className="mt-1 text-xs text-gray-700">Selected routing target: {activeTargetIp}</p>
-                  </div>
                 </div>
               </div>
             </div>
