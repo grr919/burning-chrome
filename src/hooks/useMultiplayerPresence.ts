@@ -30,7 +30,7 @@ export type MultiplayerStartingLocationSource = 'default' | 'random' | 'user_pre
 export type MultiplayerStartingLocation =
   | {
       gridSystemMode: 'grid1';
-      source: MultiplayerStartingLocationSource;
+      source: 'default' | 'user_preference';
       ipAddress: string;
       zoomLevel: number;
       currentPosition: MultiplayerGridPosition;
@@ -39,11 +39,20 @@ export type MultiplayerStartingLocation =
     }
   | {
       gridSystemMode: 'grid2';
-      source: MultiplayerStartingLocationSource;
+      source: 'user_preference';
       ipAddress: string;
       grid2Position: MultiplayerGrid2Position;
       x?: number;
       y?: number;
+    }
+  | {
+      gridSystemMode: 'grid1' | 'grid2';
+      source: 'random';
+      randomScope: 'grid1' | 'grid2';
+    }
+  | {
+      source: 'last_location';
+      lastLocation?: MultiplayerPlayerLocation;
     };
 
 export type MultiplayerPlayerLocation =

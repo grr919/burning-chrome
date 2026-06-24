@@ -12,6 +12,8 @@ import {
   type MultiplayerCell,
   type MultiplayerPresence,
   type MultiplayerPlayerLocation,
+  type MultiplayerStartingLocation,
+  type MultiplayerStartingLocationSource,
 } from './hooks/useMultiplayerPresence';
 import { isSupabaseConfigured, supabase, supabaseUrlHost } from './lib/supabaseClient';
 
@@ -104,6 +106,13 @@ type BookmarkEntry = {
   ipAddress: string;
   organizationName?: string;
   note: string;
+};
+
+type StartingLocationPreference = 'default' | 'last_location' | 'random_grid1' | 'random_grid2' | 'specific';
+
+type StartingLocationPreferenceState = {
+  preference: StartingLocationPreference;
+  specificIp: string;
 };
 
 type LayoutMode = 'grid' | 'street';
@@ -339,6 +348,7 @@ const DEFAULT_GRID_POSITION: GridPosition = {
 };
 // Starts the local user near the visible foreground of the top-level grid.
 const DEFAULT_PLAYER_CELL = { x: 7, y: 15 };
+const DEFAULT_STARTING_LOCATION_IP = '247.0.0.0';
 const DEFAULT_GRID2_PLAYER_CELL = { x: 0, y: 0 };
 
 function clampOctet(value: number): number {
@@ -360,6 +370,117 @@ function isValidIpv4(value: string): boolean {
     const octet = Number.parseInt(part, 10);
     return octet >= 0 && octet <= 255 && String(octet) === part;
   });
+}
+
+function getDefaultStartingLocation(): MultiplayerStartingLocation {
+  return {
+    gridSystemMode: 'grid1',
+    source: 'default',
+    ipAddress: DEFAULT_STARTING_LOCATION_IP,
+    zoomLevel: 0,
+    currentPosition: DEFAULT_GRID_POSITION,
+    x: DEFAULT_PLAYER_CELL.x,
+    y: DEFAULT_PLAYER_CELL.y,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readStartingLocationPreference(
+  source: unknown,
+  startingLocation: unknown
+): StartingLocationPreferenceState {
+  if (source === 'last_location') {
+    return { preference: 'last_location', specificIp: '' };
+  }
+
+  if (source === 'random' && isRecord(startingLocation)) {
+    return {
+      preference: startingLocation.gridSystemMode === 'grid2' || startingLocation.randomScope === 'grid2'
+        ? 'random_grid2'
+        : 'random_grid1',
+      specificIp: '',
+    };
+  }
+
+  if (source === 'user_preference' && isRecord(startingLocation) && typeof startingLocation.ipAddress === 'string') {
+    return {
+      preference: 'specific',
+      specificIp: isValidIpv4(startingLocation.ipAddress) ? startingLocation.ipAddress : '',
+    };
+  }
+
+  return { preference: 'default', specificIp: '' };
+}
+
+function getSpecificStartingLocation(ipAddress: string): MultiplayerStartingLocation {
+  const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
+  return {
+    gridSystemMode: 'grid1',
+    source: 'user_preference',
+    ipAddress,
+    zoomLevel: 3,
+    currentPosition: {
+      firstOctet,
+      secondOctet,
+      thirdOctet,
+      fourthOctet: 0,
+    },
+    x: fourthOctet % GRID_SIZE,
+    y: Math.floor(fourthOctet / GRID_SIZE),
+  };
+}
+
+function getStartingLocationForPreference(
+  preference: StartingLocationPreference,
+  specificIp: string,
+  lastLocation?: PlayerLocation
+): { source: MultiplayerStartingLocationSource; startingLocation: MultiplayerStartingLocation } {
+  if (preference === 'last_location') {
+    return {
+      source: 'last_location',
+      startingLocation: {
+        source: 'last_location',
+        lastLocation,
+      },
+    };
+  }
+
+  if (preference === 'random_grid1') {
+    return {
+      source: 'random',
+      startingLocation: {
+        gridSystemMode: 'grid1',
+        source: 'random',
+        randomScope: 'grid1',
+      },
+    };
+  }
+
+  if (preference === 'random_grid2') {
+    return {
+      source: 'random',
+      startingLocation: {
+        gridSystemMode: 'grid2',
+        source: 'random',
+        randomScope: 'grid2',
+      },
+    };
+  }
+
+  if (preference === 'specific') {
+    return {
+      source: 'user_preference',
+      startingLocation: getSpecificStartingLocation(specificIp),
+    };
+  }
+
+  return {
+    source: 'default',
+    startingLocation: getDefaultStartingLocation(),
+  };
 }
 
 function Grid2ArrowIcon({ direction }: { direction: Grid2ArrowDirection }) {
@@ -817,8 +938,15 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showWhoPanel, setShowWhoPanel] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [showLocationPreferencesPanel, setShowLocationPreferencesPanel] = useState(false);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [bookmarksStorageUserId, setBookmarksStorageUserId] = useState<string | null>(null);
+  const [startingLocationPreference, setStartingLocationPreference] = useState<StartingLocationPreference>('default');
+  const [specificStartingLocationIp, setSpecificStartingLocationIp] = useState('');
+  const [startingLocationValidation, setStartingLocationValidation] = useState('');
+  const [startingLocationStatus, setStartingLocationStatus] = useState('');
+  const [isStartingLocationLoading, setIsStartingLocationLoading] = useState(false);
+  const [isStartingLocationSaving, setIsStartingLocationSaving] = useState(false);
 
   const appContainerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<any>(null);
@@ -943,6 +1071,55 @@ function App() {
     }
     writeStoredBookmarks(multiplayer.currentUser.userId, bookmarks);
   }, [bookmarks, bookmarksStorageUserId, multiplayer.currentUser.userId]);
+  useEffect(() => {
+    if (!showLocationPreferencesPanel) {
+      return;
+    }
+
+    setStartingLocationPreference('default');
+    setSpecificStartingLocationIp('');
+    setStartingLocationValidation('');
+    setStartingLocationStatus('');
+
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    let isActive = true;
+    setIsStartingLocationLoading(true);
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from('multiplayer_presence')
+        .select('starting_location, starting_location_source')
+        .eq('user_id', multiplayer.currentUser.userId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!isActive) {
+        return;
+      }
+
+      setIsStartingLocationLoading(false);
+
+      if (error) {
+        setStartingLocationValidation('Could not load saved preference.');
+        return;
+      }
+
+      const row = Array.isArray(data) ? data[0] : undefined;
+      const saved = readStartingLocationPreference(
+        row?.starting_location_source,
+        row?.starting_location
+      );
+      setStartingLocationPreference(saved.preference);
+      setSpecificStartingLocationIp(saved.specificIp);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [showLocationPreferencesPanel, multiplayer.currentUser.userId]);
   useEffect(() => {
     setPointerTarget(undefined);
     currentHoverCellRef.current = null;
@@ -1170,6 +1347,71 @@ function App() {
     setBookmarks((current) => current.map((bookmark) => (
       bookmark.ipAddress === ipAddress ? { ...bookmark, note } : bookmark
     )));
+  };
+
+  const handleSaveStartingLocationPreference = () => {
+    const specificIp = specificStartingLocationIp.trim();
+    setStartingLocationValidation('');
+    setStartingLocationStatus('');
+
+    if (startingLocationPreference === 'specific' && !isValidIpv4(specificIp)) {
+      setStartingLocationValidation('Enter a valid IPv4 address.');
+      return;
+    }
+
+    if (!supabase || !isSupabaseConfigured) {
+      setStartingLocationValidation('Could not save preference.');
+      return;
+    }
+
+    const { source, startingLocation } = getStartingLocationForPreference(
+      startingLocationPreference,
+      specificIp,
+      playerLocation
+    );
+    const currentPresence = multiplayer.currentPresence;
+    const now = new Date().toISOString();
+
+    setIsStartingLocationSaving(true);
+    void (async () => {
+      const { error } = await supabase
+        .from('multiplayer_presence')
+        .upsert({
+          presence_id: currentPresence.presenceId,
+          session_id: currentPresence.sessionId,
+          user_id: currentPresence.userId,
+          display_name: currentPresence.displayName,
+          color: currentPresence.color,
+          avatar_url: currentPresence.avatarUrl ?? null,
+          avatar_type: currentPresence.avatarType ?? 'default',
+          location_key: currentPresence.locationKey,
+          grid_system_mode: currentPresence.gridSystemMode,
+          view_mode: currentPresence.viewMode,
+          zoom_level: currentPresence.zoomLevel,
+          current_position: currentPresence.currentPosition,
+          grid2_position: currentPresence.grid2Position,
+          player_location: currentPresence.playerLocation ?? null,
+          pointer_target: currentPresence.pointerTarget ?? null,
+          hovered_cell: currentPresence.hoveredCell ?? null,
+          selected_ip: currentPresence.selectedIp ?? null,
+          chat_location_key: currentPresence.chatLocationKey ?? null,
+          last_seen: now,
+          starting_location: startingLocation,
+          starting_location_source: source,
+          last_location: currentPresence.playerLocation ?? null,
+          last_location_recorded_at: currentPresence.playerLocation ? now : null,
+        }, { onConflict: 'presence_id' });
+
+      setIsStartingLocationSaving(false);
+
+      if (error) {
+        setStartingLocationValidation('Could not save preference.');
+        return;
+      }
+
+      setSpecificStartingLocationIp(specificIp);
+      setStartingLocationStatus('Saved');
+    })();
   };
 
   const loadStreetTargetDetails = (target: { ipAddress: string }) => {
@@ -1945,7 +2187,7 @@ function App() {
     [multiplayer.currentPresence, multiplayer.others]
   );
   const whoPanelUsers = avatarUsers;
-  const showGridSidePanel = showWhoPanel || showBookmarksPanel;
+  const showGridSidePanel = showWhoPanel || showBookmarksPanel || showLocationPreferencesPanel;
   useEffect(() => {
     if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
@@ -2231,6 +2473,69 @@ function App() {
         ) : (
           <div className="text-sm text-gray-600">No saved locations.</div>
         )}
+      </div>
+    </div>
+  );
+
+  const renderLocationPreferencesPanel = () => (
+    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+      <div className="font-bold text-lg">Location Preferences</div>
+      <div className="mt-3 rounded bg-gray-100 p-2 text-sm">
+        <div className="font-semibold text-gray-900">Starting Location</div>
+        <div className="mt-2 space-y-2">
+          {[
+            ['default', 'Default'],
+            ['last_location', 'Last Location'],
+            ['random_grid1', 'Random Grid 1 Location'],
+            ['random_grid2', 'Random Grid 2 Location'],
+            ['specific', 'Specific Location'],
+          ].map(([value, label]) => (
+            <label key={value} className="flex items-center gap-2 text-sm text-gray-900">
+              <input
+                type="radio"
+                name="starting-location"
+                value={value}
+                checked={startingLocationPreference === value}
+                onChange={() => {
+                  setStartingLocationPreference(value as StartingLocationPreference);
+                  setStartingLocationValidation('');
+                  setStartingLocationStatus('');
+                }}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {startingLocationPreference === 'specific' && (
+          <input
+            type="text"
+            value={specificStartingLocationIp}
+            onChange={(event) => {
+              setSpecificStartingLocationIp(event.target.value);
+              setStartingLocationValidation('');
+              setStartingLocationStatus('');
+            }}
+            className="mt-3 w-full rounded border border-gray-300 px-2 py-1 text-xs text-gray-900"
+            placeholder="IPv4 address"
+          />
+        )}
+        {isStartingLocationLoading && (
+          <div className="mt-2 text-xs text-gray-600">Loading...</div>
+        )}
+        {startingLocationValidation && (
+          <div className="mt-2 text-xs text-red-700">{startingLocationValidation}</div>
+        )}
+        {startingLocationStatus && (
+          <div className="mt-2 text-xs text-green-700">{startingLocationStatus}</div>
+        )}
+        <button
+          type="button"
+          onClick={handleSaveStartingLocationPreference}
+          disabled={isStartingLocationLoading || isStartingLocationSaving}
+          className="mt-3 px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+        >
+          {isStartingLocationSaving ? 'Saving...' : 'Save'}
+        </button>
       </div>
     </div>
   );
@@ -2643,6 +2948,7 @@ function App() {
                         onClick={() => {
                           setShowWhoPanel(true);
                           setShowBookmarksPanel(false);
+                          setShowLocationPreferencesPanel(false);
                           setLayoutMode('grid');
                           setBuildingView(null);
                           setStreetTargetCell(null);
@@ -2660,6 +2966,7 @@ function App() {
                         onClick={() => {
                           setShowBookmarksPanel(true);
                           setShowWhoPanel(false);
+                          setShowLocationPreferencesPanel(false);
                           setLayoutMode('grid');
                           setBuildingView(null);
                           setStreetTargetCell(null);
@@ -2671,6 +2978,24 @@ function App() {
                         role="menuitem"
                       >
                         Bookmarks
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowLocationPreferencesPanel(true);
+                          setShowWhoPanel(false);
+                          setShowBookmarksPanel(false);
+                          setLayoutMode('grid');
+                          setBuildingView(null);
+                          setStreetTargetCell(null);
+                          setStreetFocusCell(null);
+                          setBottomInfoHtml('');
+                          setIsOptionsOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
+                        role="menuitem"
+                      >
+                        Location Preferences
                       </button>
                       <button
                         type="button"
@@ -3085,6 +3410,7 @@ function App() {
             </div>
             {showWhoPanel && renderWhoPanel()}
             {showBookmarksPanel && renderBookmarksPanel()}
+            {showLocationPreferencesPanel && renderLocationPreferencesPanel()}
           </div>
         )}
 
