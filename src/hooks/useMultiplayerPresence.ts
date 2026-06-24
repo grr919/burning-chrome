@@ -25,6 +25,27 @@ export type MultiplayerCell = {
   ipAddress: string;
 };
 
+export type MultiplayerStartingLocationSource = 'default' | 'random' | 'user_preference';
+
+export type MultiplayerStartingLocation =
+  | {
+      gridSystemMode: 'grid1';
+      source: MultiplayerStartingLocationSource;
+      ipAddress: string;
+      zoomLevel: number;
+      currentPosition: MultiplayerGridPosition;
+      x?: number;
+      y?: number;
+    }
+  | {
+      gridSystemMode: 'grid2';
+      source: MultiplayerStartingLocationSource;
+      ipAddress: string;
+      grid2Position: MultiplayerGrid2Position;
+      x?: number;
+      y?: number;
+    };
+
 export type MultiplayerPlayerLocation =
   | {
       kind: 'ip';
@@ -52,6 +73,8 @@ export type MultiplayerPresence = {
   currentPosition: MultiplayerGridPosition;
   grid2Position: MultiplayerGrid2Position;
   playerLocation?: MultiplayerPlayerLocation;
+  startingLocation?: MultiplayerStartingLocation;
+  startingLocationSource?: MultiplayerStartingLocationSource;
   pointerTarget?: MultiplayerCell;
   hoveredCell?: MultiplayerCell;
   selectedIp?: string;
