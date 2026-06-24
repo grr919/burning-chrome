@@ -25,7 +25,7 @@ export type MultiplayerCell = {
   ipAddress: string;
 };
 
-export type MultiplayerStartingLocationSource = 'default' | 'random' | 'user_preference';
+export type MultiplayerStartingLocationSource = 'default' | 'random' | 'user_preference' | 'last_location';
 
 export type MultiplayerStartingLocation =
   | {
@@ -75,6 +75,8 @@ export type MultiplayerPresence = {
   playerLocation?: MultiplayerPlayerLocation;
   startingLocation?: MultiplayerStartingLocation;
   startingLocationSource?: MultiplayerStartingLocationSource;
+  lastLocation?: MultiplayerPlayerLocation;
+  lastLocationRecordedAt?: string;
   pointerTarget?: MultiplayerCell;
   hoveredCell?: MultiplayerCell;
   selectedIp?: string;
