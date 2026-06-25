@@ -115,6 +115,22 @@ type StartingLocationPreferenceState = {
   specificIp: string;
 };
 
+type StoredLastLocation = {
+  gridSystemMode?: GridSystemMode;
+  viewMode?: 'grid' | 'street' | 'building';
+  zoomLevel?: number;
+  currentPosition?: GridPosition;
+  grid2Position?: Grid2Position;
+  playerLocation?: PlayerLocation;
+  selectedIp?: string;
+  streetPlayerX?: number;
+  streetPlayerY?: number;
+  streetHeading?: StreetHeading;
+  streetTargetCell?: GridCellBuilding | null;
+  streetFocusCell?: StreetFocusCell | null;
+  buildingView?: BuildingViewState | null;
+};
+
 type LayoutMode = 'grid' | 'street';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
@@ -480,6 +496,179 @@ function getStartingLocationForPreference(
   return {
     source: 'default',
     startingLocation: getDefaultStartingLocation(),
+  };
+}
+
+function getRandomGrid1StartingLocation(): MultiplayerStartingLocation {
+  const zoomLevel = Math.floor(Math.random() * 4);
+  const firstOctet = Math.floor(Math.random() * 256);
+  const secondOctet = Math.floor(Math.random() * 256);
+  const thirdOctet = Math.floor(Math.random() * 256);
+  const fourthOctet = Math.floor(Math.random() * 256);
+  const currentPosition = {
+    firstOctet: zoomLevel >= 1 ? firstOctet : 0,
+    secondOctet: zoomLevel >= 2 ? secondOctet : 0,
+    thirdOctet: zoomLevel >= 3 ? thirdOctet : 0,
+    fourthOctet: 0,
+  };
+  const visibleOctet =
+    zoomLevel === 0 ? firstOctet :
+    zoomLevel === 1 ? secondOctet :
+    zoomLevel === 2 ? thirdOctet :
+    fourthOctet;
+  const ipAddress =
+    zoomLevel === 0 ? `${firstOctet}.0.0.0` :
+    zoomLevel === 1 ? `${firstOctet}.${secondOctet}.0.0` :
+    zoomLevel === 2 ? `${firstOctet}.${secondOctet}.${thirdOctet}.0` :
+    `${firstOctet}.${secondOctet}.${thirdOctet}.${fourthOctet}`;
+
+  return {
+    gridSystemMode: 'grid1',
+    source: 'user_preference',
+    ipAddress,
+    zoomLevel,
+    currentPosition,
+    x: visibleOctet % GRID_SIZE,
+    y: Math.floor(visibleOctet / GRID_SIZE),
+  };
+}
+
+function getRandomGrid2StartingLocation(): MultiplayerStartingLocation {
+  const firstOctet = Math.floor(Math.random() * 256);
+  const secondOctet = Math.floor(Math.random() * 256);
+  const thirdOctet = Math.floor(Math.random() * 256);
+  const fourthOctet = Math.floor(Math.random() * 256);
+  const grid2Position = {
+    outerFirstOctet: firstOctet,
+    outerSecondOctet: secondOctet,
+    innerThirdStart: clampGrid2WindowStart(Math.floor(thirdOctet / GRID2_WINDOW_SIZE) * GRID2_WINDOW_SIZE),
+    innerFourthStart: clampGrid2WindowStart(Math.floor(fourthOctet / GRID2_WINDOW_SIZE) * GRID2_WINDOW_SIZE),
+  };
+
+  return {
+    gridSystemMode: 'grid2',
+    source: 'user_preference',
+    ipAddress: `${firstOctet}.${secondOctet}.${thirdOctet}.${fourthOctet}`,
+    grid2Position,
+    x: fourthOctet - grid2Position.innerFourthStart,
+    y: thirdOctet - grid2Position.innerThirdStart,
+  };
+}
+
+function getValidPlayerLocation(value: unknown): PlayerLocation | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (value.kind === 'ip' && typeof value.ipAddress === 'string' && isValidIpv4(value.ipAddress)) {
+    return {
+      kind: 'ip',
+      ipAddress: value.ipAddress,
+      x: typeof value.x === 'number' ? value.x : undefined,
+      y: typeof value.y === 'number' ? value.y : undefined,
+    };
+  }
+
+  if (value.kind === 'building' && typeof value.ipAddress === 'string' && isValidIpv4(value.ipAddress)) {
+    return {
+      kind: 'building',
+      ipAddress: value.ipAddress,
+      outside: true,
+    };
+  }
+
+  return null;
+}
+
+function getStoredGridPosition(value: unknown): GridPosition | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    firstOctet: typeof value.firstOctet === 'number' ? clampOctet(value.firstOctet) : 0,
+    secondOctet: typeof value.secondOctet === 'number' ? clampOctet(value.secondOctet) : 0,
+    thirdOctet: typeof value.thirdOctet === 'number' ? clampOctet(value.thirdOctet) : 0,
+    fourthOctet: typeof value.fourthOctet === 'number' ? clampOctet(value.fourthOctet) : 0,
+  };
+}
+
+function getStoredGrid2Position(value: unknown): Grid2Position | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    outerFirstOctet: typeof value.outerFirstOctet === 'number' ? clampOctet(value.outerFirstOctet) : DEFAULT_GRID2_POSITION.outerFirstOctet,
+    outerSecondOctet: typeof value.outerSecondOctet === 'number' ? clampOctet(value.outerSecondOctet) : DEFAULT_GRID2_POSITION.outerSecondOctet,
+    innerThirdStart: typeof value.innerThirdStart === 'number' ? clampGrid2WindowStart(value.innerThirdStart) : DEFAULT_GRID2_POSITION.innerThirdStart,
+    innerFourthStart: typeof value.innerFourthStart === 'number' ? clampGrid2WindowStart(value.innerFourthStart) : DEFAULT_GRID2_POSITION.innerFourthStart,
+  };
+}
+
+function getStoredBuildingView(value: unknown): BuildingViewState | null {
+  if (!isRecord(value) || typeof value.ipAddress !== 'string' || !isValidIpv4(value.ipAddress)) {
+    return null;
+  }
+
+  const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(value.ipAddress);
+  return {
+    x: typeof value.x === 'number' ? clampStreetCell(value.x) : fourthOctet % GRID_SIZE,
+    y: typeof value.y === 'number' ? clampStreetCell(value.y) : thirdOctet % GRID_SIZE,
+    ipAddress: value.ipAddress,
+    label: typeof value.label === 'number' ? value.label : 0,
+    color: typeof value.color === 'string' ? value.color : '#6B7280',
+    buildingFamily:
+      value.buildingFamily === 'tower' || value.buildingFamily === 'stepped' || value.buildingFamily === 'fort'
+        ? value.buildingFamily
+        : 'block',
+    buildingHeight: typeof value.buildingHeight === 'number' ? value.buildingHeight : 1,
+    flagImageUrl: typeof value.flagImageUrl === 'string' ? value.flagImageUrl : null,
+    countryCodeLabel: typeof value.countryCodeLabel === 'string' ? value.countryCodeLabel : undefined,
+    asn: typeof value.asn === 'string' ? value.asn : undefined,
+    asnName: typeof value.asnName === 'string' ? value.asnName : undefined,
+    route: typeof value.route === 'string' ? value.route : undefined,
+    asnColor: typeof value.asnColor === 'string' ? value.asnColor : undefined,
+    organizationName: typeof value.organizationName === 'string' ? value.organizationName : undefined,
+  };
+}
+
+function getStoredLastLocation(value: unknown): StoredLastLocation | null {
+  const directLocation = getValidPlayerLocation(value);
+  if (directLocation) {
+    return { playerLocation: directLocation, selectedIp: directLocation.ipAddress };
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const playerLocation = getValidPlayerLocation(value.playerLocation);
+  const selectedIp = typeof value.selectedIp === 'string' && isValidIpv4(value.selectedIp)
+    ? value.selectedIp
+    : playerLocation?.ipAddress;
+
+  if (!playerLocation && !selectedIp) {
+    return null;
+  }
+
+  return {
+    gridSystemMode: value.gridSystemMode === 'grid2' ? 'grid2' : 'grid1',
+    viewMode: value.viewMode === 'street' || value.viewMode === 'building' ? value.viewMode : 'grid',
+    zoomLevel: typeof value.zoomLevel === 'number' ? value.zoomLevel : undefined,
+    currentPosition: getStoredGridPosition(value.currentPosition),
+    grid2Position: getStoredGrid2Position(value.grid2Position),
+    playerLocation,
+    selectedIp,
+    streetPlayerX: typeof value.streetPlayerX === 'number' ? clampStreetCell(value.streetPlayerX) : undefined,
+    streetPlayerY: typeof value.streetPlayerY === 'number' ? clampStreetCell(value.streetPlayerY) : undefined,
+    streetHeading:
+      value.streetHeading === 0 || value.streetHeading === 1 || value.streetHeading === 2 || value.streetHeading === 3
+        ? value.streetHeading
+        : undefined,
+    streetTargetCell: isRecord(value.streetTargetCell) ? value.streetTargetCell as GridCellBuilding : null,
+    streetFocusCell: isRecord(value.streetFocusCell) ? value.streetFocusCell as StreetFocusCell : null,
+    buildingView: getStoredBuildingView(value.buildingView),
   };
 }
 
@@ -947,12 +1136,19 @@ function App() {
   const [startingLocationStatus, setStartingLocationStatus] = useState('');
   const [isStartingLocationLoading, setIsStartingLocationLoading] = useState(false);
   const [isStartingLocationSaving, setIsStartingLocationSaving] = useState(false);
+  const [isStartupPreferenceReady, setIsStartupPreferenceReady] = useState(false);
 
   const appContainerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const currentHoverCellRef = useRef<GridCellBuilding | null>(null);
+  const startupPreferenceAppliedRef = useRef(false);
+  const lastLocationSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLocationPayloadKeyRef = useRef('');
+  const latestPresenceRef = useRef<MultiplayerPresence | null>(null);
+  const latestStoredLastLocationRef = useRef<StoredLastLocation | null>(null);
+  const latestDefaultStartupStateRef = useRef(true);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
@@ -1047,6 +1243,152 @@ function App() {
     playerLocation,
     selectedIp: playerLocationIp,
   });
+  latestPresenceRef.current = multiplayer.currentPresence;
+  latestDefaultStartupStateRef.current =
+    layoutMode === 'grid' &&
+    !buildingView &&
+    gridSystemMode === 'grid1' &&
+    zoomLevel === 0 &&
+    playerLocation.kind === 'ip' &&
+    playerLocation.ipAddress === DEFAULT_STARTING_LOCATION_IP;
+
+  const applyDefaultStartupLocation = () => {
+    setLayoutMode('grid');
+    setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
+    setGridSystemMode('grid1');
+    setGrid2Position(DEFAULT_GRID2_POSITION);
+    setZoomLevel(0);
+    setCurrentPosition(DEFAULT_GRID_POSITION);
+    applyPlayerLocation({
+      kind: 'ip',
+      ipAddress: DEFAULT_STARTING_LOCATION_IP,
+      x: DEFAULT_PLAYER_CELL.x,
+      y: DEFAULT_PLAYER_CELL.y,
+    }, { selectedIp: DEFAULT_STARTING_LOCATION_IP });
+  };
+
+  const applyGrid1StartingLocation = (startingLocation: Extract<MultiplayerStartingLocation, { gridSystemMode: 'grid1' }>) => {
+    setLayoutMode('grid');
+    setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
+    setGridSystemMode('grid1');
+    setGrid2Position(DEFAULT_GRID2_POSITION);
+    setZoomLevel(startingLocation.zoomLevel);
+    setCurrentPosition(startingLocation.currentPosition);
+    applyPlayerLocation({
+      kind: 'ip',
+      ipAddress: startingLocation.ipAddress,
+      x: startingLocation.x,
+      y: startingLocation.y,
+    }, { selectedIp: startingLocation.ipAddress });
+  };
+
+  const applyGrid2StartingLocation = (startingLocation: Extract<MultiplayerStartingLocation, { gridSystemMode: 'grid2' }>) => {
+    setLayoutMode('grid');
+    setBuildingView(null);
+    setStreetTargetCell(null);
+    setStreetFocusCell(null);
+    setGridSystemMode('grid2');
+    setGrid2Position(startingLocation.grid2Position);
+    applyPlayerLocation({
+      kind: 'ip',
+      ipAddress: startingLocation.ipAddress,
+      x: startingLocation.x,
+      y: startingLocation.y,
+    }, { selectedIp: startingLocation.ipAddress });
+  };
+
+  const applyStoredLastLocation = (storedLocation: StoredLastLocation | null): boolean => {
+    const selectedIp = storedLocation?.selectedIp ?? storedLocation?.playerLocation?.ipAddress;
+    if (!storedLocation || !selectedIp || !isValidIpv4(selectedIp)) {
+      return false;
+    }
+
+    if (storedLocation.viewMode === 'building' && storedLocation.buildingView) {
+      setGridSystemMode(storedLocation.gridSystemMode ?? 'grid1');
+      if (storedLocation.grid2Position) {
+        setGrid2Position(storedLocation.grid2Position);
+      }
+      if (typeof storedLocation.zoomLevel === 'number') {
+        setZoomLevel(storedLocation.zoomLevel);
+      }
+      if (storedLocation.currentPosition) {
+        setCurrentPosition(storedLocation.currentPosition);
+      }
+      setLayoutMode('street');
+      setStreetPlayerX(storedLocation.streetPlayerX ?? storedLocation.buildingView.x);
+      setStreetPlayerY(storedLocation.streetPlayerY ?? storedLocation.buildingView.y);
+      setStreetHeading(storedLocation.streetHeading ?? 0);
+      setStreetTargetCell(storedLocation.streetTargetCell ?? null);
+      setStreetFocusCell(storedLocation.streetFocusCell ?? null);
+      setBuildingView(storedLocation.buildingView);
+      applyPlayerLocation({ kind: 'building', ipAddress: storedLocation.buildingView.ipAddress, outside: true }, { selectedIp: storedLocation.buildingView.ipAddress });
+      return true;
+    }
+
+    if (storedLocation.viewMode === 'street' && storedLocation.playerLocation) {
+      setGridSystemMode(storedLocation.gridSystemMode ?? 'grid1');
+      if (storedLocation.grid2Position) {
+        setGrid2Position(storedLocation.grid2Position);
+      }
+      if (typeof storedLocation.zoomLevel === 'number') {
+        setZoomLevel(storedLocation.zoomLevel);
+      }
+      if (storedLocation.currentPosition) {
+        setCurrentPosition(storedLocation.currentPosition);
+      }
+      setLayoutMode('street');
+      setBuildingView(null);
+      setStreetPlayerX(storedLocation.streetPlayerX ?? storedLocation.playerLocation.x ?? DEFAULT_PLAYER_CELL.x);
+      setStreetPlayerY(storedLocation.streetPlayerY ?? storedLocation.playerLocation.y ?? DEFAULT_PLAYER_CELL.y);
+      setStreetHeading(storedLocation.streetHeading ?? 0);
+      setStreetTargetCell(storedLocation.streetTargetCell ?? null);
+      setStreetFocusCell(storedLocation.streetFocusCell ?? null);
+      applyPlayerLocation(storedLocation.playerLocation, { selectedIp });
+      return true;
+    }
+
+    moveToIpLocation(
+      selectedIp,
+      storedLocation.playerLocation?.kind === 'building' ? 'building' : 'ip',
+      storedLocation.gridSystemMode ?? 'grid1'
+    );
+    return true;
+  };
+
+  const applySavedStartingLocation = (
+    source: unknown,
+    startingLocation: unknown,
+    lastLocation: unknown
+  ) => {
+    if (source === 'user_preference' && isRecord(startingLocation) && typeof startingLocation.ipAddress === 'string' && isValidIpv4(startingLocation.ipAddress)) {
+      moveToIpLocation(startingLocation.ipAddress, 'ip', startingLocation.gridSystemMode === 'grid2' ? 'grid2' : 'grid1');
+      return;
+    }
+
+    if (source === 'random' && isRecord(startingLocation) && (startingLocation.gridSystemMode === 'grid2' || startingLocation.randomScope === 'grid2')) {
+      applyGrid2StartingLocation(getRandomGrid2StartingLocation() as Extract<MultiplayerStartingLocation, { gridSystemMode: 'grid2' }>);
+      return;
+    }
+
+    if (source === 'random') {
+      applyGrid1StartingLocation(getRandomGrid1StartingLocation() as Extract<MultiplayerStartingLocation, { gridSystemMode: 'grid1' }>);
+      return;
+    }
+
+    if (source === 'last_location') {
+      if (!applyStoredLastLocation(getStoredLastLocation(lastLocation))) {
+        applyDefaultStartupLocation();
+      }
+      return;
+    }
+
+    applyDefaultStartupLocation();
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1072,6 +1414,67 @@ function App() {
     writeStoredBookmarks(multiplayer.currentUser.userId, bookmarks);
   }, [bookmarks, bookmarksStorageUserId, multiplayer.currentUser.userId]);
   useEffect(() => {
+    if (startupPreferenceAppliedRef.current) {
+      return;
+    }
+
+    if (!supabase || !isSupabaseConfigured) {
+      startupPreferenceAppliedRef.current = true;
+      setIsStartupPreferenceReady(true);
+      return;
+    }
+
+    let isActive = true;
+    startupPreferenceAppliedRef.current = true;
+
+    void (async () => {
+      const [{ data: preferenceData, error: preferenceError }, { data: lastLocationData }] = await Promise.all([
+        supabase
+          .from('multiplayer_presence')
+          .select('starting_location, starting_location_source, last_location')
+          .eq('user_id', multiplayer.currentUser.userId)
+          .not('starting_location_source', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1),
+        supabase
+          .from('multiplayer_presence')
+          .select('last_location')
+          .eq('user_id', multiplayer.currentUser.userId)
+          .not('last_location', 'is', null)
+          .order('last_location_recorded_at', { ascending: false })
+          .limit(1),
+      ]);
+
+      if (!isActive) {
+        return;
+      }
+
+      if (!latestDefaultStartupStateRef.current) {
+        setIsStartupPreferenceReady(true);
+        return;
+      }
+
+      if (preferenceError) {
+        applyDefaultStartupLocation();
+        setIsStartupPreferenceReady(true);
+        return;
+      }
+
+      const preferenceRow = Array.isArray(preferenceData) ? preferenceData[0] : undefined;
+      const lastLocationRow = Array.isArray(lastLocationData) ? lastLocationData[0] : undefined;
+      applySavedStartingLocation(
+        preferenceRow?.starting_location_source,
+        preferenceRow?.starting_location,
+        lastLocationRow?.last_location ?? preferenceRow?.last_location
+      );
+      setIsStartupPreferenceReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [multiplayer.currentUser.userId]);
+  useEffect(() => {
     if (!showLocationPreferencesPanel) {
       return;
     }
@@ -1093,6 +1496,7 @@ function App() {
         .from('multiplayer_presence')
         .select('starting_location, starting_location_source')
         .eq('user_id', multiplayer.currentUser.userId)
+        .not('starting_location_source', 'is', null)
         .order('updated_at', { ascending: false })
         .limit(1);
 
@@ -1174,13 +1578,14 @@ function App() {
     [exposureResult, certificateResult]
   );
 
-  const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip') => {
+  const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip', targetGridSystemMode: GridSystemMode = gridSystemMode) => {
     const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
     setLayoutMode('grid');
     setBuildingView(null);
     setStreetTargetCell(null);
     setStreetFocusCell(null);
-    if (gridSystemMode === 'grid2') {
+    setGridSystemMode(targetGridSystemMode);
+    if (targetGridSystemMode === 'grid2') {
       const nextGrid2Position = {
         outerFirstOctet: firstOctet,
         outerSecondOctet: secondOctet,
@@ -1197,6 +1602,7 @@ function App() {
       return;
     }
 
+    setGrid2Position(DEFAULT_GRID2_POSITION);
     setZoomLevel(3);
     setCurrentPosition({
       firstOctet,
@@ -1398,8 +1804,8 @@ function App() {
           last_seen: now,
           starting_location: startingLocation,
           starting_location_source: source,
-          last_location: currentPresence.playerLocation ?? null,
-          last_location_recorded_at: currentPresence.playerLocation ? now : null,
+          last_location: currentStoredLastLocation,
+          last_location_recorded_at: now,
         }, { onConflict: 'presence_id' });
 
       setIsStartingLocationSaving(false);
@@ -2188,6 +2594,121 @@ function App() {
   );
   const whoPanelUsers = avatarUsers;
   const showGridSidePanel = showWhoPanel || showBookmarksPanel || showLocationPreferencesPanel;
+  const currentStoredLastLocation = useMemo<StoredLastLocation>(() => ({
+    gridSystemMode,
+    viewMode: multiplayerViewMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    playerLocation,
+    selectedIp: playerLocationIp,
+    streetPlayerX,
+    streetPlayerY,
+    streetHeading,
+    streetTargetCell,
+    streetFocusCell,
+    buildingView,
+  }), [
+    gridSystemMode,
+    multiplayerViewMode,
+    zoomLevel,
+    currentPosition,
+    grid2Position,
+    playerLocation,
+    playerLocationIp,
+    streetPlayerX,
+    streetPlayerY,
+    streetHeading,
+    streetTargetCell,
+    streetFocusCell,
+    buildingView,
+  ]);
+  const currentStoredLastLocationKey = useMemo(
+    () => JSON.stringify(currentStoredLastLocation),
+    [currentStoredLastLocation]
+  );
+  latestStoredLastLocationRef.current = currentStoredLastLocation;
+
+  const saveLastLocation = (storedLocation: StoredLastLocation | null) => {
+    const currentPresence = latestPresenceRef.current;
+    const selectedIp = storedLocation?.selectedIp ?? storedLocation?.playerLocation?.ipAddress;
+    if (!supabase || !isSupabaseConfigured || !currentPresence || !storedLocation || !selectedIp || !isValidIpv4(selectedIp)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    void supabase
+      .from('multiplayer_presence')
+      .upsert({
+        presence_id: currentPresence.presenceId,
+        session_id: currentPresence.sessionId,
+        user_id: currentPresence.userId,
+        display_name: currentPresence.displayName,
+        color: currentPresence.color,
+        avatar_url: currentPresence.avatarUrl ?? null,
+        avatar_type: currentPresence.avatarType ?? 'default',
+        location_key: currentPresence.locationKey,
+        grid_system_mode: currentPresence.gridSystemMode,
+        view_mode: currentPresence.viewMode,
+        zoom_level: currentPresence.zoomLevel,
+        current_position: currentPresence.currentPosition,
+        grid2_position: currentPresence.grid2Position,
+        player_location: currentPresence.playerLocation ?? null,
+        pointer_target: currentPresence.pointerTarget ?? null,
+        hovered_cell: currentPresence.hoveredCell ?? null,
+        selected_ip: currentPresence.selectedIp ?? selectedIp,
+        chat_location_key: currentPresence.chatLocationKey ?? null,
+        last_seen: now,
+        last_location: storedLocation,
+        last_location_recorded_at: now,
+      }, { onConflict: 'presence_id' });
+  };
+
+  useEffect(() => {
+    if (!isStartupPreferenceReady || !supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    if (lastLocationPayloadKeyRef.current === currentStoredLastLocationKey) {
+      return;
+    }
+
+    lastLocationPayloadKeyRef.current = currentStoredLastLocationKey;
+    if (lastLocationSaveTimerRef.current) {
+      clearTimeout(lastLocationSaveTimerRef.current);
+    }
+    lastLocationSaveTimerRef.current = setTimeout(() => {
+      saveLastLocation(latestStoredLastLocationRef.current);
+      lastLocationSaveTimerRef.current = null;
+    }, 2500);
+
+    return () => {
+      if (lastLocationSaveTimerRef.current) {
+        clearTimeout(lastLocationSaveTimerRef.current);
+        lastLocationSaveTimerRef.current = null;
+      }
+    };
+  }, [isStartupPreferenceReady, currentStoredLastLocationKey]);
+
+  useEffect(() => {
+    const saveCurrentLastLocation = () => {
+      saveLastLocation(latestStoredLastLocationRef.current);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveCurrentLastLocation();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', saveCurrentLastLocation);
+    window.addEventListener('beforeunload', saveCurrentLastLocation);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', saveCurrentLastLocation);
+      window.removeEventListener('beforeunload', saveCurrentLastLocation);
+    };
+  }, []);
   useEffect(() => {
     if (!DEBUG_PRESENCE && !DEBUG_REMOTE_AVATARS && !DEBUG_AVATAR_PIPELINE) {
       return;
