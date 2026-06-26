@@ -1041,6 +1041,12 @@ function getBestFlagCountryCode(rdapRecord?: RdapRecord, asnRecord?: AsnRecord):
 }
 
 type OrganizationCategory = 'cloud' | 'telecom' | 'education' | 'government' | 'residential' | 'security' | 'commercial' | 'unknown';
+type DeviceGuessConfidence = 'high' | 'medium' | 'low';
+
+type DeviceGuess = {
+  label: string;
+  confidence: DeviceGuessConfidence;
+};
 
 type BuildingVisualStyle = {
   category: OrganizationCategory;
@@ -1182,6 +1188,77 @@ function getWindowPattern(seed: number, category: OrganizationCategory): WindowP
 
 function includesAny(value: string, terms: string[]): boolean {
   return terms.some((term) => value.includes(term));
+}
+
+function getDeviceGuess(
+  rdapRecord: RdapRecord | undefined,
+  asnRecord: AsnRecord | undefined,
+  dnsRecord: ReverseDnsRecord | undefined,
+  exposureRecord: ExposureRecord | undefined,
+  organizationCategory: OrganizationCategory
+): DeviceGuess {
+  const ports = new Set((exposureRecord?.topPorts ?? [])
+    .map((portLabel) => parseTopPortNumber(portLabel))
+    .filter((port): port is number => typeof port === 'number'));
+  const strongCorpus = [
+    ...(exposureRecord?.serviceNames ?? []),
+    ...(exposureRecord?.labels ?? []),
+    ...(exposureRecord?.hostnames ?? []),
+    ...(dnsRecord?.hostnames ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const broadCorpus = [
+    strongCorpus,
+    rdapRecord?.org,
+    rdapRecord?.networkName,
+    rdapRecord?.handle,
+    asnRecord?.asnName,
+    asnRecord?.route,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (includesAny(strongCorpus, ['printer', 'jetdirect', 'brother', 'canon', 'epson', 'xerox', 'laserjet', 'cups'])) {
+    return { label: 'Printer', confidence: 'high' };
+  }
+  if (includesAny(strongCorpus, ['camera', 'webcam', 'axis', 'hikvision', 'dahua', 'rtsp', 'ipcam', 'ip camera'])) {
+    return { label: 'Camera', confidence: 'high' };
+  }
+  if (includesAny(strongCorpus, ['firewall', 'vpn', 'fortinet', 'fortigate', 'palo alto', 'checkpoint', 'sonicwall', 'openvpn', 'wireguard', 'ipsec'])) {
+    return { label: 'Firewall/VPN', confidence: 'high' };
+  }
+  if (includesAny(strongCorpus, ['router', 'mikrotik', 'ubiquiti', 'edgeos', 'openwrt', 'dd-wrt', 'cisco ios'])) {
+    return { label: 'Router', confidence: 'high' };
+  }
+  if (includesAny(strongCorpus, ['rdp', 'remote desktop', 'windows']) || ports.has(3389)) {
+    return { label: 'Windows/RDP Host', confidence: includesAny(strongCorpus, ['rdp', 'remote desktop', 'windows']) ? 'high' : 'medium' };
+  }
+  if (includesAny(strongCorpus, ['postfix', 'smtp', 'imap', 'pop3', 'mail server']) || [25, 465, 587, 110, 143, 993, 995].some((port) => ports.has(port))) {
+    return { label: 'Mail Server', confidence: includesAny(strongCorpus, ['postfix', 'smtp', 'imap', 'pop3']) ? 'high' : 'medium' };
+  }
+  if (includesAny(strongCorpus, ['bind', 'dns server', 'named']) || ports.has(53)) {
+    return { label: 'DNS Server', confidence: includesAny(strongCorpus, ['bind', 'dns server', 'named']) ? 'high' : 'medium' };
+  }
+  if (includesAny(strongCorpus, ['nginx', 'apache', 'iis', 'http server', 'web server']) || ((ports.has(80) || ports.has(443)) && (ports.has(8080) || ports.has(8443)))) {
+    return { label: 'Web Server', confidence: includesAny(strongCorpus, ['nginx', 'apache', 'iis']) ? 'high' : 'medium' };
+  }
+  if (includesAny(strongCorpus, ['ssh', 'openssh']) || ports.has(22)) {
+    return { label: 'SSH Server', confidence: includesAny(strongCorpus, ['openssh']) ? 'high' : 'medium' };
+  }
+  if (includesAny(strongCorpus, ['synology', 'nas', 'qnap', 'iot', 'embedded', 'upnp', 'telnet'])) {
+    return { label: 'IoT Device', confidence: 'medium' };
+  }
+  if (includesAny(broadCorpus, ['cloudflare', 'akamai', 'fastly', 'cdn', 'edge', 'proxy'])) {
+    return { label: 'CDN/Proxy', confidence: includesAny(strongCorpus, ['cloudflare', 'akamai', 'fastly', 'cdn', 'proxy']) ? 'medium' : 'low' };
+  }
+  if (organizationCategory === 'cloud') {
+    return { label: 'Cloud Host', confidence: 'low' };
+  }
+  if (organizationCategory === 'residential') {
+    return { label: 'Residential Gateway', confidence: 'low' };
+  }
+  if (organizationCategory === 'security') {
+    return { label: 'Firewall/VPN', confidence: 'low' };
+  }
+
+  return { label: 'Unknown', confidence: 'low' };
 }
 
 function getOrganizationCategory(
@@ -2508,6 +2585,11 @@ function IPGrid({
       const asnColor = getAsnColor(asnRecord?.asn);
       const dnsRecord = reverseDnsInfo[ipAddress] ?? reverseDnsCache[ipAddress];
       const organizationCategory = getOrganizationCategory(rdapRecord, asnRecord, dnsRecord, exposureRecord, ipTypeLabel);
+      const deviceGuess = getDeviceGuess(rdapRecord, asnRecord, dnsRecord, exposureRecord, organizationCategory);
+      const deviceGuessLabel =
+        deviceGuess.label !== 'Unknown'
+          ? `${deviceGuess.label}${deviceGuess.confidence === 'low' ? '?' : ''}`
+          : '';
       const visualStyle = getBuildingVisualStyle(organizationCategory, asnColor, seed, asnRecord?.asn);
       const heightVariation = getHeightVariation(seed, serviceCount);
       const buildingHeight = Math.min(cubeSize * 5.4, Math.max(cubeSize * 0.62, serviceHeight * heightVariation));
@@ -2644,6 +2726,7 @@ function IPGrid({
         countryName ? countryName : '',
         asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? '' : '',
         organizationCategory !== 'unknown' ? architecturalStyleLabel : '',
+        deviceGuessLabel,
         topReverseDnsHostname ? `reverse-dns: ${topReverseDnsHostname}` : '',
       ].filter(Boolean);
 
