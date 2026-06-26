@@ -1150,6 +1150,7 @@ function App() {
   const latestStoredLastLocationRef = useRef<StoredLastLocation | null>(null);
   const latestDefaultStartupStateRef = useRef(true);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
+  const [displayedHoverIp, setDisplayedHoverIp] = useState<string | null>(null);
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
@@ -1527,11 +1528,13 @@ function App() {
   useEffect(() => {
     setPointerTarget(undefined);
     currentHoverCellRef.current = null;
+    setDisplayedHoverIp(null);
   }, [multiplayerGridKey]);
 
   useEffect(() => {
     if (layoutMode !== 'grid' || buildingView) {
       currentHoverCellRef.current = null;
+      setDisplayedHoverIp(null);
     }
   }, [layoutMode, buildingView]);
 
@@ -2056,6 +2059,41 @@ function App() {
     }
   };
 
+  const handleGrid1OctetUp = () => {
+    if (layoutMode !== 'grid' || buildingView || gridSystemMode !== 'grid1' || zoomLevel === 0) {
+      return;
+    }
+
+    handleBack();
+  };
+
+  const handleGrid1OctetDown = () => {
+    if (layoutMode !== 'grid' || buildingView || gridSystemMode !== 'grid1' || zoomLevel >= 3 || !bottomInfoHtml || !displayedHoverIp) {
+      return;
+    }
+
+    const targetCell = currentHoverCellRef.current;
+    if (!targetCell || targetCell.ipAddress !== displayedHoverIp) {
+      return;
+    }
+
+    const [firstOctet, secondOctet, thirdOctet] = parseIpOctets(displayedHoverIp);
+
+    if (zoomLevel === 0) {
+      setCurrentPosition({ firstOctet, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
+      setZoomLevel(1);
+      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+    } else if (zoomLevel === 1) {
+      setCurrentPosition((prev) => ({ ...prev, secondOctet, thirdOctet: 0, fourthOctet: 0 }));
+      setZoomLevel(2);
+      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+    } else if (zoomLevel === 2) {
+      setCurrentPosition((prev) => ({ ...prev, thirdOctet, fourthOctet: 0 }));
+      setZoomLevel(3);
+      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+    }
+  };
+
   const handleToggleFullscreen = () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
@@ -2437,6 +2475,7 @@ function App() {
 
       if (activeHtml) {
         setBottomInfoHtml(activeHtml);
+        setDisplayedHoverIp(currentHoverCellRef.current?.ipAddress ?? null);
       }
     };
 
@@ -2775,6 +2814,11 @@ function App() {
   const handlePointerTargetChange = (cell: GridCellBuilding) => {
     currentHoverCellRef.current = cell;
     setPointerTarget(cell);
+  };
+
+  const handleGridHoverInfoHtml = (html: string) => {
+    setBottomInfoHtml(html);
+    setDisplayedHoverIp(currentHoverCellRef.current?.ipAddress ?? null);
   };
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3868,7 +3912,7 @@ function App() {
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
-                  onHoverInfoHtml={setBottomInfoHtml}
+                  onHoverInfoHtml={handleGridHoverInfoHtml}
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
                   // Visual avatar rendering must receive all active users. Do not replace this with `nearbyUsers`; exact-location filtering is only for chat/proximity UI.
@@ -3887,6 +3931,30 @@ function App() {
               </Canvas>
               <div className="pointer-events-none absolute left-3 top-3 z-10 font-bold text-black">
                 {visibleCoordinateRangeLabel}
+                {gridSystemMode === 'grid1' && (
+                  <div className="pointer-events-auto mt-1 flex flex-col items-start gap-0.5">
+                    <button
+                      type="button"
+                      aria-label="Go up one octet"
+                      onClick={handleGrid1OctetUp}
+                      className="text-white drop-shadow hover:text-gray-200 active:text-gray-300"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3 w-3">
+                        <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Go down one octet"
+                      onClick={handleGrid1OctetDown}
+                      className="text-white drop-shadow hover:text-gray-200 active:text-gray-300"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3 w-3">
+                        <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
               {gridSystemMode === 'grid2' && (
                 <>
