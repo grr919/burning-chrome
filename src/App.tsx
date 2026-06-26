@@ -3937,9 +3937,9 @@ function App() {
                       type="button"
                       aria-label="Go up one octet"
                       onClick={handleGrid1OctetUp}
-                      className="text-white drop-shadow hover:text-gray-200 active:text-gray-300"
+                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
                     >
-                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3 w-3">
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
                         <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
                       </svg>
                     </button>
@@ -3947,9 +3947,9 @@ function App() {
                       type="button"
                       aria-label="Go down one octet"
                       onClick={handleGrid1OctetDown}
-                      className="text-white drop-shadow hover:text-gray-200 active:text-gray-300"
+                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
                     >
-                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3 w-3">
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
                         <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
                       </svg>
                     </button>
