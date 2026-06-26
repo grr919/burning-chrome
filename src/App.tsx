@@ -3931,31 +3931,31 @@ function App() {
               </Canvas>
               <div className="pointer-events-none absolute left-3 top-3 z-10 font-bold text-black">
                 {visibleCoordinateRangeLabel}
-                {gridSystemMode === 'grid1' && (
-                  <div className="pointer-events-auto mt-1 flex flex-col items-start gap-0.5">
-                    <button
-                      type="button"
-                      aria-label="Go up one octet"
-                      onClick={handleGrid1OctetUp}
-                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
-                        <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Go down one octet"
-                      onClick={handleGrid1OctetDown}
-                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
-                        <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
               </div>
+              {gridSystemMode === 'grid1' && (
+                <div className="absolute right-3 top-3 z-10 flex flex-col items-start gap-0.5">
+                  <button
+                    type="button"
+                    aria-label="Go up one octet"
+                    onClick={handleGrid1OctetUp}
+                    className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
+                      <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Go down one octet"
+                    onClick={handleGrid1OctetDown}
+                    className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
+                      <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {gridSystemMode === 'grid2' && (
                 <>
                   <button
