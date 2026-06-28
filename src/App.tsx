@@ -2045,29 +2045,39 @@ function App() {
   };
 
   const handleGrid1OctetDown = () => {
-    if (layoutMode !== 'grid' || buildingView || gridSystemMode !== 'grid1' || zoomLevel >= 3 || !bottomInfoHtml || !displayedHoverIp) {
+    if (layoutMode !== 'grid' || buildingView || gridSystemMode !== 'grid1' || zoomLevel >= 3 || !isValidIpv4(playerLocationIp)) {
       return;
     }
 
-    const targetCell = currentHoverCellRef.current;
-    if (!targetCell || targetCell.ipAddress !== displayedHoverIp) {
-      return;
-    }
-
-    const [firstOctet, secondOctet, thirdOctet] = parseIpOctets(displayedHoverIp);
+    const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(playerLocationIp);
 
     if (zoomLevel === 0) {
       setCurrentPosition({ firstOctet, secondOctet: 0, thirdOctet: 0, fourthOctet: 0 });
       setZoomLevel(1);
-      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+      applyPlayerLocation({
+        kind: 'ip',
+        ipAddress: playerLocationIp,
+        x: secondOctet % GRID_SIZE,
+        y: Math.floor(secondOctet / GRID_SIZE),
+      }, { selectedIp: playerLocationIp });
     } else if (zoomLevel === 1) {
       setCurrentPosition((prev) => ({ ...prev, secondOctet, thirdOctet: 0, fourthOctet: 0 }));
       setZoomLevel(2);
-      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+      applyPlayerLocation({
+        kind: 'ip',
+        ipAddress: playerLocationIp,
+        x: thirdOctet % GRID_SIZE,
+        y: Math.floor(thirdOctet / GRID_SIZE),
+      }, { selectedIp: playerLocationIp });
     } else if (zoomLevel === 2) {
       setCurrentPosition((prev) => ({ ...prev, thirdOctet, fourthOctet: 0 }));
       setZoomLevel(3);
-      applyPlayerLocation({ kind: 'ip', ipAddress: displayedHoverIp, x: 0, y: 0 }, { selectedIp: displayedHoverIp });
+      applyPlayerLocation({
+        kind: 'ip',
+        ipAddress: playerLocationIp,
+        x: fourthOctet % GRID_SIZE,
+        y: Math.floor(fourthOctet / GRID_SIZE),
+      }, { selectedIp: playerLocationIp });
     }
   };
 
@@ -3911,16 +3921,18 @@ function App() {
               </div>
               {gridSystemMode === 'grid1' && (
                 <div className="absolute right-3 top-3 z-10 flex flex-col items-start gap-0.5">
-                  <button
-                    type="button"
-                    aria-label="Go up one octet"
-                    onClick={handleGrid1OctetUp}
-                    className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
-                      <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
-                    </svg>
-                  </button>
+                  {zoomLevel > 0 && (
+                    <button
+                      type="button"
+                      aria-label="Go up one octet"
+                      onClick={handleGrid1OctetUp}
+                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
+                        <path d="M8 2L2 9H6V14H10V9H14L8 2Z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label="Open Street and Building View at current location"
@@ -3931,16 +3943,18 @@ function App() {
                       <path d="M2 7.25L8 2L14 7.25V14H10V10H6V14H2V7.25Z" fill="currentColor" />
                     </svg>
                   </button>
-                  <button
-                    type="button"
-                    aria-label="Go down one octet"
-                    onClick={handleGrid1OctetDown}
-                    className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
-                      <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
-                    </svg>
-                  </button>
+                  {zoomLevel < 3 && (
+                    <button
+                      type="button"
+                      aria-label="Go down one octet"
+                      onClick={handleGrid1OctetDown}
+                      className="text-black drop-shadow hover:text-gray-200 active:text-gray-300"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-6 w-6">
+                        <path d="M8 14L14 7H10V2H6V7H2L8 14Z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
               {gridSystemMode === 'grid2' && (
@@ -4169,3 +4183,4 @@ function App() {
 }
 
 export default App;
+
