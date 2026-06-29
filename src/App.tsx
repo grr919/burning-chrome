@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -982,6 +982,64 @@ function getWebsiteDirectoryCategoryLabel(category: WebsiteDirectoryRankCategory
 
 function getWebsiteDirectoryEntryUrl(entry: WebsiteDirectoryEntry): string {
   return entry.url ?? `https://${entry.hostname}`;
+}
+
+function getSafeStreetBuildingLinkHref(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  const hostname = trimmed.replace(/^dns:/i, '').replace(/\.$/, '');
+  if (
+    !hostname ||
+    hostname.startsWith('*.') ||
+    isValidIpv4(hostname) ||
+    hostname.length > 253 ||
+    !hostname.includes('.') ||
+    !/^[a-z0-9.-]+$/i.test(hostname)
+  ) {
+    return null;
+  }
+
+  const labels = hostname.split('.');
+  if (labels.some((label) => label.length === 0 || label.length > 63 || label.startsWith('-') || label.endsWith('-'))) {
+    return null;
+  }
+
+  return `https://${hostname.toLowerCase()}`;
+}
+
+function renderStreetBuildingLinkedValue(value: string, className?: string): ReactNode {
+  const href = getSafeStreetBuildingLinkHref(value);
+  if (!href) return value;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className ?? 'text-blue-700 underline'}
+    >
+      {value}
+    </a>
+  );
+}
+
+function renderStreetBuildingLinkedList(values: string[]): ReactNode {
+  return values.map((value, index) => (
+    <span key={`${value}-${index}`}>
+      {index > 0 ? ', ' : ''}
+      {renderStreetBuildingLinkedValue(value)}
+    </span>
+  ));
 }
 
 function pseudoRandom(seed: number): number {
@@ -3382,7 +3440,7 @@ function App() {
                           key={`${entry.rank_category}-${entry.hostname}`}
                           href={getWebsiteDirectoryEntryUrl(entry)}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           title={entry.title ?? entry.hostname}
                           className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
                         >
@@ -3422,7 +3480,7 @@ function App() {
       <a
         href={getWebsiteDirectoryEntryUrl(entry)}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
         title={`Open ${entry.hostname}`}
       >
@@ -3437,7 +3495,7 @@ function App() {
 
     return (
       <div className="text-sm text-gray-700">
-        Verified website: {entry.hostname}
+        Verified website: {renderStreetBuildingLinkedValue(entry.hostname)}
       </div>
     );
   };
@@ -3512,7 +3570,7 @@ function App() {
                   <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
                 )}
                 {exposureResult.hostnames.length > 0 && (
-                  <div className="break-all"><span className="text-gray-600">Hostnames:</span> {exposureResult.hostnames.join(', ')}</div>
+                  <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
                 )}
               </div>
 
@@ -3536,7 +3594,7 @@ function App() {
                 </div>
                 {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                   <div className="text-xs text-gray-600">
-                    Attempted: {certificateResult.attemptedHosts.join(', ')}
+                    Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                   </div>
                 )}
                 {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
@@ -3558,7 +3616,7 @@ function App() {
                   {certificateResult.lookupMode && (
                     <div><span className="text-gray-600">Lookup method:</span> {certificateResult.lookupMode === 'direct_ip' ? 'Direct IP TLS' : 'Hostname-based SNI retry'}</div>
                   )}
-                  {certificateResult.subjectCn && <div><span className="text-gray-600">Subject CN:</span> {certificateResult.subjectCn}</div>}
+                  {certificateResult.subjectCn && <div><span className="text-gray-600">Subject CN:</span> {renderStreetBuildingLinkedValue(certificateResult.subjectCn)}</div>}
                   {certificateResult.issuerCn && <div><span className="text-gray-600">Issuer:</span> {certificateResult.issuerCn}</div>}
                   {certificateResult.validFrom && <div><span className="text-gray-600">Valid from:</span> {certificateResult.validFrom}</div>}
                   {certificateResult.validTo && <div><span className="text-gray-600">Valid to:</span> {certificateResult.validTo}</div>}
@@ -3574,7 +3632,7 @@ function App() {
 
                 {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                   <div className="text-xs text-gray-600">
-                    Attempted: {certificateResult.attemptedHosts.join(', ')}
+                    Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                   </div>
                 )}
 
@@ -3584,7 +3642,7 @@ function App() {
                     <div className="space-y-1">
                       {certificateResult.subjectAltNames.map((name) => (
                         <div key={name} className="text-xs bg-gray-100 rounded p-2 break-all">
-                          {name}
+                          {renderStreetBuildingLinkedValue(name)}
                         </div>
                       ))}
                     </div>
@@ -3981,7 +4039,7 @@ function App() {
                           <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
                         )}
                         {exposureResult.hostnames.length > 0 && (
-                          <div className="break-all"><span className="text-gray-600">Hostnames:</span> {exposureResult.hostnames.join(', ')}</div>
+                          <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
                         )}
                       </div>
 
@@ -4005,7 +4063,7 @@ function App() {
                         </div>
                         {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                           <div className="text-xs text-gray-600">
-                            Attempted: {certificateResult.attemptedHosts.join(', ')}
+                            Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                           </div>
                         )}
                         {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
@@ -4027,7 +4085,7 @@ function App() {
                           {certificateResult.lookupMode && (
                             <div><span className="text-gray-600">Lookup method:</span> {certificateResult.lookupMode === 'direct_ip' ? 'Direct IP TLS' : 'Hostname-based SNI retry'}</div>
                           )}
-                          {certificateResult.subjectCn && <div><span className="text-gray-600">Subject CN:</span> {certificateResult.subjectCn}</div>}
+                          {certificateResult.subjectCn && <div><span className="text-gray-600">Subject CN:</span> {renderStreetBuildingLinkedValue(certificateResult.subjectCn)}</div>}
                           {certificateResult.issuerCn && <div><span className="text-gray-600">Issuer:</span> {certificateResult.issuerCn}</div>}
                           {certificateResult.validFrom && <div><span className="text-gray-600">Valid from:</span> {certificateResult.validFrom}</div>}
                           {certificateResult.validTo && <div><span className="text-gray-600">Valid to:</span> {certificateResult.validTo}</div>}
@@ -4043,7 +4101,7 @@ function App() {
 
                         {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                           <div className="text-xs text-gray-600">
-                            Attempted: {certificateResult.attemptedHosts.join(', ')}
+                            Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                           </div>
                         )}
 
@@ -4053,7 +4111,7 @@ function App() {
                             <div className="space-y-1">
                               {certificateResult.subjectAltNames.map((name) => (
                                 <div key={name} className="text-xs bg-gray-100 rounded p-2 break-all">
-                                  {name}
+                                  {renderStreetBuildingLinkedValue(name)}
                                 </div>
                               ))}
                             </div>
