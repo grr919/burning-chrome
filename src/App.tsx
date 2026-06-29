@@ -3474,17 +3474,6 @@ function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          handleReset();
-                          setIsOptionsOpen(false);
-                        }}
-                        className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
-                        role="menuitem"
-                      >
-                        Return to Main Level
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
                           handleResetView();
                           setIsOptionsOpen(false);
                         }}
@@ -3503,41 +3492,6 @@ function App() {
                         role="menuitem"
                       >
                         {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-                      </button>
-                      {layoutMode === 'grid' && playerLocation.kind === 'ip' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleEnterStreetViewFromMenu();
-                            setIsOptionsOpen(false);
-                          }}
-                          className="block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200"
-                          role="menuitem"
-                        >
-                          Enter Street View
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleGridSystemChange('grid1');
-                          setIsOptionsOpen(false);
-                        }}
-                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${gridSystemMode === 'grid1' ? 'font-semibold' : ''}`}
-                        role="menuitem"
-                      >
-                        Grid 1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleGridSystemChange('grid2');
-                          setIsOptionsOpen(false);
-                        }}
-                        className={`block w-full px-3 py-2 text-left hover:bg-gray-100 active:bg-gray-200 ${gridSystemMode === 'grid2' ? 'font-semibold' : ''}`}
-                        role="menuitem"
-                      >
-                        Grid 2
                       </button>
                       <button
                         type="button"
