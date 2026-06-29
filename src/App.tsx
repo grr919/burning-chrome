@@ -1128,6 +1128,7 @@ function App() {
   const [showWhoPanel, setShowWhoPanel] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
   const [showLocationPreferencesPanel, setShowLocationPreferencesPanel] = useState(false);
+  const [showStreetAndBuildingPanel, setShowStreetAndBuildingPanel] = useState(true);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [bookmarksStorageUserId, setBookmarksStorageUserId] = useState<string | null>(null);
   const [startingLocationPreference, setStartingLocationPreference] = useState<StartingLocationPreference>('default');
@@ -1320,6 +1321,7 @@ function App() {
         setCurrentPosition(storedLocation.currentPosition);
       }
       setLayoutMode('street');
+      setShowStreetAndBuildingPanel(true);
       setStreetPlayerX(storedLocation.streetPlayerX ?? storedLocation.buildingView.x);
       setStreetPlayerY(storedLocation.streetPlayerY ?? storedLocation.buildingView.y);
       setStreetHeading(storedLocation.streetHeading ?? 0);
@@ -1342,6 +1344,7 @@ function App() {
         setCurrentPosition(storedLocation.currentPosition);
       }
       setLayoutMode('street');
+      setShowStreetAndBuildingPanel(true);
       setBuildingView(null);
       setStreetPlayerX(storedLocation.streetPlayerX ?? storedLocation.playerLocation.x ?? DEFAULT_PLAYER_CELL.x);
       setStreetPlayerY(storedLocation.streetPlayerY ?? storedLocation.playerLocation.y ?? DEFAULT_PLAYER_CELL.y);
@@ -1926,6 +1929,7 @@ function App() {
     const entry = getStreetEntryForTargetCell(cell);
     setBuildingView(null);
     setLayoutMode('street');
+    setShowStreetAndBuildingPanel(true);
     setStreetTargetCell(cell);
     setStreetFocusCell(entry.focusCell);
     setStreetPlayerX(entry.playerX);
@@ -2985,6 +2989,13 @@ function App() {
           <div className="text-sm text-gray-600">No users online.</div>
         )}
       </div>
+      <button
+        type="button"
+        onClick={() => setShowWhoPanel(false)}
+        className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+      >
+        Close this panel
+      </button>
     </div>
   );
 
@@ -3026,6 +3037,13 @@ function App() {
           <div className="text-sm text-gray-600">No saved locations.</div>
         )}
       </div>
+      <button
+        type="button"
+        onClick={() => setShowBookmarksPanel(false)}
+        className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+      >
+        Close this panel
+      </button>
     </div>
   );
 
@@ -3089,13 +3107,21 @@ function App() {
           {isStartingLocationSaving ? 'Saving...' : 'Save'}
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => setShowLocationPreferencesPanel(false)}
+        className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+      >
+        Close this panel
+      </button>
     </div>
   );
 
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
     onReturn: () => void,
-    helperText: string
+    helperText: string,
+    onClose: () => void
   ) => (
     <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Street and Building View: {target.ipAddress}</div>
@@ -3289,6 +3315,13 @@ function App() {
           )}
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+      >
+        Close this panel
+      </button>
     </div>
   );
 
@@ -3839,16 +3872,17 @@ function App() {
             </div>
           </div>
         ) : layoutMode === 'street' ? (
-          <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
+          <div className={`flex-1 min-h-0 flex ${showStreetAndBuildingPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
+            <div className={`${showStreetAndBuildingPanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'}`}>
               {renderStreetSceneCanvas(`street-${viewResetKey}-${streetTargetCell?.ipAddress ?? 'none'}`, streetFocusCell)}
             </div>
 
-            {streetTargetCell ? (
+            {showStreetAndBuildingPanel && (streetTargetCell ? (
               renderStreetAndBuildingInfoPanel(
                 streetTargetCell,
                 handleBack,
-                'Use "Return to Grid" to leave Street and Building View.'
+                'Use "Return to Grid" to leave Street and Building View.',
+                () => setShowStreetAndBuildingPanel(false)
               )
             ) : (
               <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
@@ -3869,8 +3903,15 @@ function App() {
                     Return to Grid
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowStreetAndBuildingPanel(false)}
+                  className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                >
+                  Close this panel
+                </button>
               </div>
-            )}
+            ))}
           </div>
         ) : (
           <div className={`flex-1 min-h-0 flex ${showGridSidePanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
