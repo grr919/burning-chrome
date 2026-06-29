@@ -3937,6 +3937,8 @@ function App() {
                   getIPColor={getIPColor}
                   onCellClick={handleGridCellClick}
                   onCellDoubleClick={handleCellDoubleClick}
+                  onBuildingClick={handleGridCellClick}
+                  onBuildingDoubleClick={handleCellDoubleClick}
                   lookupMode={lookupMode}
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
