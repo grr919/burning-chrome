@@ -1893,12 +1893,6 @@ function IPGrid({
     setHoveredCell(null);
   };
 
-  // Click navigation intentionally uses the last cell displayed in the information box,
-  // not the mesh that received the click.
-  const getDisplayedClickCell = (fallback: GridCellBuilding): GridCellBuilding => (
-    lastInfoBoxCellRef.current?.cellBuilding ?? fallback
-  );
-
   const visibleLookupAddresses = useMemo(
     () => getVisibleLookupAddresses(zoomLevel, currentPosition, gridSize, gridSystemMode, grid2Position),
     [
@@ -2956,46 +2950,42 @@ function IPGrid({
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
         clickTimerRef.current = window.setTimeout(() => {
-          (onBuildingClick ?? onCellClick)(clickCell);
+          (onBuildingClick ?? onCellClick)(cellBuilding);
           clickTimerRef.current = null;
         }, 180);
       };
 
       const handleBuildingDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
         }
-        (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(clickCell);
+        (onBuildingDoubleClick ?? onBuildingClick ?? onCellDoubleClick)(cellBuilding);
       };
 
       const handleCellSingleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
         }
         clickTimerRef.current = window.setTimeout(() => {
-          onCellClick(clickCell);
+          onCellClick(cellBuilding);
           clickTimerRef.current = null;
         }, 180);
       };
 
       const handleCellDoubleClick = (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        const clickCell = getDisplayedClickCell(cellBuilding);
         if (clickTimerRef.current !== null) {
           window.clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
         }
-        onCellDoubleClick(clickCell);
+        onCellDoubleClick(cellBuilding);
       };
 
       const handleCellPointer = (part: CellHoverPart) => (event: ThreeEvent<PointerEvent>) => {
