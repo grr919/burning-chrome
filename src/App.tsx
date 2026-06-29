@@ -89,9 +89,29 @@ type BuildingViewState = {
   organizationName?: string;
 };
 
-type DirectoryEntry = {
+type WebsiteDirectoryRankCategory = 'currently_verified' | 'currently_resolves' | 'cached_or_observed' | 'unverified';
+
+type WebsiteDirectoryEntry = {
   hostname: string;
-  url: string;
+  url?: string | null;
+  source?: string | null;
+  source_detail?: string | null;
+  currently_resolves_to_ip: boolean;
+  http_status?: number | null;
+  redirect_url?: string | null;
+  title?: string | null;
+  server_header?: string | null;
+  confidence: number;
+  rank_category: WebsiteDirectoryRankCategory;
+  last_checked_at?: string | null;
+};
+
+type WebsiteDirectoryResponse = {
+  ipAddress: string;
+  cacheStatus: 'fresh' | 'refreshed' | 'disabled' | 'partial';
+  ttlHours: number;
+  results: WebsiteDirectoryEntry[];
+  warning?: string;
 };
 
 type DomainSearchResult = {
@@ -953,81 +973,15 @@ function extractPortNumbers(exposure: ExposureRecord | null): Set<number> {
   );
 }
 
-function normalizeHostnameCandidate(value: string): string | null {
-  const normalized = value.trim().toLowerCase().replace(/^dns:/i, '');
-  if (!normalized || /^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
-    return null;
-  }
-  if (!/^[a-z0-9.-]+$/.test(normalized) || !normalized.includes('.')) {
-    return null;
-  }
-  return normalized;
+function getWebsiteDirectoryCategoryLabel(category: WebsiteDirectoryRankCategory): string {
+  if (category === 'currently_verified') return 'Currently verified';
+  if (category === 'currently_resolves') return 'Currently resolves';
+  if (category === 'cached_or_observed') return 'Cached/observed';
+  return 'Unverified';
 }
 
-function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null) {
-  const ports = extractPortNumbers(exposure);
-  const hasHttp = ports.has(80);
-  const hasHttps = ports.has(443);
-
-  if (!hasHttp && !hasHttps) {
-    return null;
-  }
-
-  const candidates = [
-    ...(exposure?.hostnames ?? []),
-    ...(certificate?.subjectAltNames ?? []),
-    certificate?.subjectCn ?? '',
-    certificate?.host ?? '',
-  ]
-    .map((value) => normalizeHostnameCandidate(value))
-    .filter((value): value is string => Boolean(value));
-
-  const hostname = candidates.find((value) => !value.startsWith('*.'));
-  if (!hostname) {
-    return null;
-  }
-
-  return {
-    hostname,
-    hasHttp,
-    hasHttps,
-    primaryUrl: `${hasHttps ? 'https' : 'http'}://${hostname}`,
-    secondaryUrl: hasHttp && hasHttps ? `http://${hostname}` : null,
-  };
-}
-
-function getBuildingDirectoryEntries(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null): DirectoryEntry[] {
-  const ports = extractPortNumbers(exposure);
-  const hasHttp = ports.has(80);
-  const hasHttps = ports.has(443) || certificate?.status === 'ready';
-  const protocol = hasHttps ? 'https' : hasHttp ? 'http' : 'https';
-  const candidates = [
-    ...(exposure?.hostnames ?? []),
-    ...(certificate?.subjectAltNames ?? []),
-    certificate?.subjectCn ?? '',
-    certificate?.host ?? '',
-  ];
-  const seen = new Set<string>();
-  const entries: DirectoryEntry[] = [];
-
-  for (const candidate of candidates) {
-    const normalized = normalizeHostnameCandidate(candidate);
-    if (!normalized || normalized.startsWith('*.') || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    entries.push({
-      hostname: normalized,
-      url: `${protocol}://${normalized}`,
-    });
-
-    if (entries.length >= 8) {
-      break;
-    }
-  }
-
-  return entries;
+function getWebsiteDirectoryEntryUrl(entry: WebsiteDirectoryEntry): string {
+  return entry.url ?? `https://${entry.hostname}`;
 }
 
 function pseudoRandom(seed: number): number {
@@ -1176,6 +1130,9 @@ function App() {
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
   const [exposureResult, setExposureResult] = useState<ExposureRecord | null>(null);
   const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
+  const [websiteDirectoryResult, setWebsiteDirectoryResult] = useState<WebsiteDirectoryResponse | null>(null);
+  const [websiteDirectoryLoadingIp, setWebsiteDirectoryLoadingIp] = useState<string | null>(null);
+  const [websiteDirectoryError, setWebsiteDirectoryError] = useState<string | null>(null);
   const [sshLaunchLoadingIp, setSshLaunchLoadingIp] = useState<string | null>(null);
   const [sshLaunchResult, setSshLaunchResult] = useState<SshLaunchResponse | null>(null);
   const [pointerTarget, setPointerTarget] = useState<MultiplayerCell | undefined>(undefined);
@@ -1706,13 +1663,10 @@ function App() {
     streetTargetCell,
   ]);
 
-  const websiteCandidate = useMemo(
-    () => getWebsiteCandidate(exposureResult, certificateResult),
-    [exposureResult, certificateResult]
-  );
-  const buildingDirectoryEntries = useMemo(
-    () => getBuildingDirectoryEntries(exposureResult, certificateResult),
-    [exposureResult, certificateResult]
+  const getPrimaryWebsiteDirectoryEntry = (targetIp: string) => (
+    websiteDirectoryResult?.ipAddress === targetIp
+      ? websiteDirectoryResult.results.find((entry) => entry.rank_category === 'currently_verified' && entry.url) ?? null
+      : null
   );
 
   const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip', targetGridSystemMode: GridSystemMode = gridSystemMode) => {
@@ -1999,8 +1953,11 @@ function App() {
   const loadStreetTargetDetails = (target: { ipAddress: string }) => {
     setCertificateLoadingIp(target.ipAddress);
     setExposureLoadingIp(target.ipAddress);
+    setWebsiteDirectoryLoadingIp(target.ipAddress);
     setCertificateResult(null);
     setExposureResult(null);
+    setWebsiteDirectoryResult(null);
+    setWebsiteDirectoryError(null);
     setSshLaunchLoadingIp(null);
     setSshLaunchResult(null);
 
@@ -2091,6 +2048,29 @@ function App() {
         });
       } finally {
         setExposureLoadingIp(null);
+      }
+    })();
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/website-directory?ip=${encodeURIComponent(target.ipAddress)}`);
+        const json = (await response.json()) as WebsiteDirectoryResponse & { error?: string; details?: string };
+
+        if (!response.ok) {
+          setWebsiteDirectoryError(json.error ?? json.details ?? `Website directory lookup failed with status ${response.status}`);
+          setWebsiteDirectoryResult(null);
+          return;
+        }
+
+        setWebsiteDirectoryResult({
+          ...json,
+          results: Array.isArray(json.results) ? json.results : [],
+        });
+      } catch (error) {
+        setWebsiteDirectoryError(error instanceof Error ? error.message : 'Unknown website directory lookup error');
+        setWebsiteDirectoryResult(null);
+      } finally {
+        setWebsiteDirectoryLoadingIp(null);
       }
     })();
   };
@@ -3364,6 +3344,104 @@ function App() {
     </div>
   );
 
+  const renderWebsiteDirectorySection = (targetIp: string) => {
+    const categories: WebsiteDirectoryRankCategory[] = [
+      'currently_verified',
+      'currently_resolves',
+      'cached_or_observed',
+      'unverified',
+    ];
+    const results = websiteDirectoryResult?.ipAddress === targetIp ? websiteDirectoryResult.results : [];
+
+    return (
+      <div>
+        <div className="font-semibold">Website directory</div>
+        {websiteDirectoryLoadingIp === targetIp ? (
+          <div className="text-sm text-blue-700 mt-1">Looking up website directory for {targetIp}...</div>
+        ) : (
+          <div className="mt-2 space-y-3">
+            {websiteDirectoryError && (
+              <div className="text-sm text-red-700">{websiteDirectoryError}</div>
+            )}
+            {websiteDirectoryResult?.warning && websiteDirectoryResult.ipAddress === targetIp && (
+              <div className="text-sm text-blue-700">{websiteDirectoryResult.warning}</div>
+            )}
+            {results.length > 0 ? (
+              categories.map((category) => {
+                const entries = results.filter((entry) => entry.rank_category === category);
+                if (entries.length === 0) return null;
+
+                return (
+                  <div key={category}>
+                    <div className="text-xs font-semibold uppercase text-gray-500">
+                      {getWebsiteDirectoryCategoryLabel(category)}
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {entries.map((entry) => (
+                        <a
+                          key={`${entry.rank_category}-${entry.hostname}`}
+                          href={getWebsiteDirectoryEntryUrl(entry)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={entry.title ?? entry.hostname}
+                          className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
+                        >
+                          <span className="font-medium">{entry.hostname}</span>
+                          {typeof entry.http_status === 'number' && (
+                            <span className="ml-2 text-gray-600">HTTP {entry.http_status}</span>
+                          )}
+                          {entry.title && (
+                            <div className="mt-1 text-gray-700 no-underline">{entry.title}</div>
+                          )}
+                          <div className="mt-1 text-gray-600 no-underline">
+                            {entry.currently_resolves_to_ip ? 'Resolves to this IP' : 'Current DNS match not confirmed'}
+                            {entry.last_checked_at ? ` - checked ${new Date(entry.last_checked_at).toLocaleString()}` : ''}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              !websiteDirectoryError && (
+                <div className="text-sm text-gray-600">No likely websites found for this IP yet.</div>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderOpenWebsiteButton = (targetIp: string) => {
+    const entry = getPrimaryWebsiteDirectoryEntry(targetIp);
+    if (!entry) return null;
+
+    return (
+      <a
+        href={getWebsiteDirectoryEntryUrl(entry)}
+        target="_blank"
+        rel="noreferrer"
+        className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+        title={`Open ${entry.hostname}`}
+      >
+        Open website
+      </a>
+    );
+  };
+
+  const renderVerifiedWebsiteLabel = (targetIp: string) => {
+    const entry = getPrimaryWebsiteDirectoryEntry(targetIp);
+    if (!entry) return null;
+
+    return (
+      <div className="text-sm text-gray-700">
+        Verified website: {entry.hostname}
+      </div>
+    );
+  };
+
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
     onReturn: () => void,
@@ -3397,29 +3475,10 @@ function App() {
             {sshLaunchLoadingIp === target.ipAddress ? 'Opening SSH...' : 'Open SSH client'}
           </button>
 
-          {websiteCandidate && (
-            <a
-              href={websiteCandidate.primaryUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-              title={`Open ${websiteCandidate.hostname}`}
-            >
-              Open website
-            </a>
-          )}
+          {renderOpenWebsiteButton(target.ipAddress)}
         </div>
 
-        {websiteCandidate && (
-          <div className="text-sm text-gray-700">
-            Website candidate: {websiteCandidate.hostname}
-            {websiteCandidate.secondaryUrl ? (
-              <div className="text-xs text-gray-600 mt-1">
-                Tries HTTPS first. HTTP may also be available at {websiteCandidate.secondaryUrl}
-              </div>
-            ) : null}
-          </div>
-        )}
+        {renderVerifiedWebsiteLabel(target.ipAddress)}
 
         {sshLaunchResult && sshLaunchResult.ipAddress === target.ipAddress && (
           <div className={`text-sm ${sshLaunchResult.status === 'ready' ? 'text-green-700' : 'text-red-700'}`}>
@@ -3540,27 +3599,7 @@ function App() {
           )}
         </div>
 
-        <div>
-          <div className="font-semibold">Directory</div>
-          {buildingDirectoryEntries.length > 0 ? (
-            <div className="mt-2 space-y-1">
-              {buildingDirectoryEntries.map((entry) => (
-                <a
-                  key={entry.hostname}
-                  href={entry.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={entry.hostname}
-                  className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
-                >
-                  {entry.hostname}
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-600 mt-2">No websites identified.</div>
-          )}
-        </div>
+        {renderWebsiteDirectorySection(target.ipAddress)}
       </div>
       <button
         type="button"
@@ -3905,29 +3944,10 @@ function App() {
                     {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH...' : 'Open SSH client'}
                   </button>
 
-                  {websiteCandidate && (
-                    <a
-                      href={websiteCandidate.primaryUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-                      title={`Open ${websiteCandidate.hostname}`}
-                    >
-                      Open website
-                    </a>
-                  )}
+                  {renderOpenWebsiteButton(buildingView.ipAddress)}
                 </div>
 
-                {websiteCandidate && (
-                  <div className="text-sm text-gray-700">
-                    Website candidate: {websiteCandidate.hostname}
-                    {websiteCandidate.secondaryUrl ? (
-                      <div className="text-xs text-gray-600 mt-1">
-                        Tries HTTPS first. HTTP may also be available at {websiteCandidate.secondaryUrl}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
+                {renderVerifiedWebsiteLabel(buildingView.ipAddress)}
 
                 {sshLaunchResult && sshLaunchResult.ipAddress === buildingView.ipAddress && (
                   <div className={`text-sm ${sshLaunchResult.status === 'ready' ? 'text-green-700' : 'text-red-700'}`}>
@@ -4048,27 +4068,7 @@ function App() {
                   )}
                 </div>
 
-                <div>
-                  <div className="font-semibold">Directory</div>
-                  {buildingDirectoryEntries.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {buildingDirectoryEntries.map((entry) => (
-                        <a
-                          key={entry.hostname}
-                          href={entry.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={entry.hostname}
-                          className="block rounded bg-gray-100 p-2 text-xs text-blue-700 underline break-all hover:bg-gray-200"
-                        >
-                          {entry.hostname}
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600 mt-2">No websites identified.</div>
-                  )}
-                </div>
+                {renderWebsiteDirectorySection(buildingView.ipAddress)}
               </div>
             </div>
           </div>
