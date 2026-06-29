@@ -280,7 +280,7 @@ type IPGridProps = {
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
   onHoverInfoHtml?: (html: string) => void;
-  onHoverCellChange?: (cell: GridCellBuilding) => void;
+  onHoverCellChange?: (cell: GridCellBuilding | null) => void;
   infoDisplayMode?: InfoDisplayMode;
   remoteUsers?: MultiplayerPresence[];
   onRemoteUserClick?: (user: MultiplayerPresence) => void;
@@ -1891,6 +1891,7 @@ function IPGrid({
     hoveredCellRef.current = null;
     document.body.style.cursor = 'auto';
     setHoveredCell(null);
+    onHoverCellChange?.(null);
   };
 
   const visibleLookupAddresses = useMemo(

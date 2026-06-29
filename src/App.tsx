@@ -1945,12 +1945,17 @@ function App() {
   };
 
   const handleGridCellClick = (cell: GridCellBuilding) => {
+    const targetCell =
+      layoutMode === 'grid' && !buildingView && currentHoverCellRef.current
+        ? currentHoverCellRef.current
+        : cell;
+
     applyPlayerLocation({
       kind: 'ip',
-      ipAddress: cell.ipAddress,
-      x: cell.x,
-      y: cell.y,
-    }, { selectedIp: cell.ipAddress });
+      ipAddress: targetCell.ipAddress,
+      x: targetCell.x,
+      y: targetCell.y,
+    }, { selectedIp: targetCell.ipAddress });
   };
 
   const handleEnterStreetViewFromMenu = () => {
@@ -2802,7 +2807,13 @@ function App() {
         : !multiplayer.isChatReady
           ? 'Connecting to this location...'
           : 'Message this location';
-  const handlePointerTargetChange = (cell: GridCellBuilding) => {
+  const handlePointerTargetChange = (cell: GridCellBuilding | null) => {
+    if (!cell) {
+      currentHoverCellRef.current = null;
+      setPointerTarget(undefined);
+      return;
+    }
+
     currentHoverCellRef.current = cell;
     setPointerTarget(cell);
   };
