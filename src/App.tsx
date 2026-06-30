@@ -901,6 +901,39 @@ function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 
   return 'ok';
 }
 
+const NO_LOOKUP_INFORMATION_MESSAGE = 'No information available.';
+
+function isTechnicalLookupFailureText(value: string): boolean {
+  return [
+    /error:/i,
+    /SSL routines/i,
+    /ssl\/tls alert/i,
+    /handshake failure/i,
+    /\bENOTFOUND\b/i,
+    /\bECONNRESET\b/i,
+    /\bETIMEDOUT\b/i,
+    /\bEAI_AGAIN\b/i,
+    /fetch failed/i,
+    /lookup failed/i,
+    /timed out/i,
+    /no .*data.*available/i,
+    /no .*found/i,
+    /no public exposure data/i,
+    /\bat\s+\S+\s+\(.+:\d+:\d+\)/,
+    /\bat\s+.+:\d+:\d+/,
+    /ssl\/record\//i,
+    /\[object Object\]/i,
+  ].some((pattern) => pattern.test(value));
+}
+
+function maskTechnicalLookupText(value?: unknown): string {
+  const text = valueToDisplayText(value).trim();
+  if (!text || isTechnicalLookupFailureText(text)) {
+    return NO_LOOKUP_INFORMATION_MESSAGE;
+  }
+  return text;
+}
+
 type PortServiceDescription = {
   serviceName: string;
   category: string;
@@ -1018,7 +1051,7 @@ function getExposureSummarySentences(exposure: ExposureRecord | null): string[] 
     if (exposure.openPortCount > 0 || exposure.serviceCount > 0) {
       sentences.push('This IP appears to expose one or more public-facing services, but none matched the main categories shown here.');
     } else {
-      sentences.push('No public-facing services were observed for this IP.');
+      sentences.push(NO_LOOKUP_INFORMATION_MESSAGE);
     }
   }
 
@@ -3486,10 +3519,10 @@ function App() {
         ) : (
           <div className="mt-2 space-y-3">
             {websiteDirectoryError && (
-              <div className="text-sm text-red-700">{websiteDirectoryError}</div>
+              <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
             )}
             {websiteDirectoryResult?.warning && websiteDirectoryResult.ipAddress === targetIp && (
-              <div className="text-sm text-blue-700">{websiteDirectoryResult.warning}</div>
+              <div className="text-sm text-blue-700">{maskTechnicalLookupText(websiteDirectoryResult.warning)}</div>
             )}
             {results.length > 0 ? (
               categories.map((category) => {
@@ -3530,7 +3563,7 @@ function App() {
               })
             ) : (
               !websiteDirectoryError && (
-                <div className="text-sm text-gray-600">No likely websites found for this IP yet.</div>
+                <div className="text-sm text-gray-600">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
               )
             )}
           </div>
@@ -3656,11 +3689,11 @@ function App() {
                 )}
               </div>
 
-              {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
-              {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
+              {exposureResult.error && <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>}
+              {exposureResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(exposureResult.warning)}</div>}
             </div>
           ) : (
-            <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
+            <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
           )}
         </div>
 
@@ -3672,14 +3705,14 @@ function App() {
             certificateResult.status === 'error' ? (
               <div className="mt-2 space-y-2">
                 <div className="text-sm text-red-700">
-                  {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
+                  {NO_LOOKUP_INFORMATION_MESSAGE}
                 </div>
                 {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                   <div className="text-xs text-gray-600">
                     Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                   </div>
                 )}
-                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+                {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
               </div>
             ) : (
               <div className="space-y-3 mt-2">
@@ -3690,7 +3723,7 @@ function App() {
                       ? 'text-amber-700'
                       : 'text-red-700'
                 }`}>
-                  {certificateResult.statusSummary ?? 'HTTPS certificate retrieved successfully.'}
+                  {certificateResult.statusSummary ? maskTechnicalLookupText(certificateResult.statusSummary) : 'HTTPS certificate retrieved successfully.'}
                 </div>
 
                 <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
@@ -3706,7 +3739,7 @@ function App() {
                     <div><span className="text-gray-600">Authorized:</span> {certificateResult.authorized ? 'yes' : 'no'}</div>
                   )}
                   {certificateResult.authorizationError && (
-                    <div><span className="text-gray-600">Authorization issue:</span> {certificateResult.authorizationError}</div>
+                    <div><span className="text-gray-600">Authorization issue:</span> {maskTechnicalLookupText(certificateResult.authorizationError)}</div>
                   )}
                   {certificateResult.serialNumber && <div><span className="text-gray-600">Serial:</span> {certificateResult.serialNumber}</div>}
                   {certificateResult.fingerprint256 && <div className="break-all"><span className="text-gray-600">SHA-256:</span> {certificateResult.fingerprint256}</div>}
@@ -3731,11 +3764,11 @@ function App() {
                   </div>
                 )}
 
-                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+                {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
               </div>
             )
           ) : (
-            <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
+            <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
           )}
         </div>
 
@@ -4140,11 +4173,11 @@ function App() {
                         )}
                       </div>
 
-                      {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
-                      {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
+                      {exposureResult.error && <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>}
+                      {exposureResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(exposureResult.warning)}</div>}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
+                    <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
                   )}
                 </div>
 
@@ -4156,14 +4189,14 @@ function App() {
                     certificateResult.status === 'error' ? (
                       <div className="mt-2 space-y-2">
                         <div className="text-sm text-red-700">
-                          {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
+                          {NO_LOOKUP_INFORMATION_MESSAGE}
                         </div>
                         {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                           <div className="text-xs text-gray-600">
                             Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                           </div>
                         )}
-                        {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+                        {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
                       </div>
                     ) : (
                       <div className="space-y-3 mt-2">
@@ -4174,7 +4207,7 @@ function App() {
                               ? 'text-amber-700'
                               : 'text-red-700'
                         }`}>
-                          {certificateResult.statusSummary ?? 'HTTPS certificate retrieved successfully.'}
+                          {certificateResult.statusSummary ? maskTechnicalLookupText(certificateResult.statusSummary) : 'HTTPS certificate retrieved successfully.'}
                         </div>
 
                         <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
@@ -4190,7 +4223,7 @@ function App() {
                             <div><span className="text-gray-600">Authorized:</span> {certificateResult.authorized ? 'yes' : 'no'}</div>
                           )}
                           {certificateResult.authorizationError && (
-                            <div><span className="text-gray-600">Authorization issue:</span> {certificateResult.authorizationError}</div>
+                            <div><span className="text-gray-600">Authorization issue:</span> {maskTechnicalLookupText(certificateResult.authorizationError)}</div>
                           )}
                           {certificateResult.serialNumber && <div><span className="text-gray-600">Serial:</span> {certificateResult.serialNumber}</div>}
                           {certificateResult.fingerprint256 && <div className="break-all"><span className="text-gray-600">SHA-256:</span> {certificateResult.fingerprint256}</div>}
@@ -4215,11 +4248,11 @@ function App() {
                           </div>
                         )}
 
-                        {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
+                        {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
                       </div>
                     )
                   ) : (
-                    <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
+                    <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
                   )}
                 </div>
 
