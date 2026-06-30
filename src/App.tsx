@@ -901,6 +901,73 @@ function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 
   return 'ok';
 }
 
+type PortServiceDescription = {
+  serviceName: string;
+  category: string;
+  description: string;
+  product?: string;
+};
+
+const PORT_SERVICE_DESCRIPTIONS: Record<number, PortServiceDescription> = {
+  20: { serviceName: 'FTP', category: 'File Transfer', description: 'Transfers files between computers.' },
+  21: { serviceName: 'FTP', category: 'File Transfer', description: 'Transfers files between computers.' },
+  22: { serviceName: 'SSH', category: 'Remote Administration', description: 'Secure remote login for administrators.' },
+  23: { serviceName: 'Telnet', category: 'Remote Administration', description: 'Older unencrypted remote login service.' },
+  25: { serviceName: 'SMTP', category: 'Mail', description: 'Sends and receives email between mail servers.' },
+  53: { serviceName: 'DNS', category: 'Infrastructure', description: 'Resolves domain names to IP addresses.' },
+  80: { serviceName: 'HTTP', category: 'Web', description: 'Standard unencrypted web server.' },
+  110: { serviceName: 'POP3', category: 'Mail', description: 'Retrieves email from a mail server.' },
+  123: { serviceName: 'NTP', category: 'Infrastructure', description: 'Synchronizes computer clocks.' },
+  143: { serviceName: 'IMAP', category: 'Mail', description: 'Lets users access email stored on a mail server.' },
+  389: { serviceName: 'LDAP', category: 'Directory', description: 'Provides directory and identity lookup services.' },
+  443: { serviceName: 'HTTPS', category: 'Web', description: 'Secure encrypted web server.' },
+  445: { serviceName: 'SMB', category: 'File Sharing', description: 'Windows file and printer sharing.' },
+  465: { serviceName: 'SMTPS/SMTP Submission', category: 'Mail', description: 'Secure or authenticated email sending.' },
+  587: { serviceName: 'SMTPS/SMTP Submission', category: 'Mail', description: 'Secure or authenticated email sending.' },
+  993: { serviceName: 'IMAPS', category: 'Mail', description: 'Secure IMAP email access.' },
+  995: { serviceName: 'POP3S', category: 'Mail', description: 'Secure POP3 email access.' },
+  1433: { serviceName: 'Microsoft SQL Server', category: 'Database', description: 'Microsoft database server.' },
+  1521: { serviceName: 'Oracle Database', category: 'Database', description: 'Oracle database listener.' },
+  2049: { serviceName: 'NFS', category: 'File Sharing', description: 'Network file system service.' },
+  3306: { serviceName: 'MySQL', category: 'Database', description: 'MySQL database server.' },
+  3389: { serviceName: 'RDP', category: 'Remote Desktop', description: 'Windows graphical remote desktop access.' },
+  5432: { serviceName: 'PostgreSQL', category: 'Database', description: 'PostgreSQL database server.' },
+  5900: { serviceName: 'VNC', category: 'Remote Desktop', description: 'Remote graphical desktop service.' },
+  6379: { serviceName: 'Redis', category: 'Database/Cache', description: 'In-memory data store or cache.' },
+  8080: { serviceName: 'HTTP Alternate', category: 'Web', description: 'Alternate web server or web application port.' },
+  8443: { serviceName: 'HTTPS Alternate', category: 'Web', description: 'Alternate secure web server or web application port.' },
+  9200: { serviceName: 'Elasticsearch', category: 'Search/Database', description: 'Search and analytics engine.' },
+  11211: { serviceName: 'Memcached', category: 'Cache', description: 'In-memory caching service.' },
+  27017: { serviceName: 'MongoDB', category: 'Database', description: 'MongoDB database server.' },
+};
+
+function describePortService(
+  port: number | string,
+  existingServiceData?: { product?: string; banner?: string; name?: string; serviceNames?: string[] }
+): PortServiceDescription {
+  const portNumber = typeof port === 'number'
+    ? port
+    : Number.parseInt(port.match(/\d+/)?.[0] ?? '', 10);
+  const knownDescription = Number.isFinite(portNumber) ? PORT_SERVICE_DESCRIPTIONS[portNumber] : undefined;
+  const product = [
+    existingServiceData?.product,
+    existingServiceData?.banner,
+    existingServiceData?.name,
+    ...(existingServiceData?.serviceNames ?? []),
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return {
+    ...(knownDescription ?? {
+      serviceName: 'Unknown/custom service',
+      category: 'Unknown/Custom',
+      description: 'This port may be used by a custom, private, or less common public-facing service.',
+    }),
+    product: product.length > 0 ? [...new Set(product)].join(', ') : undefined,
+  };
+}
+
 function getExposureSummarySentences(exposure: ExposureRecord | null): string[] {
   if (!exposure) {
     return [];
@@ -3567,7 +3634,22 @@ function App() {
                 <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
                 <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
                 {exposureResult.topPorts.length > 0 && (
-                  <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
+                  <div>
+                    <span className="text-gray-600">Top ports:</span>
+                    <div className="mt-1 space-y-2">
+                      {exposureResult.topPorts.map((port) => {
+                        const service = describePortService(port, { serviceNames: exposureResult.serviceNames });
+                        return (
+                          <div key={port}>
+                            <div>Port {port} - {service.serviceName}</div>
+                            <div><span className="text-gray-600">Category:</span> {service.category}</div>
+                            <div><span className="text-gray-600">Description:</span> {service.description}</div>
+                            {service.product && <div><span className="text-gray-600">Product:</span> {service.product}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
                 {exposureResult.hostnames.length > 0 && (
                   <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
@@ -4036,7 +4118,22 @@ function App() {
                         <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
                         <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
                         {exposureResult.topPorts.length > 0 && (
-                          <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
+                          <div>
+                            <span className="text-gray-600">Top ports:</span>
+                            <div className="mt-1 space-y-2">
+                              {exposureResult.topPorts.map((port) => {
+                                const service = describePortService(port, { serviceNames: exposureResult.serviceNames });
+                                return (
+                                  <div key={port}>
+                                    <div>Port {port} - {service.serviceName}</div>
+                                    <div><span className="text-gray-600">Category:</span> {service.category}</div>
+                                    <div><span className="text-gray-600">Description:</span> {service.description}</div>
+                                    {service.product && <div><span className="text-gray-600">Product:</span> {service.product}</div>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
                         )}
                         {exposureResult.hostnames.length > 0 && (
                           <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
