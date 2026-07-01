@@ -108,6 +108,19 @@ type BookmarkEntry = {
   note: string;
 };
 
+type SharedBookmarkEntry = BookmarkEntry & {
+  userId: string;
+  updatedAt?: string;
+};
+
+type UserBookmarkRow = {
+  user_id: string;
+  ip_address: string;
+  organization_name: string | null;
+  note: string | null;
+  updated_at: string | null;
+};
+
 type StartingLocationPreference = 'default' | 'last_location' | 'random_grid1' | 'random_grid2' | 'specific';
 
 type StartingLocationPreferenceState = {
@@ -1131,6 +1144,12 @@ function App() {
   const [showStreetAndBuildingPanel, setShowStreetAndBuildingPanel] = useState(true);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [bookmarksStorageUserId, setBookmarksStorageUserId] = useState<string | null>(null);
+  const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
+  const [followStatus, setFollowStatus] = useState('');
+  const [followedBookmarks, setFollowedBookmarks] = useState<SharedBookmarkEntry[]>([]);
+  const [followedBookmarksStatus, setFollowedBookmarksStatus] = useState('');
+  const [isFollowedBookmarksLoading, setIsFollowedBookmarksLoading] = useState(false);
+  const [bookmarksSharingStatus, setBookmarksSharingStatus] = useState('');
   const [startingLocationPreference, setStartingLocationPreference] = useState<StartingLocationPreference>('default');
   const [specificStartingLocationIp, setSpecificStartingLocationIp] = useState('');
   const [startingLocationValidation, setStartingLocationValidation] = useState('');
@@ -1417,6 +1436,118 @@ function App() {
     }
     writeStoredBookmarks(multiplayer.currentUser.userId, bookmarks);
   }, [bookmarks, bookmarksStorageUserId, multiplayer.currentUser.userId]);
+  useEffect(() => {
+    if (!supabase || !isSupabaseConfigured || bookmarksStorageUserId !== multiplayer.currentUser.userId || bookmarks.length === 0) {
+      return;
+    }
+
+    let isActive = true;
+    const rows = bookmarks
+      .filter((bookmark) => isValidIpv4(bookmark.ipAddress))
+      .map((bookmark) => ({
+        user_id: multiplayer.currentUser.userId,
+        ip_address: bookmark.ipAddress,
+        organization_name: bookmark.organizationName ?? null,
+        note: bookmark.note,
+      }));
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    void supabase
+      .from('user_bookmarks')
+      .upsert(rows, { onConflict: 'user_id,ip_address' })
+      .then(({ error }) => {
+        if (!isActive) {
+          return;
+        }
+        setBookmarksSharingStatus(error ? 'Could not share saved locations.' : '');
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [bookmarks, bookmarksStorageUserId, multiplayer.currentUser.userId]);
+  useEffect(() => {
+    setFollowStatus('');
+    setFollowedUserIds([]);
+
+    if (!supabase || !isSupabaseConfigured) {
+      return;
+    }
+
+    let isActive = true;
+    void supabase
+      .from('user_follows')
+      .select('followed_user_id')
+      .eq('follower_user_id', multiplayer.currentUser.userId)
+      .then(({ data, error }) => {
+        if (!isActive) {
+          return;
+        }
+        if (error) {
+          setFollowStatus('Could not load follows.');
+          return;
+        }
+
+        const nextFollowedUserIds = Array.from(new Set(
+          (data ?? [])
+            .map((row) => typeof row.followed_user_id === 'string' ? row.followed_user_id : '')
+            .filter(Boolean)
+        ));
+        setFollowedUserIds(nextFollowedUserIds);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [multiplayer.currentUser.userId]);
+  useEffect(() => {
+    setFollowedBookmarksStatus('');
+    setFollowedBookmarks([]);
+
+    if (!supabase || !isSupabaseConfigured || followedUserIds.length === 0) {
+      setIsFollowedBookmarksLoading(false);
+      return;
+    }
+
+    if (!showBookmarksPanel) {
+      return;
+    }
+
+    let isActive = true;
+    setIsFollowedBookmarksLoading(true);
+    void supabase
+      .from('user_bookmarks')
+      .select('user_id, ip_address, organization_name, note, updated_at')
+      .in('user_id', followedUserIds)
+      .order('updated_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!isActive) {
+          return;
+        }
+        setIsFollowedBookmarksLoading(false);
+        if (error) {
+          setFollowedBookmarksStatus('Could not load followed users saved locations.');
+          return;
+        }
+
+        setFollowedBookmarks(((data ?? []) as UserBookmarkRow[])
+          .filter((row) => typeof row.ip_address === 'string' && isValidIpv4(row.ip_address))
+          .map((row) => ({
+            userId: row.user_id,
+            ipAddress: row.ip_address,
+            organizationName: row.organization_name?.trim() || undefined,
+            note: row.note ?? '',
+            updatedAt: row.updated_at ?? undefined,
+          })));
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [followedUserIds, showBookmarksPanel]);
   useEffect(() => {
     if (startupPreferenceAppliedRef.current) {
       return;
@@ -1719,6 +1850,45 @@ function App() {
     if (location.kind === 'building') {
       moveToIpLocation(location.ipAddress, 'building');
     }
+  };
+
+  const handleToggleFollowUser = (user: MultiplayerPresence) => {
+    if (!supabase || !isSupabaseConfigured || user.userId === multiplayer.currentUser.userId) {
+      return;
+    }
+
+    const isFollowing = followedUserIds.includes(user.userId);
+    setFollowStatus('');
+    setFollowedUserIds((current) => (
+      isFollowing
+        ? current.filter((userId) => userId !== user.userId)
+        : Array.from(new Set([...current, user.userId]))
+    ));
+
+    const request = isFollowing
+      ? supabase
+        .from('user_follows')
+        .delete()
+        .eq('follower_user_id', multiplayer.currentUser.userId)
+        .eq('followed_user_id', user.userId)
+      : supabase
+        .from('user_follows')
+        .insert({
+          follower_user_id: multiplayer.currentUser.userId,
+          followed_user_id: user.userId,
+        });
+
+    void request.then(({ error }) => {
+      if (!error) {
+        return;
+      }
+      setFollowStatus(isFollowing ? 'Could not unfollow user.' : 'Could not follow user.');
+      setFollowedUserIds((current) => (
+        isFollowing
+          ? Array.from(new Set([...current, user.userId]))
+          : current.filter((userId) => userId !== user.userId)
+      ));
+    });
   };
 
   const getCurrentBookmarkOrganizationName = (): string | undefined => {
@@ -2628,6 +2798,17 @@ function App() {
     [multiplayer.currentPresence, multiplayer.others]
   );
   const whoPanelUsers = avatarUsers;
+  const followedUserIdSet = useMemo(() => new Set(followedUserIds), [followedUserIds]);
+  const followedUserDisplayNames = useMemo(() => {
+    const displayNames = new Map<string, string>();
+    avatarUsers.forEach((user) => {
+      const displayName = user.displayName?.trim();
+      if (displayName) {
+        displayNames.set(user.userId, displayName);
+      }
+    });
+    return displayNames;
+  }, [avatarUsers]);
   const showGridSidePanel = showWhoPanel || showBookmarksPanel || showLocationPreferencesPanel;
   const currentStoredLastLocation = useMemo<StoredLastLocation>(() => ({
     gridSystemMode,
@@ -2978,10 +3159,26 @@ function App() {
           whoPanelUsers.map((user) => {
             const displayName = user.displayName?.trim() || 'Explorer';
             const ipAddress = getPresenceIpLocation(user);
+            const canFollowUser = isSupabaseConfigured && user.userId !== multiplayer.currentUser.userId;
+            const isFollowingUser = followedUserIdSet.has(user.userId);
             return (
               <div key={user.presenceId || user.sessionId} className="flex min-w-0 items-center gap-2 rounded bg-gray-100 p-2 text-sm">
                 <MiniUserAvatar user={user} />
-                <div className="min-w-0 flex-1 truncate font-semibold text-gray-900">{displayName}</div>
+                <div className="min-w-0 flex-1 truncate font-semibold text-gray-900">
+                  {displayName}
+                  {canFollowUser && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleToggleFollowUser(user);
+                      }}
+                      className="ml-1 text-xs font-normal text-blue-700 underline hover:text-blue-900"
+                    >
+                      {isFollowingUser ? '(unfollow)' : '(follow)'}
+                    </button>
+                  )}
+                </div>
                 {ipAddress ? (
                   <button
                     type="button"
@@ -3000,6 +3197,7 @@ function App() {
           <div className="text-sm text-gray-600">No users online.</div>
         )}
       </div>
+      {followStatus && <div className="mt-3 text-xs text-red-700">{followStatus}</div>}
       <button
         type="button"
         onClick={() => setShowWhoPanel(false)}
@@ -3047,6 +3245,44 @@ function App() {
         ) : (
           <div className="text-sm text-gray-600">No saved locations.</div>
         )}
+      </div>
+      {bookmarksSharingStatus && <div className="mt-3 text-xs text-red-700">{bookmarksSharingStatus}</div>}
+      <div className="mt-4 border-t border-gray-200 pt-3">
+        <div className="font-bold text-lg">Bookmarked by Others</div>
+        <div className="mt-3 space-y-2">
+          {!isSupabaseConfigured ? (
+            <div className="text-sm text-gray-600">Supabase env vars not configured.</div>
+          ) : followedUserIds.length === 0 ? (
+            <div className="text-sm text-gray-600">Follow users from the Who panel to see their saved locations here.</div>
+          ) : isFollowedBookmarksLoading ? (
+            <div className="text-sm text-gray-600">Loading saved locations...</div>
+          ) : followedBookmarks.length > 0 ? (
+            followedBookmarks.map((bookmark) => {
+              const displayName = followedUserDisplayNames.get(bookmark.userId) ?? 'Followed user';
+              return (
+                <div key={`${bookmark.userId}-${bookmark.ipAddress}`} className="rounded bg-gray-100 p-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => handleBookmarkClick(bookmark)}
+                    className="block font-mono text-xs text-blue-700 underline break-all hover:text-blue-900"
+                  >
+                    {bookmark.ipAddress}
+                  </button>
+                  <div className="mt-1 text-xs text-gray-600 break-words">{displayName}</div>
+                  {bookmark.organizationName && (
+                    <div className="mt-1 text-sm text-gray-700 break-words">{bookmark.organizationName}</div>
+                  )}
+                  {bookmark.note && (
+                    <div className="mt-2 text-xs text-gray-900 break-words">{bookmark.note}</div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-sm text-gray-600">No saved locations from followed users yet.</div>
+          )}
+        </div>
+        {followedBookmarksStatus && <div className="mt-3 text-xs text-red-700">{followedBookmarksStatus}</div>}
       </div>
       <button
         type="button"
