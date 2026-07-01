@@ -54,7 +54,6 @@ type ExposureRecord = {
   sourceProvider: 'internetdb';
   serviceCount: number;
   openPortCount: number;
-  openPorts?: number[];
   topPorts: string[];
   serviceNames: string[];
   labels: string[];
@@ -902,163 +901,6 @@ function getCertificateStatusTone(certificateResult: HttpsCertificateResponse): 
   return 'ok';
 }
 
-const NO_LOOKUP_INFORMATION_MESSAGE = 'No information available.';
-
-function isTechnicalLookupFailureText(value: string): boolean {
-  return [
-    /error:/i,
-    /SSL routines/i,
-    /ssl\/tls alert/i,
-    /handshake failure/i,
-    /\bENOTFOUND\b/i,
-    /\bECONNRESET\b/i,
-    /\bETIMEDOUT\b/i,
-    /\bEAI_AGAIN\b/i,
-    /fetch failed/i,
-    /lookup failed/i,
-    /timed out/i,
-    /no .*data.*available/i,
-    /no .*found/i,
-    /no public exposure data/i,
-    /\bat\s+\S+\s+\(.+:\d+:\d+\)/,
-    /\bat\s+.+:\d+:\d+/,
-    /ssl\/record\//i,
-    /\[object Object\]/i,
-  ].some((pattern) => pattern.test(value));
-}
-
-function maskTechnicalLookupText(value?: unknown): string {
-  const text = valueToDisplayText(value).trim();
-  if (!text || isTechnicalLookupFailureText(text)) {
-    return NO_LOOKUP_INFORMATION_MESSAGE;
-  }
-  return text;
-}
-
-type PortServiceDescription = {
-  serviceName: string;
-  category: string;
-  description: string;
-  product?: string;
-};
-
-const PORT_SERVICE_DESCRIPTIONS: Record<number, PortServiceDescription> = {
-  20: { serviceName: 'FTP', category: 'File Transfer', description: 'Transfers files between computers.' },
-  21: { serviceName: 'FTP', category: 'File Transfer', description: 'Transfers files between computers.' },
-  22: { serviceName: 'SSH', category: 'Remote Administration', description: 'Secure remote login for administrators.' },
-  23: { serviceName: 'Telnet', category: 'Remote Administration', description: 'Older unencrypted remote login service.' },
-  25: { serviceName: 'SMTP', category: 'Mail', description: 'Sends and receives email between mail servers.' },
-  53: { serviceName: 'DNS', category: 'Infrastructure', description: 'Resolves domain names to IP addresses.' },
-  80: { serviceName: 'HTTP', category: 'Web', description: 'Standard unencrypted web server.' },
-  110: { serviceName: 'POP3', category: 'Mail', description: 'Retrieves email from a mail server.' },
-  123: { serviceName: 'NTP', category: 'Infrastructure', description: 'Synchronizes computer clocks.' },
-  143: { serviceName: 'IMAP', category: 'Mail', description: 'Lets users access email stored on a mail server.' },
-  389: { serviceName: 'LDAP', category: 'Directory', description: 'Provides directory and identity lookup services.' },
-  443: { serviceName: 'HTTPS', category: 'Web', description: 'Secure encrypted web server.' },
-  445: { serviceName: 'SMB', category: 'File Sharing', description: 'Windows file and printer sharing.' },
-  465: { serviceName: 'SMTPS/SMTP Submission', category: 'Mail', description: 'Secure or authenticated email sending.' },
-  587: { serviceName: 'SMTPS/SMTP Submission', category: 'Mail', description: 'Secure or authenticated email sending.' },
-  993: { serviceName: 'IMAPS', category: 'Mail', description: 'Secure IMAP email access.' },
-  995: { serviceName: 'POP3S', category: 'Mail', description: 'Secure POP3 email access.' },
-  1433: { serviceName: 'Microsoft SQL Server', category: 'Database', description: 'Microsoft database server.' },
-  1521: { serviceName: 'Oracle Database', category: 'Database', description: 'Oracle database listener.' },
-  2049: { serviceName: 'NFS', category: 'File Sharing', description: 'Network file system service.' },
-  3306: { serviceName: 'MySQL', category: 'Database', description: 'MySQL database server.' },
-  3389: { serviceName: 'RDP', category: 'Remote Desktop', description: 'Windows graphical remote desktop access.' },
-  5432: { serviceName: 'PostgreSQL', category: 'Database', description: 'PostgreSQL database server.' },
-  5900: { serviceName: 'VNC', category: 'Remote Desktop', description: 'Remote graphical desktop service.' },
-  6379: { serviceName: 'Redis', category: 'Database/Cache', description: 'In-memory data store or cache.' },
-  8080: { serviceName: 'HTTP Alternate', category: 'Web', description: 'Alternate web server or web application port.' },
-  8443: { serviceName: 'HTTPS Alternate', category: 'Web', description: 'Alternate secure web server or web application port.' },
-  9200: { serviceName: 'Elasticsearch', category: 'Search/Database', description: 'Search and analytics engine.' },
-  11211: { serviceName: 'Memcached', category: 'Cache', description: 'In-memory caching service.' },
-  27017: { serviceName: 'MongoDB', category: 'Database', description: 'MongoDB database server.' },
-};
-
-function describePortService(
-  port: number | string,
-  existingServiceData?: { product?: string; banner?: string; name?: string; serviceNames?: string[] }
-): PortServiceDescription {
-  const portNumber = typeof port === 'number'
-    ? port
-    : Number.parseInt(port.match(/\d+/)?.[0] ?? '', 10);
-  const knownDescription = Number.isFinite(portNumber) ? PORT_SERVICE_DESCRIPTIONS[portNumber] : undefined;
-  const product = [
-    existingServiceData?.product,
-    existingServiceData?.banner,
-    existingServiceData?.name,
-    ...(existingServiceData?.serviceNames ?? []),
-  ]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value));
-
-  return {
-    ...(knownDescription ?? {
-      serviceName: 'Unknown/custom service',
-      category: 'Unknown/Custom',
-      description: 'This port may be used by a custom, private, or less common public-facing service.',
-    }),
-    product: product.length > 0 ? [...new Set(product)].join(', ') : undefined,
-  };
-}
-
-type OpenPortDescription = {
-  serviceName: string;
-  description: string;
-};
-
-const OPEN_PORT_DESCRIPTIONS: Record<number, OpenPortDescription> = {
-  20: { serviceName: 'FTP', description: 'File transfer service, usually requiring authorized credentials.' },
-  21: { serviceName: 'FTP control', description: 'Control channel for file transfer sessions.' },
-  22: { serviceName: 'SSH', description: 'Secure remote login service, usually requiring authorized credentials.' },
-  23: { serviceName: 'Telnet', description: 'Older remote login service that is often unencrypted.' },
-  25: { serviceName: 'SMTP', description: 'Mail transfer service for sending email between servers.' },
-  53: { serviceName: 'DNS', description: 'Domain Name System service for answering domain-name queries.' },
-  80: { serviceName: 'HTTP', description: 'Web service or web API over unencrypted HTTP.' },
-  110: { serviceName: 'POP3', description: 'Email retrieval service for mailbox access.' },
-  143: { serviceName: 'IMAP', description: 'Email access service for mail stored on a server.' },
-  443: { serviceName: 'HTTPS', description: 'Secure web service or web API.' },
-  445: { serviceName: 'SMB', description: 'File and printer sharing service, usually requiring authorized credentials.' },
-  587: { serviceName: 'SMTP submission', description: 'Authenticated email submission service.' },
-  993: { serviceName: 'IMAPS', description: 'Secure IMAP email access service.' },
-  995: { serviceName: 'POP3S', description: 'Secure POP3 email retrieval service.' },
-  1433: { serviceName: 'Microsoft SQL Server', description: 'Database service, usually requiring authorized credentials.' },
-  3306: { serviceName: 'MySQL/MariaDB', description: 'Database service, usually requiring authorized credentials.' },
-  3389: { serviceName: 'Remote Desktop', description: 'Graphical remote desktop service, usually requiring authorized credentials.' },
-  5432: { serviceName: 'PostgreSQL', description: 'Database service, usually requiring authorized credentials.' },
-  5900: { serviceName: 'VNC', description: 'Remote graphical desktop service, usually requiring authorized credentials.' },
-  6379: { serviceName: 'Redis', description: 'In-memory data store or cache service.' },
-  8080: { serviceName: 'Alternate HTTP', description: 'Alternate web service or web application port.' },
-  8443: { serviceName: 'Alternate HTTPS', description: 'Alternate secure web service or web application port.' },
-  27017: { serviceName: 'MongoDB', description: 'Database service, usually requiring authorized credentials.' },
-};
-
-function getKnownOpenPorts(exposure: ExposureRecord | null): number[] {
-  if (!exposure) {
-    return [];
-  }
-
-  const portValues = exposure.openPorts?.length
-    ? exposure.openPorts
-    : exposure.topPorts
-      .map((entry) => {
-        const match = entry.match(/^(\d+)/);
-        return match ? Number.parseInt(match[1], 10) : null;
-      })
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-  return [...new Set(portValues)]
-    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535)
-    .sort((a, b) => a - b);
-}
-
-function describeOpenPort(port: number): OpenPortDescription {
-  return OPEN_PORT_DESCRIPTIONS[port] ?? {
-    serviceName: 'Unknown service',
-    description: 'No common service label is available for this port.',
-  };
-}
-
 function getExposureSummarySentences(exposure: ExposureRecord | null): string[] {
   if (!exposure) {
     return [];
@@ -1109,7 +951,7 @@ function getExposureSummarySentences(exposure: ExposureRecord | null): string[] 
     if (exposure.openPortCount > 0 || exposure.serviceCount > 0) {
       sentences.push('This IP appears to expose one or more public-facing services, but none matched the main categories shown here.');
     } else {
-      sentences.push(NO_LOOKUP_INFORMATION_MESSAGE);
+      sentences.push('No public-facing services were observed for this IP.');
     }
   }
 
@@ -1346,7 +1188,6 @@ function App() {
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
   const [exposureResult, setExposureResult] = useState<ExposureRecord | null>(null);
   const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
-  const [openPortsPanelIp, setOpenPortsPanelIp] = useState<string | null>(null);
   const [websiteDirectoryResult, setWebsiteDirectoryResult] = useState<WebsiteDirectoryResponse | null>(null);
   const [websiteDirectoryLoadingIp, setWebsiteDirectoryLoadingIp] = useState<string | null>(null);
   const [websiteDirectoryError, setWebsiteDirectoryError] = useState<string | null>(null);
@@ -2173,7 +2014,6 @@ function App() {
     setWebsiteDirectoryLoadingIp(target.ipAddress);
     setCertificateResult(null);
     setExposureResult(null);
-    setOpenPortsPanelIp(null);
     setWebsiteDirectoryResult(null);
     setWebsiteDirectoryError(null);
     setSshLaunchLoadingIp(null);
@@ -2884,7 +2724,6 @@ function App() {
 
   const handleExitBuildingView = () => {
     setBuildingView(null);
-    setOpenPortsPanelIp(null);
     setStreetFocusCell(streetTargetCell ? { x: clampStreetCell(streetTargetCell.x), y: clampStreetCell(streetTargetCell.y) } : null);
     setCertificateLoadingIp(null);
     setExposureLoadingIp(null);
@@ -3580,10 +3419,10 @@ function App() {
         ) : (
           <div className="mt-2 space-y-3">
             {websiteDirectoryError && (
-              <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+              <div className="text-sm text-red-700">{websiteDirectoryError}</div>
             )}
             {websiteDirectoryResult?.warning && websiteDirectoryResult.ipAddress === targetIp && (
-              <div className="text-sm text-blue-700">{maskTechnicalLookupText(websiteDirectoryResult.warning)}</div>
+              <div className="text-sm text-blue-700">{websiteDirectoryResult.warning}</div>
             )}
             {results.length > 0 ? (
               categories.map((category) => {
@@ -3624,7 +3463,7 @@ function App() {
               })
             ) : (
               !websiteDirectoryError && (
-                <div className="text-sm text-gray-600">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+                <div className="text-sm text-gray-600">No likely websites found for this IP yet.</div>
               )
             )}
           </div>
@@ -3661,61 +3500,12 @@ function App() {
     );
   };
 
-  const renderOpenPortCountValue = (targetIp: string) => {
-    if (exposureResult?.ipAddress !== targetIp) {
-      return 0;
-    }
-
-    const openPorts = getKnownOpenPorts(exposureResult);
-    if (openPorts.length === 0) {
-      return exposureResult?.openPortCount ?? 0;
-    }
-
-    return (
-      <button
-        type="button"
-        onClick={() => setOpenPortsPanelIp(targetIp)}
-        className="text-blue-700 underline"
-      >
-        {exposureResult?.openPortCount ?? openPorts.length}
-      </button>
-    );
-  };
-
-  const renderOpenPortsPanel = (targetIp: string, onClose: () => void) => {
-    const openPorts = getKnownOpenPorts(exposureResult);
-
-    return (
-      <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
-        <div className="font-bold text-lg">Open Ports: {targetIp}</div>
-        <div className="mt-4 max-h-[60vh] overflow-auto space-y-2">
-          {openPorts.map((port) => {
-            const service = describeOpenPort(port);
-            return (
-              <div key={port} className="text-xs bg-gray-100 rounded p-2">
-                <div>{port} - {service.serviceName}</div>
-                <div className="mt-1 text-gray-700">{service.description}</div>
-              </div>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-        >
-          Close this panel
-        </button>
-      </div>
-    );
-  };
-
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
     onReturn: () => void,
     helperText: string,
     onClose: () => void
-  ) => openPortsPanelIp === target.ipAddress ? renderOpenPortsPanel(target.ipAddress, onClose) : (
+  ) => (
     <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Street and Building View: {target.ipAddress}</div>
       {target.organizationName?.trim() && (
@@ -3775,35 +3565,20 @@ function App() {
 
               <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                 <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
-                <div><span className="text-gray-600">Observed open ports:</span> {renderOpenPortCountValue(target.ipAddress)}</div>
+                <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
                 {exposureResult.topPorts.length > 0 && (
-                  <div>
-                    <span className="text-gray-600">Top ports:</span>
-                    <div className="mt-1 space-y-2">
-                      {exposureResult.topPorts.map((port) => {
-                        const service = describePortService(port, { serviceNames: exposureResult.serviceNames });
-                        return (
-                          <div key={port}>
-                            <div>Port {port} - {service.serviceName}</div>
-                            <div><span className="text-gray-600">Category:</span> {service.category}</div>
-                            <div><span className="text-gray-600">Description:</span> {service.description}</div>
-                            {service.product && <div><span className="text-gray-600">Product:</span> {service.product}</div>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
                 )}
                 {exposureResult.hostnames.length > 0 && (
                   <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
                 )}
               </div>
 
-              {exposureResult.error && <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>}
-              {exposureResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(exposureResult.warning)}</div>}
+              {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
+              {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
             </div>
           ) : (
-            <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+            <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
           )}
         </div>
 
@@ -3815,14 +3590,14 @@ function App() {
             certificateResult.status === 'error' ? (
               <div className="mt-2 space-y-2">
                 <div className="text-sm text-red-700">
-                  {NO_LOOKUP_INFORMATION_MESSAGE}
+                  {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
                 </div>
                 {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                   <div className="text-xs text-gray-600">
                     Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                   </div>
                 )}
-                {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
+                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
               </div>
             ) : (
               <div className="space-y-3 mt-2">
@@ -3833,7 +3608,7 @@ function App() {
                       ? 'text-amber-700'
                       : 'text-red-700'
                 }`}>
-                  {certificateResult.statusSummary ? maskTechnicalLookupText(certificateResult.statusSummary) : 'HTTPS certificate retrieved successfully.'}
+                  {certificateResult.statusSummary ?? 'HTTPS certificate retrieved successfully.'}
                 </div>
 
                 <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
@@ -3849,7 +3624,7 @@ function App() {
                     <div><span className="text-gray-600">Authorized:</span> {certificateResult.authorized ? 'yes' : 'no'}</div>
                   )}
                   {certificateResult.authorizationError && (
-                    <div><span className="text-gray-600">Authorization issue:</span> {maskTechnicalLookupText(certificateResult.authorizationError)}</div>
+                    <div><span className="text-gray-600">Authorization issue:</span> {certificateResult.authorizationError}</div>
                   )}
                   {certificateResult.serialNumber && <div><span className="text-gray-600">Serial:</span> {certificateResult.serialNumber}</div>}
                   {certificateResult.fingerprint256 && <div className="break-all"><span className="text-gray-600">SHA-256:</span> {certificateResult.fingerprint256}</div>}
@@ -3874,11 +3649,11 @@ function App() {
                   </div>
                 )}
 
-                {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
+                {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
               </div>
             )
           ) : (
-            <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+            <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
           )}
         </div>
 
@@ -4200,7 +3975,6 @@ function App() {
               )}
             </div>
 
-            {openPortsPanelIp === buildingView.ipAddress ? renderOpenPortsPanel(buildingView.ipAddress, () => setOpenPortsPanelIp(null)) : (
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
               <div className="font-bold text-lg">Street and Building View: {buildingView.ipAddress}</div>
               {buildingView.organizationName?.trim() && (
@@ -4260,35 +4034,20 @@ function App() {
 
                       <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                         <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
-                        <div><span className="text-gray-600">Observed open ports:</span> {renderOpenPortCountValue(buildingView.ipAddress)}</div>
+                        <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
                         {exposureResult.topPorts.length > 0 && (
-                          <div>
-                            <span className="text-gray-600">Top ports:</span>
-                            <div className="mt-1 space-y-2">
-                              {exposureResult.topPorts.map((port) => {
-                                const service = describePortService(port, { serviceNames: exposureResult.serviceNames });
-                                return (
-                                  <div key={port}>
-                                    <div>Port {port} - {service.serviceName}</div>
-                                    <div><span className="text-gray-600">Category:</span> {service.category}</div>
-                                    <div><span className="text-gray-600">Description:</span> {service.description}</div>
-                                    {service.product && <div><span className="text-gray-600">Product:</span> {service.product}</div>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          <div><span className="text-gray-600">Top ports:</span> {exposureResult.topPorts.join(', ')}</div>
                         )}
                         {exposureResult.hostnames.length > 0 && (
                           <div className="break-all"><span className="text-gray-600">Hostnames:</span> {renderStreetBuildingLinkedList(exposureResult.hostnames)}</div>
                         )}
                       </div>
 
-                      {exposureResult.error && <div className="text-sm text-red-700">{NO_LOOKUP_INFORMATION_MESSAGE}</div>}
-                      {exposureResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(exposureResult.warning)}</div>}
+                      {exposureResult.error && <div className="text-sm text-red-700">{exposureResult.error}</div>}
+                      {exposureResult.warning && <div className="text-sm text-blue-700">{exposureResult.warning}</div>}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+                    <div className="text-sm text-gray-600 mt-2">No exposure data available yet.</div>
                   )}
                 </div>
 
@@ -4300,14 +4059,14 @@ function App() {
                     certificateResult.status === 'error' ? (
                       <div className="mt-2 space-y-2">
                         <div className="text-sm text-red-700">
-                          {NO_LOOKUP_INFORMATION_MESSAGE}
+                          {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
                         </div>
                         {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                           <div className="text-xs text-gray-600">
                             Attempted: {renderStreetBuildingLinkedList(certificateResult.attemptedHosts)}
                           </div>
                         )}
-                        {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
+                        {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
                       </div>
                     ) : (
                       <div className="space-y-3 mt-2">
@@ -4318,7 +4077,7 @@ function App() {
                               ? 'text-amber-700'
                               : 'text-red-700'
                         }`}>
-                          {certificateResult.statusSummary ? maskTechnicalLookupText(certificateResult.statusSummary) : 'HTTPS certificate retrieved successfully.'}
+                          {certificateResult.statusSummary ?? 'HTTPS certificate retrieved successfully.'}
                         </div>
 
                         <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
@@ -4334,7 +4093,7 @@ function App() {
                             <div><span className="text-gray-600">Authorized:</span> {certificateResult.authorized ? 'yes' : 'no'}</div>
                           )}
                           {certificateResult.authorizationError && (
-                            <div><span className="text-gray-600">Authorization issue:</span> {maskTechnicalLookupText(certificateResult.authorizationError)}</div>
+                            <div><span className="text-gray-600">Authorization issue:</span> {certificateResult.authorizationError}</div>
                           )}
                           {certificateResult.serialNumber && <div><span className="text-gray-600">Serial:</span> {certificateResult.serialNumber}</div>}
                           {certificateResult.fingerprint256 && <div className="break-all"><span className="text-gray-600">SHA-256:</span> {certificateResult.fingerprint256}</div>}
@@ -4359,18 +4118,17 @@ function App() {
                           </div>
                         )}
 
-                        {certificateResult.warning && <div className="text-sm text-blue-700">{maskTechnicalLookupText(certificateResult.warning)}</div>}
+                        {certificateResult.warning && <div className="text-sm text-blue-700">{certificateResult.warning}</div>}
                       </div>
                     )
                   ) : (
-                    <div className="text-sm text-gray-600 mt-2">{NO_LOOKUP_INFORMATION_MESSAGE}</div>
+                    <div className="text-sm text-gray-600 mt-2">No HTTPS certificate data available yet.</div>
                   )}
                 </div>
 
                 {renderWebsiteDirectorySection(buildingView.ipAddress)}
               </div>
             </div>
-            )}
           </div>
         ) : layoutMode === 'street' ? (
           <div className={`flex-1 min-h-0 flex ${showStreetAndBuildingPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
