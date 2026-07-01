@@ -6,6 +6,7 @@ type ExposureRecord = {
   sourceProvider: 'internetdb';
   serviceCount: number;
   openPortCount: number;
+  openPorts: number[];
   topPorts: string[];
   serviceNames: string[];
   labels: string[];
@@ -53,6 +54,7 @@ function mapInternetDbRecord(ipAddress: string, json: any): ExposureRecord {
     sourceProvider: 'internetdb',
     serviceCount: Math.max(ports.length, serviceNames.length, hostnames.length),
     openPortCount: ports.length,
+    openPorts: ports,
     topPorts,
     serviceNames,
     labels: [...tags, ...cpes].slice(0, 12),
@@ -78,6 +80,7 @@ async function lookupInternetDb(ipAddress: string): Promise<ExposureRecord> {
       sourceProvider: 'internetdb',
       serviceCount: 0,
       openPortCount: 0,
+      openPorts: [],
       topPorts: [],
       serviceNames: [],
       labels: [],
@@ -126,6 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sourceProvider: 'internetdb' as const,
             serviceCount: 0,
             openPortCount: 0,
+            openPorts: [],
             topPorts: [],
             serviceNames: [],
             labels: [],

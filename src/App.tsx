@@ -54,6 +54,7 @@ type ExposureRecord = {
   sourceProvider: 'internetdb';
   serviceCount: number;
   openPortCount: number;
+  openPorts?: number[];
   topPorts: string[];
   serviceNames: string[];
   labels: string[];
@@ -1001,6 +1002,63 @@ function describePortService(
   };
 }
 
+type OpenPortDescription = {
+  serviceName: string;
+  description: string;
+};
+
+const OPEN_PORT_DESCRIPTIONS: Record<number, OpenPortDescription> = {
+  20: { serviceName: 'FTP', description: 'File transfer service, usually requiring authorized credentials.' },
+  21: { serviceName: 'FTP control', description: 'Control channel for file transfer sessions.' },
+  22: { serviceName: 'SSH', description: 'Secure remote login service, usually requiring authorized credentials.' },
+  23: { serviceName: 'Telnet', description: 'Older remote login service that is often unencrypted.' },
+  25: { serviceName: 'SMTP', description: 'Mail transfer service for sending email between servers.' },
+  53: { serviceName: 'DNS', description: 'Domain Name System service for answering domain-name queries.' },
+  80: { serviceName: 'HTTP', description: 'Web service or web API over unencrypted HTTP.' },
+  110: { serviceName: 'POP3', description: 'Email retrieval service for mailbox access.' },
+  143: { serviceName: 'IMAP', description: 'Email access service for mail stored on a server.' },
+  443: { serviceName: 'HTTPS', description: 'Secure web service or web API.' },
+  445: { serviceName: 'SMB', description: 'File and printer sharing service, usually requiring authorized credentials.' },
+  587: { serviceName: 'SMTP submission', description: 'Authenticated email submission service.' },
+  993: { serviceName: 'IMAPS', description: 'Secure IMAP email access service.' },
+  995: { serviceName: 'POP3S', description: 'Secure POP3 email retrieval service.' },
+  1433: { serviceName: 'Microsoft SQL Server', description: 'Database service, usually requiring authorized credentials.' },
+  3306: { serviceName: 'MySQL/MariaDB', description: 'Database service, usually requiring authorized credentials.' },
+  3389: { serviceName: 'Remote Desktop', description: 'Graphical remote desktop service, usually requiring authorized credentials.' },
+  5432: { serviceName: 'PostgreSQL', description: 'Database service, usually requiring authorized credentials.' },
+  5900: { serviceName: 'VNC', description: 'Remote graphical desktop service, usually requiring authorized credentials.' },
+  6379: { serviceName: 'Redis', description: 'In-memory data store or cache service.' },
+  8080: { serviceName: 'Alternate HTTP', description: 'Alternate web service or web application port.' },
+  8443: { serviceName: 'Alternate HTTPS', description: 'Alternate secure web service or web application port.' },
+  27017: { serviceName: 'MongoDB', description: 'Database service, usually requiring authorized credentials.' },
+};
+
+function getKnownOpenPorts(exposure: ExposureRecord | null): number[] {
+  if (!exposure) {
+    return [];
+  }
+
+  const portValues = exposure.openPorts?.length
+    ? exposure.openPorts
+    : exposure.topPorts
+      .map((entry) => {
+        const match = entry.match(/^(\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  return [...new Set(portValues)]
+    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535)
+    .sort((a, b) => a - b);
+}
+
+function describeOpenPort(port: number): OpenPortDescription {
+  return OPEN_PORT_DESCRIPTIONS[port] ?? {
+    serviceName: 'Unknown service',
+    description: 'No common service label is available for this port.',
+  };
+}
+
 function getExposureSummarySentences(exposure: ExposureRecord | null): string[] {
   if (!exposure) {
     return [];
@@ -1288,6 +1346,7 @@ function App() {
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
   const [exposureResult, setExposureResult] = useState<ExposureRecord | null>(null);
   const [exposureLoadingIp, setExposureLoadingIp] = useState<string | null>(null);
+  const [openPortsPanelIp, setOpenPortsPanelIp] = useState<string | null>(null);
   const [websiteDirectoryResult, setWebsiteDirectoryResult] = useState<WebsiteDirectoryResponse | null>(null);
   const [websiteDirectoryLoadingIp, setWebsiteDirectoryLoadingIp] = useState<string | null>(null);
   const [websiteDirectoryError, setWebsiteDirectoryError] = useState<string | null>(null);
@@ -2114,6 +2173,7 @@ function App() {
     setWebsiteDirectoryLoadingIp(target.ipAddress);
     setCertificateResult(null);
     setExposureResult(null);
+    setOpenPortsPanelIp(null);
     setWebsiteDirectoryResult(null);
     setWebsiteDirectoryError(null);
     setSshLaunchLoadingIp(null);
@@ -2824,6 +2884,7 @@ function App() {
 
   const handleExitBuildingView = () => {
     setBuildingView(null);
+    setOpenPortsPanelIp(null);
     setStreetFocusCell(streetTargetCell ? { x: clampStreetCell(streetTargetCell.x), y: clampStreetCell(streetTargetCell.y) } : null);
     setCertificateLoadingIp(null);
     setExposureLoadingIp(null);
@@ -3600,12 +3661,61 @@ function App() {
     );
   };
 
+  const renderOpenPortCountValue = (targetIp: string) => {
+    if (exposureResult?.ipAddress !== targetIp) {
+      return 0;
+    }
+
+    const openPorts = getKnownOpenPorts(exposureResult);
+    if (openPorts.length === 0) {
+      return exposureResult?.openPortCount ?? 0;
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => setOpenPortsPanelIp(targetIp)}
+        className="text-blue-700 underline"
+      >
+        {exposureResult?.openPortCount ?? openPorts.length}
+      </button>
+    );
+  };
+
+  const renderOpenPortsPanel = (targetIp: string, onClose: () => void) => {
+    const openPorts = getKnownOpenPorts(exposureResult);
+
+    return (
+      <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+        <div className="font-bold text-lg">Open Ports: {targetIp}</div>
+        <div className="mt-4 max-h-[60vh] overflow-auto space-y-2">
+          {openPorts.map((port) => {
+            const service = describeOpenPort(port);
+            return (
+              <div key={port} className="text-xs bg-gray-100 rounded p-2">
+                <div>{port} - {service.serviceName}</div>
+                <div className="mt-1 text-gray-700">{service.description}</div>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 w-full px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+        >
+          Close this panel
+        </button>
+      </div>
+    );
+  };
+
   const renderStreetAndBuildingInfoPanel = (
     target: { ipAddress: string; organizationName?: string | null },
     onReturn: () => void,
     helperText: string,
     onClose: () => void
-  ) => (
+  ) => openPortsPanelIp === target.ipAddress ? renderOpenPortsPanel(target.ipAddress, onClose) : (
     <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Street and Building View: {target.ipAddress}</div>
       {target.organizationName?.trim() && (
@@ -3665,7 +3775,7 @@ function App() {
 
               <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                 <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
-                <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
+                <div><span className="text-gray-600">Observed open ports:</span> {renderOpenPortCountValue(target.ipAddress)}</div>
                 {exposureResult.topPorts.length > 0 && (
                   <div>
                     <span className="text-gray-600">Top ports:</span>
@@ -4090,6 +4200,7 @@ function App() {
               )}
             </div>
 
+            {openPortsPanelIp === buildingView.ipAddress ? renderOpenPortsPanel(buildingView.ipAddress, () => setOpenPortsPanelIp(null)) : (
             <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
               <div className="font-bold text-lg">Street and Building View: {buildingView.ipAddress}</div>
               {buildingView.organizationName?.trim() && (
@@ -4149,7 +4260,7 @@ function App() {
 
                       <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                         <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
-                        <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
+                        <div><span className="text-gray-600">Observed open ports:</span> {renderOpenPortCountValue(buildingView.ipAddress)}</div>
                         {exposureResult.topPorts.length > 0 && (
                           <div>
                             <span className="text-gray-600">Top ports:</span>
@@ -4259,6 +4370,7 @@ function App() {
                 {renderWebsiteDirectorySection(buildingView.ipAddress)}
               </div>
             </div>
+            )}
           </div>
         ) : layoutMode === 'street' ? (
           <div className={`flex-1 min-h-0 flex ${showStreetAndBuildingPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
