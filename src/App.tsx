@@ -181,8 +181,25 @@ const BOOKMARKS_STORAGE_PREFIX = 'cyberspace.bookmarks';
 const DEBUG_PRESENCE = false;
 const DEBUG_REMOTE_AVATARS = false;
 const DEBUG_AVATAR_PIPELINE = false;
+const TOUCH_WEBGL_DPR: [number, number] = [1, 1.5];
 const miniAvatarModelLoader = new GLTFLoader();
 const miniAvatarModelCache = new Map<string, Promise<THREE.Group>>();
+
+function isConstrainedWebGLDevice(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const hasTouch = window.navigator.maxTouchPoints > 0;
+  const hasCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const lacksHover = window.matchMedia?.('(hover: none)').matches ?? false;
+
+  return hasTouch || hasCoarsePointer || lacksHover;
+}
+
+function getCanvasDpr(): [number, number] | undefined {
+  return isConstrainedWebGLDevice() ? TOUCH_WEBGL_DPR : undefined;
+}
 
 function validateAvatarFile(file: File): string | null {
   if (!file.name.toLowerCase().endsWith('.glb')) {
@@ -343,13 +360,19 @@ function MiniCustomAvatar({ avatarUrl, color }: { avatarUrl?: string; color: str
 }
 
 function MiniUserAvatar({ user }: { user: MultiplayerPresence }) {
+  const renderWebGLAvatar = !isConstrainedWebGLDevice();
+
   return (
     <div className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-gray-300 bg-white" aria-hidden="true">
-      <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }}>
-        <ambientLight intensity={0.85} />
-        <directionalLight position={[2, 2, 3]} intensity={0.9} />
-        <MiniCustomAvatar avatarUrl={user.avatarUrl} color={user.color} />
-      </Canvas>
+      {renderWebGLAvatar ? (
+        <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }}>
+          <ambientLight intensity={0.85} />
+          <directionalLight position={[2, 2, 3]} intensity={0.9} />
+          <MiniCustomAvatar avatarUrl={user.avatarUrl} color={user.color} />
+        </Canvas>
+      ) : (
+        <div className="h-full w-full" style={{ backgroundColor: user.color }} />
+      )}
     </div>
   );
 }
@@ -1113,6 +1136,7 @@ function StreetGridCamera({
 
 
 function App() {
+  const canvasDpr = useMemo(() => getCanvasDpr(), []);
   const [zoomLevel, setZoomLevel] = useState<number>(0);
   const [currentPosition, setCurrentPosition] = useState<GridPosition>(DEFAULT_GRID_POSITION);
   const [showHeightLegend, setShowHeightLegend] = useState<boolean>(false);
@@ -3583,6 +3607,7 @@ function App() {
         <Canvas
           key={viewKey}
           camera={{ position: [0, 1.55, 0], fov: 62 }}
+          dpr={canvasDpr}
           shadows
           onCreated={({ camera }) => {
             cameraRef.current = camera as THREE.PerspectiveCamera;
@@ -4123,6 +4148,7 @@ function App() {
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
                 camera={{ position: [0, 16, 22], fov: 45 }}
+                dpr={canvasDpr}
                 shadows
                 onCreated={({ camera }) => {
                   cameraRef.current = camera as THREE.PerspectiveCamera;
