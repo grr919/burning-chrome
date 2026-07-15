@@ -299,7 +299,23 @@ function cloneMiniAvatarScene(scene: THREE.Group): THREE.Group {
   return scene.clone(true);
 }
 
-function normalizeMiniAvatarScene(scene: THREE.Group): THREE.Group {
+function disposeMiniAvatarScene(scene: THREE.Object3D): void {
+  scene.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) {
+      return;
+    }
+    mesh.geometry?.dispose();
+    const material = mesh.material;
+    if (Array.isArray(material)) {
+      material.forEach((item) => item.dispose());
+    } else {
+      material?.dispose();
+    }
+  });
+}
+
+function normalizeMiniAvatarScene(scene: THREE.Group): THREE.Group | null {
   const clone = cloneMiniAvatarScene(scene);
   const box = new THREE.Box3().setFromObject(clone);
   const size = new THREE.Vector3();
@@ -312,6 +328,9 @@ function normalizeMiniAvatarScene(scene: THREE.Group): THREE.Group {
   if (Number.isFinite(maxDimension) && maxDimension > 0) {
     clone.position.sub(center);
     root.scale.setScalar(1.35 / maxDimension);
+  } else {
+    disposeMiniAvatarScene(clone);
+    return null;
   }
   root.add(clone);
   return root;
@@ -372,11 +391,25 @@ function MiniCustomAvatar({ avatarUrl, color }: { avatarUrl?: string; color: str
     };
   }, [avatarUrl]);
 
+  useEffect(() => () => {
+    if (model) {
+      disposeMiniAvatarScene(model);
+    }
+  }, [model]);
+
   return model ? <primitive object={model} /> : <MiniDefaultAvatar color={color} />;
 }
 
-function MiniUserAvatar({ user, ariaLabel }: { user: MultiplayerPresence; ariaLabel?: string }) {
-  const renderWebGLAvatar = !isConstrainedWebGLDevice();
+function MiniUserAvatar({
+  user,
+  ariaLabel,
+  renderCustomOnConstrainedDevice = false,
+}: {
+  user: MultiplayerPresence;
+  ariaLabel?: string;
+  renderCustomOnConstrainedDevice?: boolean;
+}) {
+  const renderWebGLAvatar = !isConstrainedWebGLDevice() || (renderCustomOnConstrainedDevice && Boolean(user.avatarUrl));
 
   return (
     <div
@@ -4570,10 +4603,14 @@ function App() {
                 Clear
               </button>
               <span className="inline-flex items-center justify-center gap-2 text-center text-gray-600">
-                {multiplayer.currentUser.avatarUrl && (
-                  <MiniUserAvatar user={multiplayer.currentUser} ariaLabel="Current custom avatar" />
+                {multiplayer.currentPresence.avatarUrl && (
+                  <MiniUserAvatar
+                    user={multiplayer.currentPresence}
+                    ariaLabel="Current custom avatar"
+                    renderCustomOnConstrainedDevice
+                  />
                 )}
-                {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? null : 'Default avatar')}
+                {avatarUploadStatus || (multiplayer.currentPresence.avatarUrl ? null : 'Default avatar')}
               </span>
             </div>
 
