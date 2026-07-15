@@ -3041,6 +3041,11 @@ function App() {
     multiplayer.status !== 'online' ||
     chatLocationKey === 'unknown' ||
     !multiplayer.isChatReady;
+  const isShoutDisabled =
+    !multiplayer.isConfigured ||
+    multiplayer.status !== 'online' ||
+    !multiplayer.isShoutReady;
+  const isMessageInputDisabled = isChatDisabled && isShoutDisabled;
   const chatPlaceholder = !multiplayer.isConfigured
     ? 'Multiplayer offline'
     : multiplayer.status !== 'online'
@@ -3049,7 +3054,7 @@ function App() {
         ? 'Location unavailable'
         : !multiplayer.isChatReady
           ? 'Connecting to this location...'
-          : 'Message this location';
+          : 'Write a message';
   const handlePointerTargetChange = (cell: GridCellBuilding | null) => {
     if (!cell) {
       currentHoverCellRef.current = null;
@@ -3182,6 +3187,12 @@ function App() {
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sent = multiplayer.sendMessage(chatDraft);
+    if (sent) {
+      setChatDraft('');
+    }
+  };
+  const handleShoutChat = () => {
+    const sent = multiplayer.sendShout(chatDraft);
     if (sent) {
       setChatDraft('');
     }
@@ -4587,7 +4598,7 @@ function App() {
                 <input
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
-                  disabled={isChatDisabled}
+                  disabled={isMessageInputDisabled}
                   maxLength={300}
                   className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   placeholder={chatPlaceholder}
@@ -4597,7 +4608,15 @@ function App() {
                   disabled={!chatDraft.trim() || isChatDisabled}
                   className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                 >
-                  Send
+                  Whisper
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShoutChat}
+                  disabled={!chatDraft.trim() || isShoutDisabled}
+                  className="rounded border border-gray-400 bg-gray-200 px-3 py-1 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  Shout
                 </button>
               </form>
             </div>

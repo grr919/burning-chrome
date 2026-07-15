@@ -102,6 +102,7 @@ export type GridChatMessage = {
   body: string;
   createdAt: string;
   locationKey?: string;
+  gridKey?: string;
 };
 
 type UseMultiplayerPresenceInput = {
@@ -389,6 +390,13 @@ function getChatChannelName(chatLocationKey: string): string {
   return `cyberspace-chat:${safeKey || 'unknown'}`;
 }
 
+function getGridChatChannelName(gridKey: string): string {
+  const safeKey = encodeURIComponent(gridKey)
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 180);
+  return `cyberspace-grid-chat:${safeKey || 'unknown'}`;
+}
+
 export function getExactLocationKey(location?: MultiplayerPlayerLocation, context?: MultiplayerLocationContext): string {
   if (!location) return 'unknown';
   const gridKey = context
@@ -435,6 +443,7 @@ export function getMultiplayerGridKey(
 }
 
 export function useMultiplayerPresence({
+  gridKey,
   chatLocationKey,
   gridSystemMode,
   viewMode,
@@ -450,12 +459,16 @@ export function useMultiplayerPresence({
     isSupabaseConfigured ? 'connecting' : 'offline'
   );
   const [chatStatus, setChatStatus] = useState<'unavailable' | 'connecting' | 'ready'>('unavailable');
+  const [shoutStatus, setShoutStatus] = useState<'unavailable' | 'connecting' | 'ready'>('unavailable');
   const [others, setOthers] = useState<MultiplayerPresence[]>([]);
   const [messages, setMessages] = useState<GridChatMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const chatChannelRef = useRef<RealtimeChannel | null>(null);
+  const shoutChannelRef = useRef<RealtimeChannel | null>(null);
   const isChatChannelReadyRef = useRef(false);
+  const isShoutChannelReadyRef = useRef(false);
   const chatLocationKeyRef = useRef('unknown');
+  const gridKeyRef = useRef(gridKey);
   const locationContext = useMemo<MultiplayerLocationContext>(() => ({
     gridSystemMode,
     viewMode,
@@ -487,6 +500,14 @@ export function useMultiplayerPresence({
     chatLocationKeyRef.current = activeChatLocationKey;
     setMessages([]);
   }, [activeChatLocationKey]);
+
+  useEffect(() => {
+    gridKeyRef.current = gridKey;
+  }, [gridKey]);
+
+  const appendMessage = useCallback((message: GridChatMessage) => {
+    setMessages((prev) => [...prev.filter((item) => item.id !== message.id), message].slice(-40));
+  }, []);
 
   const payload = useMemo<MultiplayerPresence>(() => ({
     ...identity,
@@ -675,6 +696,58 @@ export function useMultiplayerPresence({
     };
   }, [activeChatLocationKey]);
 
+  useEffect(() => {
+    isShoutChannelReadyRef.current = false;
+    setShoutStatus('unavailable');
+
+    if (!supabase || !isSupabaseConfigured || !gridKey) {
+      return;
+    }
+
+    let isActive = true;
+    setShoutStatus('connecting');
+    const shoutChannel = supabase.channel(getGridChatChannelName(gridKey), {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+    shoutChannelRef.current = shoutChannel;
+
+    shoutChannel
+      .on('broadcast', { event: 'shout' }, ({ payload: shoutPayload }) => {
+        if (!isActive) {
+          return;
+        }
+
+        const message = shoutPayload as GridChatMessage;
+        if (!message?.id || typeof message.body !== 'string') {
+          return;
+        }
+        if (message.gridKey !== gridKeyRef.current) {
+          return;
+        }
+        appendMessage(message);
+      })
+      .subscribe((nextStatus) => {
+        if (!isActive) {
+          return;
+        }
+
+        isShoutChannelReadyRef.current = nextStatus === 'SUBSCRIBED';
+        setShoutStatus(nextStatus === 'SUBSCRIBED' ? 'ready' : 'connecting');
+      });
+
+    return () => {
+      isActive = false;
+      isShoutChannelReadyRef.current = false;
+      setShoutStatus('unavailable');
+      if (shoutChannelRef.current === shoutChannel) {
+        shoutChannelRef.current = null;
+      }
+      void supabase.removeChannel(shoutChannel);
+    };
+  }, [appendMessage, gridKey]);
+
   const sendMessage = useCallback((body: string) => {
     const trimmed = body.trim().slice(0, 300);
     const chatChannel = chatChannelRef.current;
@@ -694,10 +767,34 @@ export function useMultiplayerPresence({
       createdAt: new Date().toISOString(),
       locationKey: activeChatLocationKey,
     };
-    setMessages((prev) => [...prev, message].slice(-40));
+    appendMessage(message);
     void chatChannel.send({ type: 'broadcast', event: 'chat', payload: message });
     return true;
-  }, [activeChatLocationKey, identity, status]);
+  }, [activeChatLocationKey, appendMessage, identity, status]);
+
+  const sendShout = useCallback((body: string) => {
+    const trimmed = body.trim().slice(0, 300);
+    const shoutChannel = shoutChannelRef.current;
+    if (!trimmed || !shoutChannel || !isShoutChannelReadyRef.current || status !== 'online' || !gridKey) {
+      if (trimmed) {
+        console.warn('Shout not sent because grid-scope chat is not ready.', { gridKey });
+      }
+      return false;
+    }
+
+    const message: GridChatMessage = {
+      id: createId(),
+      userId: identity.userId,
+      displayName: identity.displayName,
+      color: identity.color,
+      body: trimmed,
+      createdAt: new Date().toISOString(),
+      gridKey,
+    };
+    appendMessage(message);
+    void shoutChannel.send({ type: 'broadcast', event: 'shout', payload: message });
+    return true;
+  }, [appendMessage, gridKey, identity, status]);
 
   const updateDisplayName = useCallback((nextName: string): boolean => {
     const cleaned = nextName.trim().slice(0, 24);
@@ -738,8 +835,10 @@ export function useMultiplayerPresence({
     others,
     messages,
     isChatReady: chatStatus === 'ready',
+    isShoutReady: shoutStatus === 'ready',
     chatStatus,
     sendMessage,
+    sendShout,
     updateDisplayName,
     updateAvatarUrl,
     clearAvatar,
