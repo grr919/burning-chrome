@@ -375,11 +375,16 @@ function MiniCustomAvatar({ avatarUrl, color }: { avatarUrl?: string; color: str
   return model ? <primitive object={model} /> : <MiniDefaultAvatar color={color} />;
 }
 
-function MiniUserAvatar({ user }: { user: MultiplayerPresence }) {
+function MiniUserAvatar({ user, ariaLabel }: { user: MultiplayerPresence; ariaLabel?: string }) {
   const renderWebGLAvatar = !isConstrainedWebGLDevice();
 
   return (
-    <div className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-gray-300 bg-white" aria-hidden="true">
+    <div
+      className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-gray-300 bg-white"
+      aria-hidden={ariaLabel ? undefined : true}
+      aria-label={ariaLabel}
+      role={ariaLabel ? 'img' : undefined}
+    >
       {renderWebGLAvatar ? (
         <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }}>
           <ambientLight intensity={0.85} />
@@ -4553,8 +4558,11 @@ function App() {
               >
                 Clear
               </button>
-              <span className="text-center text-gray-600">
-                {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? 'Custom avatar active' : 'Default avatar')}
+              <span className="inline-flex items-center justify-center gap-2 text-center text-gray-600">
+                {multiplayer.currentUser.avatarUrl && (
+                  <MiniUserAvatar user={multiplayer.currentUser} ariaLabel="Current custom avatar" />
+                )}
+                {avatarUploadStatus || (multiplayer.currentUser.avatarUrl ? null : 'Default avatar')}
               </span>
             </div>
 
