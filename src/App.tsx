@@ -119,12 +119,26 @@ type PublicWebEnrichmentState = {
   status: PublicWebEnrichmentStatus;
   ipAddress?: string;
   synopsis?: string;
+  message?: string;
 };
+
+type PublicWebFailureReason =
+  | 'not_configured'
+  | 'invalid_context'
+  | 'provider_timeout'
+  | 'provider_credentials'
+  | 'provider_rate_limited'
+  | 'provider_error'
+  | 'provider_unreachable'
+  | 'provider_invalid_json'
+  | 'provider_unexpected_format'
+  | 'no_reliable_result';
 
 type PublicWebEnrichmentResponse = {
   status?: 'ready' | 'not_found' | 'error';
   ipAddress?: string;
   synopsis?: string;
+  reason?: PublicWebFailureReason;
   message?: string;
   cached?: boolean;
 };
@@ -3192,7 +3206,10 @@ function App() {
           return;
         }
 
-        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
+        const controlledMessage = typeof json.message === 'string' && (!json.ipAddress || json.ipAddress === requestedContext.ipAddress)
+          ? json.message
+          : undefined;
+        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress, message: controlledMessage });
       } catch {
         if (controller.signal.aborted) {
           return;
@@ -3204,7 +3221,11 @@ function App() {
         ) {
           return;
         }
-        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
+        setPublicWebState({
+          status: 'error',
+          ipAddress: requestedContext.ipAddress,
+          message: 'The Learn More request could not be completed.',
+        });
       } finally {
         if (publicWebAbortRef.current === controller) {
           publicWebAbortRef.current = null;
@@ -4500,7 +4521,7 @@ function App() {
                         ? 'Searching the public web...'
                         : publicWebState.status === 'summary' && publicWebState.synopsis
                           ? publicWebState.synopsis
-                          : 'No reliable public-web information was found.'}
+                          : publicWebState.message ?? 'No reliable public-web information was found for this location.'}
                     </div>
                   </div>
                 ) : (
