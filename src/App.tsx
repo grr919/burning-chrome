@@ -1210,10 +1210,14 @@ function App() {
   const latestStoredLastLocationRef = useRef<StoredLastLocation | null>(null);
   const latestDefaultStartupStateRef = useRef(true);
   const publicWebAbortRef = useRef<AbortController | null>(null);
+  const displayedHoverIpRef = useRef<string | null>(null);
+  const lastNewHoveredIpRef = useRef<string | null>(null);
+  const learnMoreButtonIpRef = useRef<string | null>(null);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [displayedHoverIp, setDisplayedHoverIp] = useState<string | null>(null);
   const [publicWebContext, setPublicWebContext] = useState<PublicWebEnrichmentContext | null>(null);
   const [publicWebState, setPublicWebState] = useState<PublicWebEnrichmentState>({ status: 'default' });
+  const [learnMoreButtonIp, setLearnMoreButtonIp] = useState<string | null>(null);
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
@@ -1705,13 +1709,21 @@ function App() {
   useEffect(() => {
     setPointerTarget(undefined);
     currentHoverCellRef.current = null;
+    displayedHoverIpRef.current = null;
+    lastNewHoveredIpRef.current = null;
+    learnMoreButtonIpRef.current = null;
     setDisplayedHoverIp(null);
+    setLearnMoreButtonIp(null);
   }, [multiplayerGridKey]);
 
   useEffect(() => {
     if (layoutMode !== 'grid' || buildingView) {
       currentHoverCellRef.current = null;
+      displayedHoverIpRef.current = null;
+      lastNewHoveredIpRef.current = null;
+      learnMoreButtonIpRef.current = null;
       setDisplayedHoverIp(null);
+      setLearnMoreButtonIp(null);
     }
   }, [layoutMode, buildingView]);
 
@@ -2683,8 +2695,10 @@ function App() {
       });
 
       if (activeHtml) {
+        const nextDisplayedHoverIp = currentHoverCellRef.current?.ipAddress ?? displayedHoverIpRef.current;
         setBottomInfoHtml(activeHtml);
-        setDisplayedHoverIp(currentHoverCellRef.current?.ipAddress ?? null);
+        displayedHoverIpRef.current = nextDisplayedHoverIp;
+        setDisplayedHoverIp(nextDisplayedHoverIp);
       }
     };
 
@@ -3039,12 +3053,19 @@ function App() {
     }
 
     currentHoverCellRef.current = cell;
+    if (lastNewHoveredIpRef.current !== cell.ipAddress) {
+      lastNewHoveredIpRef.current = cell.ipAddress;
+      learnMoreButtonIpRef.current = cell.ipAddress;
+      setLearnMoreButtonIp(cell.ipAddress);
+    }
     setPointerTarget(cell);
   };
 
   const handleGridHoverInfoHtml = (html: string) => {
+    const nextDisplayedHoverIp = currentHoverCellRef.current?.ipAddress ?? displayedHoverIpRef.current;
     setBottomInfoHtml(html);
-    setDisplayedHoverIp(currentHoverCellRef.current?.ipAddress ?? null);
+    displayedHoverIpRef.current = nextDisplayedHoverIp;
+    setDisplayedHoverIp(nextDisplayedHoverIp);
   };
 
   const handlePublicWebContextChange = (context: PublicWebEnrichmentContext | null) => {
@@ -3076,9 +3097,14 @@ function App() {
     publicWebState.status !== 'default' &&
     publicWebState.ipAddress === displayedHoverIp &&
     publicWebContext?.ipAddress === displayedHoverIp;
+  const shouldShowLearnMoreButton = canLearnMore && learnMoreButtonIp === displayedHoverIp;
 
   const handleLearnMore = () => {
-    if (!publicWebContext || !canLearnMore || publicWebState.status === 'loading') {
+    if (
+      !publicWebContext ||
+      !shouldShowLearnMoreButton ||
+      (publicWebState.status === 'loading' && publicWebState.ipAddress === publicWebContext.ipAddress)
+    ) {
       return;
     }
 
@@ -3101,7 +3127,12 @@ function App() {
         });
         const json = (await response.json()) as PublicWebEnrichmentResponse;
 
-        if (controller.signal.aborted || publicWebAbortRef.current !== controller) {
+        if (
+          controller.signal.aborted ||
+          publicWebAbortRef.current !== controller ||
+          displayedHoverIpRef.current !== requestedContext.ipAddress ||
+          learnMoreButtonIpRef.current !== requestedContext.ipAddress
+        ) {
           return;
         }
 
@@ -3111,12 +3142,23 @@ function App() {
             ipAddress: requestedContext.ipAddress,
             synopsis: json.synopsis,
           });
+          learnMoreButtonIpRef.current = null;
+          setLearnMoreButtonIp((current) => (
+            current === requestedContext.ipAddress ? null : current
+          ));
           return;
         }
 
         setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
       } catch {
         if (controller.signal.aborted) {
+          return;
+        }
+        if (
+          publicWebAbortRef.current !== controller ||
+          displayedHoverIpRef.current !== requestedContext.ipAddress ||
+          learnMoreButtonIpRef.current !== requestedContext.ipAddress
+        ) {
           return;
         }
         setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
@@ -4386,7 +4428,7 @@ function App() {
             className="relative shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
-            {canLearnMore && (
+            {shouldShowLearnMoreButton && (
               <button
                 type="button"
                 onClick={handleLearnMore}
@@ -4396,7 +4438,7 @@ function App() {
                 Learn More
               </button>
             )}
-            <div className={`h-full overflow-auto ${canLearnMore ? 'pr-32' : ''}`}>
+            <div className={`h-full overflow-auto ${shouldShowLearnMoreButton ? 'pr-32' : ''}`}>
               {bottomInfoHtml ? (
                 isPublicWebActive && publicWebContext ? (
                   <div className="text-sm leading-relaxed max-w-5xl [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2">
