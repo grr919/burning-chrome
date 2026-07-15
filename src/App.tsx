@@ -3523,8 +3523,7 @@ function App() {
           {[
             ['default', 'Default'],
             ['last_location', 'Last Location'],
-            ['random_grid1', 'Random Grid 1 Location'],
-            ['random_grid2', 'Random Grid 2 Location'],
+            ['random_grid1', 'Random Location'],
             ['specific', 'Specific Location'],
           ].map(([value, label]) => (
             <label key={value} className="flex items-center gap-2 text-sm text-gray-900">
