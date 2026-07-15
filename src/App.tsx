@@ -3692,8 +3692,10 @@ function App() {
           ) : certificateResult ? (
             certificateResult.status === 'error' ? (
               <div className="mt-2 space-y-2">
-                <div className="text-sm text-red-700">
-                  {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
+                <div className={certificateResult.error === 'HTTPS certificate lookup timed out.' ? 'text-sm' : 'text-sm text-red-700'}>
+                  {certificateResult.error === 'HTTPS certificate lookup timed out.'
+                    ? 'No certificate identified.'
+                    : certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
                 </div>
                 {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                   <div className="text-xs text-gray-600">
@@ -4202,8 +4204,10 @@ function App() {
                   ) : certificateResult ? (
                     certificateResult.status === 'error' ? (
                       <div className="mt-2 space-y-2">
-                        <div className="text-sm text-red-700">
-                          {certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
+                        <div className={certificateResult.error === 'HTTPS certificate lookup timed out.' ? 'text-sm' : 'text-sm text-red-700'}>
+                          {certificateResult.error === 'HTTPS certificate lookup timed out.'
+                            ? 'No certificate identified.'
+                            : certificateResult.statusSummary ?? certificateResult.error ?? 'No HTTPS certificate data available.'}
                         </div>
                         {certificateResult.attemptedHosts && certificateResult.attemptedHosts.length > 0 && (
                           <div className="text-xs text-gray-600">
