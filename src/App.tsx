@@ -4489,7 +4489,7 @@ function App() {
                 </span>
                 <span className="text-gray-500">|</span>
                 <span className="text-gray-700">
-                  {nearbyUsers.length} nearby
+                  {nearbyUsers.length === 0 ? 'No users nearby' : `${nearbyUsers.length} users nearby`}
                   {nearbyUsers.length > 0 && nearbyUsers.length <= 3 && (
                     <>
                       :{' '}
@@ -4579,7 +4579,7 @@ function App() {
                   ))
                 ) : (
                   <div className="text-gray-500">
-                    {multiplayer.isConfigured ? 'No grid messages yet.' : 'Supabase env vars not configured.'}
+                    {multiplayer.isConfigured ? 'No messages yet.' : 'Supabase env vars not configured.'}
                   </div>
                 )}
               </div>
