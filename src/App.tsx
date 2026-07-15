@@ -119,26 +119,12 @@ type PublicWebEnrichmentState = {
   status: PublicWebEnrichmentStatus;
   ipAddress?: string;
   synopsis?: string;
-  message?: string;
 };
-
-type PublicWebFailureReason =
-  | 'not_configured'
-  | 'invalid_context'
-  | 'provider_timeout'
-  | 'provider_credentials'
-  | 'provider_rate_limited'
-  | 'provider_error'
-  | 'provider_unreachable'
-  | 'provider_invalid_json'
-  | 'provider_unexpected_format'
-  | 'no_reliable_result';
 
 type PublicWebEnrichmentResponse = {
   status?: 'ready' | 'not_found' | 'error';
   ipAddress?: string;
   synopsis?: string;
-  reason?: PublicWebFailureReason;
   message?: string;
   cached?: boolean;
 };
@@ -3206,10 +3192,7 @@ function App() {
           return;
         }
 
-        const controlledMessage = typeof json.message === 'string' && (!json.ipAddress || json.ipAddress === requestedContext.ipAddress)
-          ? json.message
-          : undefined;
-        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress, message: controlledMessage });
+        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
       } catch {
         if (controller.signal.aborted) {
           return;
@@ -3221,11 +3204,7 @@ function App() {
         ) {
           return;
         }
-        setPublicWebState({
-          status: 'error',
-          ipAddress: requestedContext.ipAddress,
-          message: 'The Learn More request could not be completed.',
-        });
+        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
       } finally {
         if (publicWebAbortRef.current === controller) {
           publicWebAbortRef.current = null;
@@ -4521,7 +4500,7 @@ function App() {
                         ? 'Searching the public web...'
                         : publicWebState.status === 'summary' && publicWebState.synopsis
                           ? publicWebState.synopsis
-                          : publicWebState.message ?? 'No reliable public-web information was found for this location.'}
+                          : 'No reliable public-web information was found.'}
                     </div>
                   </div>
                 ) : (

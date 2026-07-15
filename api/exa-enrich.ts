@@ -49,36 +49,13 @@ type WebEntityRow = {
   expires_at?: string | null;
 };
 
-type PublicWebFailureReason =
-  | 'not_configured'
-  | 'invalid_context'
-  | 'provider_timeout'
-  | 'provider_credentials'
-  | 'provider_rate_limited'
-  | 'provider_error'
-  | 'provider_unreachable'
-  | 'provider_invalid_json'
-  | 'provider_unexpected_format'
-  | 'no_reliable_result';
-
 const EXA_SEARCH_URL = 'https://api.exa.ai/search';
 const CACHE_TTL_DAYS = 90;
 const MAX_STRING_LENGTH = 160;
 const MAX_HOSTNAMES = 8;
 const MAX_CONTACTS = 3;
 const EXA_TIMEOUT_MS = 12_000;
-const FAILURE_MESSAGES: Record<PublicWebFailureReason, string> = {
-  not_configured: 'Public-web search is not configured.',
-  invalid_context: 'Not enough valid information was available to perform the public-web search.',
-  provider_timeout: 'The public-web search timed out.',
-  provider_credentials: 'The public-web search service rejected the server credentials.',
-  provider_rate_limited: 'The public-web search service is temporarily rate-limited.',
-  provider_error: 'The public-web search service returned an error.',
-  provider_unreachable: 'The public-web search service could not be reached.',
-  provider_invalid_json: 'The public-web search service returned an unreadable response.',
-  provider_unexpected_format: 'The public-web search service returned an unexpected response format.',
-  no_reliable_result: 'No reliable public-web information was found for this location.',
-};
+const NO_RESULT_MESSAGE = 'No reliable public-web information was found.';
 
 const systemPrompt = [
   'Identify the organization, website, and any publicly documented professional contact using the supplied organization name, network name, domain, hostnames, ASN context, and contact name.',
@@ -298,21 +275,6 @@ function getConfidence(grounding: unknown): number | null {
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
-function sendFailure(
-  res: VercelResponse,
-  httpStatus: number,
-  status: 'error' | 'not_found',
-  reason: PublicWebFailureReason,
-  ipAddress?: string
-) {
-  res.status(httpStatus).json({
-    status,
-    ipAddress,
-    reason,
-    message: FAILURE_MESSAGES[reason],
-  });
-}
-
 async function ensureIpLink(supabase: any, ipAddress: string, entityId: string, relationshipType: string) {
   const existing = await supabase
     .from('ip_entity_links')
@@ -352,24 +314,24 @@ async function storeErrorStatus(
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    sendFailure(res, 405, 'error', 'invalid_context');
+    res.status(405).json({ status: 'error', message: 'Method not allowed.' });
     return;
   }
 
   if (!isSameOrigin(req)) {
-    sendFailure(res, 403, 'error', 'invalid_context');
+    res.status(403).json({ status: 'error', message: 'Request not allowed.' });
     return;
   }
 
   const body = parseBody(req.body);
   if (!body) {
-    sendFailure(res, 400, 'error', 'invalid_context');
+    res.status(400).json({ status: 'error', message: 'Malformed request.' });
     return;
   }
 
   const input = validatePayload(body);
   if (!input || !hasMeaningfulContext(input)) {
-    sendFailure(res, 400, 'error', 'invalid_context', input?.ipAddress);
+    res.status(400).json({ status: 'error', message: 'Malformed request.' });
     return;
   }
 
@@ -377,7 +339,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
   if (!exaApiKey || !supabaseUrl || !supabaseSecretKey) {
-    sendFailure(res, 503, 'error', 'not_configured', input.ipAddress);
+    res.status(503).json({ status: 'error', ipAddress: input.ipAddress, message: NO_RESULT_MESSAGE });
     return;
   }
 
@@ -436,43 +398,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!exaResponse.ok) {
-      const reason: PublicWebFailureReason =
-        exaResponse.status === 401 || exaResponse.status === 403
-          ? 'provider_credentials'
-          : exaResponse.status === 429
-            ? 'provider_rate_limited'
-            : 'provider_error';
-      try {
-        await storeErrorStatus(supabase, cacheKey, input, searchQuery);
-      } catch {
-        // Keep provider/cache errors out of the browser response.
-      }
-      sendFailure(res, 200, 'error', reason, input.ipAddress);
-      return;
+      throw new Error('Exa request failed.');
     }
-
-    const responseText = await exaResponse.text();
-    try {
-      exaJson = JSON.parse(responseText);
-    } catch {
-      try {
-        await storeErrorStatus(supabase, cacheKey, input, searchQuery);
-      } catch {
-        // Keep provider/cache errors out of the browser response.
-      }
-      sendFailure(res, 200, 'error', 'provider_invalid_json', input.ipAddress);
-      return;
-    }
-  } catch (error) {
+    exaJson = await exaResponse.json();
+  } catch {
     try {
       await storeErrorStatus(supabase, cacheKey, input, searchQuery);
     } catch {
       // Keep provider/cache errors out of the browser response.
     }
-    const reason = error instanceof Error && error.name === 'AbortError'
-      ? 'provider_timeout'
-      : 'provider_unreachable';
-    sendFailure(res, 200, 'error', reason, input.ipAddress);
+    res.status(200).json({ status: 'not_found', ipAddress: input.ipAddress, message: NO_RESULT_MESSAGE });
     return;
   } finally {
     clearTimeout(timeout);
@@ -482,19 +417,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const output = outputContent && typeof outputContent === 'object' && !Array.isArray(outputContent)
     ? outputContent as ExaOutputContent
     : null;
-  if (!output) {
-    res.status(200).json({
-      status: 'error',
-      ipAddress: input.ipAddress,
-      reason: 'provider_unexpected_format',
-      message: FAILURE_MESSAGES.provider_unexpected_format,
-    });
-    return;
-  }
-
   const synopsis = normalizeSynopsis(output?.synopsis);
-  if (!synopsis) {
-    sendFailure(res, 200, 'not_found', 'no_reliable_result', input.ipAddress);
+  if (!output || !synopsis) {
+    res.status(200).json({ status: 'not_found', ipAddress: input.ipAddress, message: NO_RESULT_MESSAGE });
     return;
   }
 
