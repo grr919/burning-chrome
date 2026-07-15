@@ -60,6 +60,22 @@ export type GridCellBuilding = {
   organizationName?: string;
 };
 
+export type PublicWebEnrichmentContext = {
+  ipAddress: string;
+  headingHtml: string;
+  organizationName?: string;
+  networkName?: string;
+  contacts?: Array<{
+    name: string;
+    roles?: string[];
+  }>;
+  domain?: string;
+  hostnames?: string[];
+  reverseDnsHostnames?: string[];
+  asn?: string;
+  asnName?: string;
+};
+
 type CellHoverPart = 'square' | 'sidewalk' | 'building';
 
 type HoveredCellState = {
@@ -73,6 +89,7 @@ type GridCellTarget = {
   cubeId: string;
   cellBuilding: GridCellBuilding;
   hoverInfoHtml: string;
+  publicWebEnrichmentContext: PublicWebEnrichmentContext | null;
 };
 
 type FlatGridTargetEvent = ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>;
@@ -280,6 +297,7 @@ type IPGridProps = {
   gridSystemMode?: GridSystemMode;
   grid2Position?: Grid2Position;
   onHoverInfoHtml?: (html: string) => void;
+  onHoverEnrichmentContext?: (context: PublicWebEnrichmentContext | null) => void;
   onHoverCellChange?: (cell: GridCellBuilding | null) => void;
   infoDisplayMode?: InfoDisplayMode;
   remoteUsers?: MultiplayerPresence[];
@@ -618,6 +636,36 @@ function getVisibleLookupAddresses(
 
 function firstUsefulEntities(entities: RdapEntity[]): RdapEntity[] {
   return entities.filter((entity) => entity.name || entity.email).slice(0, 3);
+}
+
+function getPublicContactEntities(entities: RdapEntity[]): Array<{ name: string; roles?: string[] }> {
+  return entities
+    .filter((entity) => {
+      const name = entity.name?.trim() ?? '';
+      if (!name || name.includes('@')) {
+        return false;
+      }
+      const lowerName = name.toLowerCase();
+      const lowerRoles = entity.roles.join(' ').toLowerCase();
+      return !/(abuse|noc|dns|hostmaster|postmaster|technical support|security team)/.test(`${lowerName} ${lowerRoles}`);
+    })
+    .slice(0, 3)
+    .map((entity) => ({
+      name: entity.name?.trim() ?? '',
+      roles: entity.roles.map((role) => role.trim()).filter(Boolean).slice(0, 4),
+    }));
+}
+
+function getLikelyDomain(hostnames: string[]): string | undefined {
+  const hostname = hostnames.find((value) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value.trim()));
+  if (!hostname) {
+    return undefined;
+  }
+  const parts = hostname.toLowerCase().replace(/\.$/, '').split('.').filter(Boolean);
+  if (parts.length < 2) {
+    return undefined;
+  }
+  return parts.slice(-2).join('.');
 }
 
 function shadeColor(hex: string, amount: number): string {
@@ -1824,6 +1872,7 @@ function IPGrid({
   gridSystemMode = 'grid1',
   grid2Position = DEFAULT_GRID2_POSITION,
   onHoverInfoHtml,
+  onHoverEnrichmentContext,
   onHoverCellChange,
   infoDisplayMode = 'structured',
   remoteUsers = [],
@@ -1856,6 +1905,7 @@ function IPGrid({
   const [isExposureLoading, setIsExposureLoading] = useState<Record<string, boolean>>({});
   const [isAsnLoading, setIsAsnLoading] = useState<Record<string, boolean>>({});
   const clickTimerRef = useRef<number | null>(null);
+  const gridTargetCells = new Map<string, GridCellTarget>();
 
   useEffect(() => () => {
     if (clickTimerRef.current !== null) {
@@ -1881,6 +1931,7 @@ function IPGrid({
     ));
     onHoverCellChange?.(target.cellBuilding);
     onHoverInfoHtml?.(target.hoverInfoHtml);
+    onHoverEnrichmentContext?.(target.publicWebEnrichmentContext);
     lastInfoBoxCellRef.current = target;
   };
 
@@ -2355,8 +2406,12 @@ function IPGrid({
     const activePanel = document.querySelector('div[data-info-panel="true"]') as HTMLDivElement | null;
     if (activePanel?.innerHTML) {
       onHoverInfoHtml(activePanel.innerHTML);
+      const activeTarget = [...gridTargetCells.values()].find((target) => target.cellBuilding.ipAddress === hoveredIpAddress) ?? null;
+      if (activeTarget) {
+        onHoverEnrichmentContext?.(activeTarget.publicWebEnrichmentContext);
+      }
     }
-  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, exposureInfo, asnInfo, isRdapLoading, isReverseLoading, isExposureLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml]);
+  }, [hoveredIpAddress, rdapInfo, reverseDnsInfo, exposureInfo, asnInfo, isRdapLoading, isReverseLoading, isExposureLoading, isAsnLoading, lookupMode, infoDisplayMode, onHoverInfoHtml, onHoverEnrichmentContext]);
 
   const getColumnPerimeterLabel = (column: number): string => {
     if (gridSystemMode === 'grid2') {
@@ -2545,7 +2600,6 @@ function IPGrid({
   };
 
   const flatGridTargeting = !onBuildingClick;
-  const gridTargetCells = new Map<string, GridCellTarget>();
   const cubes = [];
 
   for (let y = 0; y < gridSize; y += 1) {
@@ -2836,6 +2890,37 @@ function IPGrid({
 
       const proseHoverHtml = `<p><span class="font-bold">Address ${escapeHtml(ipAddress)}</span>. ${linkifyText(joinSentenceParts(proseSentences))}</p>`;
       const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverHtml : structuredHoverInfoHtml;
+      const publicHostnames = [...new Set([
+        ...(dnsRecord?.hostnames ?? []),
+        ...(exposureRecord?.hostnames ?? []),
+      ].map((hostname) => hostname.trim()).filter(Boolean))].slice(0, 8);
+      const reverseDnsHostnames = [...new Set([
+        ...(dnsRecord?.ptrHostnames ?? []),
+        ...(dnsRecord?.fallbackHostnames ?? []),
+      ].map((hostname) => hostname.trim()).filter(Boolean))].slice(0, 8);
+      const publicContacts = rdapRecord ? getPublicContactEntities(rdapRecord.entities) : [];
+      const publicWebEnrichmentContext: PublicWebEnrichmentContext | null = (
+        rdapRecord?.org ||
+        rdapRecord?.networkName ||
+        publicContacts.length > 0 ||
+        publicHostnames.length > 0 ||
+        reverseDnsHostnames.length > 0 ||
+        asnRecord?.asn ||
+        asnRecord?.asnName
+      ) ? {
+        ipAddress,
+        headingHtml: infoDisplayMode === 'prose'
+          ? `<p><span class="font-bold">Address ${escapeHtml(ipAddress)}</span>.</p>`
+          : hoverInfoLines[0],
+        organizationName: rdapRecord?.org,
+        networkName: rdapRecord?.networkName,
+        contacts: publicContacts,
+        domain: getLikelyDomain(publicHostnames),
+        hostnames: publicHostnames,
+        reverseDnsHostnames,
+        asn: asnRecord?.asn ? normalizeAsn(asnRecord.asn) ?? undefined : undefined,
+        asnName: asnRecord?.asnName,
+      } : null;
 
       const windowBands = [];
       {
@@ -2946,7 +3031,7 @@ function IPGrid({
         asnColor,
         organizationName: rdapRecord?.org ?? rdapRecord?.networkName,
       };
-      const cellTarget: GridCellTarget = { cellKey, cubeId, cellBuilding, hoverInfoHtml };
+      const cellTarget: GridCellTarget = { cellKey, cubeId, cellBuilding, hoverInfoHtml, publicWebEnrichmentContext };
       gridTargetCells.set(cellKey, cellTarget);
 
       const handleBuildingSingleClick = (event: ThreeEvent<MouseEvent>) => {

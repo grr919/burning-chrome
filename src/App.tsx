@@ -3,7 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import IPGrid, { type GridCellBuilding } from './components/IPGrid';
+import IPGrid, { type GridCellBuilding, type PublicWebEnrichmentContext } from './components/IPGrid';
 import {
   getCanonicalChatLocationKey,
   getMultiplayerGridKey,
@@ -111,6 +111,22 @@ type BookmarkEntry = {
 type SharedBookmarkEntry = BookmarkEntry & {
   userId: string;
   updatedAt?: string;
+};
+
+type PublicWebEnrichmentStatus = 'default' | 'loading' | 'summary' | 'error';
+
+type PublicWebEnrichmentState = {
+  status: PublicWebEnrichmentStatus;
+  ipAddress?: string;
+  synopsis?: string;
+};
+
+type PublicWebEnrichmentResponse = {
+  status?: 'ready' | 'not_found' | 'error';
+  ipAddress?: string;
+  synopsis?: string;
+  message?: string;
+  cached?: boolean;
 };
 
 type UserBookmarkRow = {
@@ -1193,8 +1209,11 @@ function App() {
   const latestPresenceRef = useRef<MultiplayerPresence | null>(null);
   const latestStoredLastLocationRef = useRef<StoredLastLocation | null>(null);
   const latestDefaultStartupStateRef = useRef(true);
+  const publicWebAbortRef = useRef<AbortController | null>(null);
   const [bottomInfoHtml, setBottomInfoHtml] = useState<string>('');
   const [displayedHoverIp, setDisplayedHoverIp] = useState<string | null>(null);
+  const [publicWebContext, setPublicWebContext] = useState<PublicWebEnrichmentContext | null>(null);
+  const [publicWebState, setPublicWebState] = useState<PublicWebEnrichmentState>({ status: 'default' });
   const [buildingView, setBuildingView] = useState<BuildingViewState | null>(null);
   const [certificateResult, setCertificateResult] = useState<HttpsCertificateResponse | null>(null);
   const [certificateLoadingIp, setCertificateLoadingIp] = useState<string | null>(null);
@@ -3027,6 +3046,92 @@ function App() {
     setBottomInfoHtml(html);
     setDisplayedHoverIp(currentHoverCellRef.current?.ipAddress ?? null);
   };
+
+  const handlePublicWebContextChange = (context: PublicWebEnrichmentContext | null) => {
+    setPublicWebContext(context);
+    setPublicWebState((current) => {
+      if (current.status === 'default' || current.ipAddress === context?.ipAddress) {
+        return current;
+      }
+      publicWebAbortRef.current?.abort();
+      publicWebAbortRef.current = null;
+      return { status: 'default' };
+    });
+  };
+
+  const canLearnMore = Boolean(
+    publicWebContext &&
+    displayedHoverIp === publicWebContext.ipAddress &&
+    (
+      publicWebContext.organizationName ||
+      publicWebContext.networkName ||
+      publicWebContext.domain ||
+      publicWebContext.asnName ||
+      publicWebContext.contacts?.length ||
+      publicWebContext.hostnames?.length ||
+      publicWebContext.reverseDnsHostnames?.length
+    )
+  );
+  const isPublicWebActive =
+    publicWebState.status !== 'default' &&
+    publicWebState.ipAddress === displayedHoverIp &&
+    publicWebContext?.ipAddress === displayedHoverIp;
+
+  const handleLearnMore = () => {
+    if (!publicWebContext || !canLearnMore || publicWebState.status === 'loading') {
+      return;
+    }
+
+    const requestedContext = publicWebContext;
+    const controller = new AbortController();
+    publicWebAbortRef.current?.abort();
+    publicWebAbortRef.current = controller;
+    setPublicWebState({ status: 'loading', ipAddress: requestedContext.ipAddress });
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/exa-enrich', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify(requestedContext),
+          signal: controller.signal,
+        });
+        const json = (await response.json()) as PublicWebEnrichmentResponse;
+
+        if (controller.signal.aborted || publicWebAbortRef.current !== controller) {
+          return;
+        }
+
+        if (response.ok && json.status === 'ready' && json.ipAddress === requestedContext.ipAddress && json.synopsis) {
+          setPublicWebState({
+            status: 'summary',
+            ipAddress: requestedContext.ipAddress,
+            synopsis: json.synopsis,
+          });
+          return;
+        }
+
+        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
+      } catch {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setPublicWebState({ status: 'error', ipAddress: requestedContext.ipAddress });
+      } finally {
+        if (publicWebAbortRef.current === controller) {
+          publicWebAbortRef.current = null;
+        }
+      }
+    })();
+  };
+
+  useEffect(() => () => {
+    publicWebAbortRef.current?.abort();
+  }, []);
+
   const handleSendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sent = multiplayer.sendMessage(chatDraft);
@@ -3634,7 +3739,8 @@ function App() {
             lookupMode={lookupMode}
             gridSystemMode={gridSystemMode}
             grid2Position={grid2Position}
-            onHoverInfoHtml={setBottomInfoHtml}
+            onHoverInfoHtml={handleGridHoverInfoHtml}
+            onHoverEnrichmentContext={handlePublicWebContextChange}
             onHoverCellChange={handlePointerTargetChange}
             infoDisplayMode={infoDisplayMode}
             // Visual avatar rendering must receive all active users. Do not replace this with `nearbyUsers`; exact-location filtering is only for chat/proximity UI.
@@ -4170,6 +4276,7 @@ function App() {
                   gridSystemMode={gridSystemMode}
                   grid2Position={grid2Position}
                   onHoverInfoHtml={handleGridHoverInfoHtml}
+                  onHoverEnrichmentContext={handlePublicWebContextChange}
                   onHoverCellChange={handlePointerTargetChange}
                   infoDisplayMode={infoDisplayMode}
                   // Visual avatar rendering must receive all active users. Do not replace this with `nearbyUsers`; exact-location filtering is only for chat/proximity UI.
@@ -4276,17 +4383,40 @@ function App() {
 
         {!buildingView && (
           <div
-            className="shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
+            className="relative shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
-            <div className="h-full overflow-auto">
+            {canLearnMore && (
+              <button
+                type="button"
+                onClick={handleLearnMore}
+                disabled={publicWebState.status === 'loading' && publicWebState.ipAddress === displayedHoverIp}
+                className="absolute right-3 top-2 z-10 rounded border border-gray-400 bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                Learn More
+              </button>
+            )}
+            <div className={`h-full overflow-auto ${canLearnMore ? 'pr-32' : ''}`}>
               {bottomInfoHtml ? (
-                <div
-                  className={infoDisplayMode === 'prose'
-                    ? "text-sm leading-relaxed max-w-5xl [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2 [&_.text-gray-600]:text-gray-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-700]:text-red-700"
-                    : "grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3 text-sm leading-snug [&_.font-bold]:md:col-span-2 [&_.font-bold]:xl:col-span-3 [&_.font-bold]:text-base [&_.font-bold]:mb-1 [&_.space-y-1]:contents [&_.pt-1]:contents [&_.mt-2]:contents [&_.text-gray-400]:text-gray-600 [&_.text-gray-300]:text-gray-700 [&_.text-blue-300]:text-blue-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-300]:text-red-700 [&_.text-red-700]:text-red-700 [&_.bg-gray-800]:bg-gray-100 [&_.bg-gray-100]:bg-gray-100 [&_.bg-gray-800]:p-1.5 [&_.bg-gray-100]:p-1.5 [&_.bg-gray-800]:rounded [&_.bg-gray-100]:rounded"}
-                  dangerouslySetInnerHTML={{ __html: bottomInfoHtml }}
-                />
+                isPublicWebActive && publicWebContext ? (
+                  <div className="text-sm leading-relaxed max-w-5xl [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2">
+                    <div dangerouslySetInnerHTML={{ __html: publicWebContext.headingHtml }} />
+                    <div className="mt-2 text-gray-800">
+                      {publicWebState.status === 'loading'
+                        ? 'Searching the public web...'
+                        : publicWebState.status === 'summary' && publicWebState.synopsis
+                          ? publicWebState.synopsis
+                          : 'No reliable public-web information was found.'}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={infoDisplayMode === 'prose'
+                      ? "text-sm leading-relaxed max-w-5xl [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2 [&_.text-gray-600]:text-gray-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-700]:text-red-700"
+                      : "grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3 text-sm leading-snug [&_.font-bold]:md:col-span-2 [&_.font-bold]:xl:col-span-3 [&_.font-bold]:text-base [&_.font-bold]:mb-1 [&_.space-y-1]:contents [&_.pt-1]:contents [&_.mt-2]:contents [&_.text-gray-400]:text-gray-600 [&_.text-gray-300]:text-gray-700 [&_.text-blue-300]:text-blue-700 [&_.text-blue-700]:text-blue-700 [&_.text-red-300]:text-red-700 [&_.text-red-700]:text-red-700 [&_.bg-gray-800]:bg-gray-100 [&_.bg-gray-100]:bg-gray-100 [&_.bg-gray-800]:p-1.5 [&_.bg-gray-100]:p-1.5 [&_.bg-gray-800]:rounded [&_.bg-gray-100]:rounded"}
+                    dangerouslySetInnerHTML={{ __html: bottomInfoHtml }}
+                  />
+                )
               ) : (
                 <div>&nbsp;</div>
               )}
