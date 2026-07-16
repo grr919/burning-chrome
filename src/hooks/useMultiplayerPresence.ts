@@ -544,6 +544,7 @@ export function useMultiplayerPresence({
     reason: string;
   } | null>(null);
   const isPublishingPresenceRef = useRef(false);
+  const authoritativePresenceIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     payloadRef.current = payload;
@@ -603,6 +604,7 @@ export function useMultiplayerPresence({
 
   const syncPresenceUsers = useCallback((rawPresenceRecords: MultiplayerPresence[], localPresenceId: string) => {
     const uniqueBeforeSelfFilter = dedupePresenceRecords(rawPresenceRecords.filter(isPresenceFresh));
+    authoritativePresenceIdsRef.current = new Set(uniqueBeforeSelfFilter.map((presence) => presence.presenceId));
     logPresenceDebug('DEBUG_PRESENCE active remote users before self filter', uniqueBeforeSelfFilter);
     const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.presenceId !== localPresenceId);
     logPresenceDebug('DEBUG_PRESENCE active remote users after self filter', remoteUsers);
@@ -611,6 +613,7 @@ export function useMultiplayerPresence({
 
   useEffect(() => {
     setOthers([]);
+    authoritativePresenceIdsRef.current = new Set();
 
     if (!supabase || !isSupabaseConfigured) {
       setStatus('offline');
@@ -642,8 +645,14 @@ export function useMultiplayerPresence({
 
     channel
       .on('presence', { event: 'sync' }, syncPresenceState)
+      .on('presence', { event: 'join' }, syncPresenceState)
+      .on('presence', { event: 'leave' }, syncPresenceState)
       .on('broadcast', { event: 'presence-update' }, ({ payload: broadcastPayload }) => {
         if (!isActive || !isPresence(broadcastPayload) || broadcastPayload.presenceId === identity.presenceId) {
+          return;
+        }
+        if (!authoritativePresenceIdsRef.current.has(broadcastPayload.presenceId)) {
+          syncPresenceState();
           return;
         }
 
@@ -663,11 +672,16 @@ export function useMultiplayerPresence({
           publishPresence(channel, payloadRef.current, 'subscribe');
         } else if (nextStatus === 'CHANNEL_ERROR' || nextStatus === 'TIMED_OUT') {
           setStatus('error');
+          authoritativePresenceIdsRef.current = new Set();
+          setOthers([]);
         }
       });
 
     return () => {
       isActive = false;
+      pendingPresenceRef.current = null;
+      authoritativePresenceIdsRef.current = new Set();
+      setOthers([]);
       if (channelRef.current === channel) {
         channelRef.current = null;
       }
