@@ -91,6 +91,7 @@ export type MultiplayerPresence = {
   selectedIp?: string;
   locationKey: string;
   chatLocationKey?: string;
+  presenceRevision?: number;
   lastSeenAt: string;
 };
 
@@ -128,7 +129,6 @@ export type MultiplayerLocationContext = {
 
 const USER_ID_KEY = 'cyberspace.userId';
 const SESSION_ID_KEY = 'cyberspace.sessionId';
-const PRESENCE_ID_KEY = 'cyberspace.presenceId';
 const DISPLAY_NAME_KEY = 'cyberspace.displayName';
 const USER_COLOR_KEY = 'cyberspace.userColor';
 const AVATAR_URL_KEY = 'cyberspace.avatarUrl';
@@ -228,21 +228,30 @@ function getOrCreateIdentity() {
     removeStorage(AVATAR_URL_KEY);
   }
 
-  let presenceId = readSessionStorage(PRESENCE_ID_KEY);
-  if (!presenceId) {
-    presenceId = createId();
-    writeSessionStorage(PRESENCE_ID_KEY, presenceId);
-  }
+  const presenceId = createId();
 
   return { userId, sessionId, presenceId, displayName, color, avatarUrl, avatarType: avatarUrl ? 'glb' as const : 'default' as const };
 }
 
 function shouldReplacePresenceRecord(previous: MultiplayerPresence, next: MultiplayerPresence): boolean {
+  const previousRevision = typeof previous.presenceRevision === 'number' ? previous.presenceRevision : undefined;
+  const nextRevision = typeof next.presenceRevision === 'number' ? next.presenceRevision : undefined;
   const previousTime = Date.parse(previous.lastSeenAt || '');
   const nextTime = Date.parse(next.lastSeenAt || '');
   const nextHasAvatar = Boolean(next.avatarUrl);
   const previousHasAvatar = Boolean(previous.avatarUrl);
 
+  if (previousRevision !== undefined || nextRevision !== undefined) {
+    if (previousRevision === undefined) {
+      return true;
+    }
+    if (nextRevision === undefined) {
+      return false;
+    }
+    if (nextRevision !== previousRevision) {
+      return nextRevision > previousRevision;
+    }
+  }
   if (!Number.isFinite(previousTime)) {
     return true;
   }
@@ -300,10 +309,12 @@ function mergePresenceRecord(
       incomingLocationKey: incomingPresence.locationKey,
       incomingPlayerLocation: incomingPresence.playerLocation,
       incomingSelectedIp: incomingPresence.selectedIp,
+      incomingPresenceRevision: incomingPresence.presenceRevision,
       incomingLastSeenAt: incomingPresence.lastSeenAt,
       existingLocationKey: existingRecord?.locationKey,
       existingPlayerLocation: existingRecord?.playerLocation,
       existingSelectedIp: existingRecord?.selectedIp,
+      existingPresenceRevision: existingRecord?.presenceRevision,
       existingLastSeenAt: existingRecord?.lastSeenAt,
     });
   }
@@ -526,21 +537,76 @@ export function useMultiplayerPresence({
     lastSeenAt: new Date().toISOString(),
   }), [identity, gridSystemMode, viewMode, zoomLevel, currentPosition, grid2Position, playerLocation, pointerTarget, selectedIp, locationKey, activeChatLocationKey]);
   const payloadRef = useRef(payload);
+  const presenceRevisionRef = useRef(0);
+  const pendingPresenceRef = useRef<{
+    channel: RealtimeChannel;
+    payload: MultiplayerPresence;
+    reason: string;
+  } | null>(null);
+  const isPublishingPresenceRef = useRef(false);
 
   useEffect(() => {
     payloadRef.current = payload;
   }, [payload]);
 
-  const publishPresence = useCallback(async (channel: RealtimeChannel, nextPayload: MultiplayerPresence, reason: string) => {
-    const fullPayload = { ...nextPayload, lastSeenAt: new Date().toISOString() };
-    payloadRef.current = fullPayload;
-    logSinglePresenceDebug(`DEBUG_PRESENCE local presence publish: ${reason}`, fullPayload);
-    await channel.track(fullPayload);
-    void channel.send({
-      type: 'broadcast',
-      event: 'presence-update',
-      payload: fullPayload,
-    });
+  const flushPresencePublish = useCallback(() => {
+    if (isPublishingPresenceRef.current) {
+      return;
+    }
+
+    isPublishingPresenceRef.current = true;
+    const run = async () => {
+      try {
+        while (pendingPresenceRef.current) {
+          const pendingPresence = pendingPresenceRef.current;
+          pendingPresenceRef.current = null;
+
+          if (channelRef.current !== pendingPresence.channel) {
+            continue;
+          }
+
+          const fullPayload = {
+            ...pendingPresence.payload,
+            presenceRevision: presenceRevisionRef.current + 1,
+            lastSeenAt: new Date().toISOString(),
+          };
+          presenceRevisionRef.current = fullPayload.presenceRevision;
+          payloadRef.current = fullPayload;
+          logSinglePresenceDebug(`DEBUG_PRESENCE local presence publish: ${pendingPresence.reason}`, fullPayload);
+          await pendingPresence.channel.track(fullPayload);
+
+          if (channelRef.current !== pendingPresence.channel) {
+            continue;
+          }
+
+          void pendingPresence.channel.send({
+            type: 'broadcast',
+            event: 'presence-update',
+            payload: fullPayload,
+          });
+        }
+      } finally {
+        isPublishingPresenceRef.current = false;
+        if (pendingPresenceRef.current) {
+          flushPresencePublish();
+        }
+      }
+    };
+
+    void run();
+  }, []);
+
+  const publishPresence = useCallback((channel: RealtimeChannel, nextPayload: MultiplayerPresence, reason: string) => {
+    pendingPresenceRef.current = { channel, payload: nextPayload, reason };
+    flushPresencePublish();
+  }, [flushPresencePublish]);
+
+  const syncPresenceUsers = useCallback((rawPresenceRecords: MultiplayerPresence[], localPresenceId: string) => {
+    const uniqueBeforeSelfFilter = dedupePresenceRecords(rawPresenceRecords.filter(isPresenceFresh));
+    logPresenceDebug('DEBUG_PRESENCE active remote users before self filter', uniqueBeforeSelfFilter);
+    const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.presenceId !== localPresenceId);
+    logPresenceDebug('DEBUG_PRESENCE active remote users after self filter', remoteUsers);
+    setOthers(remoteUsers);
   }, []);
 
   useEffect(() => {
@@ -571,16 +637,7 @@ export function useMultiplayerPresence({
         .flat()
         .filter(isPresence);
       logPresenceDebug('DEBUG_PRESENCE raw global presence records', raw);
-      const uniqueBeforeSelfFilter = dedupePresenceRecords(raw.filter(isPresenceFresh));
-      logPresenceDebug('DEBUG_PRESENCE active remote users before self filter', uniqueBeforeSelfFilter);
-      const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.presenceId !== identity.presenceId);
-      logPresenceDebug('DEBUG_PRESENCE active remote users after self filter', remoteUsers);
-      setOthers((current) =>
-        remoteUsers.reduce(
-          (nextUsers, presence) => mergePresenceRecord(nextUsers, presence, identity.presenceId, 'presence-sync'),
-          current.filter(isPresenceFresh)
-        )
-      );
+      syncPresenceUsers(raw, identity.presenceId);
     };
 
     channel
@@ -603,7 +660,7 @@ export function useMultiplayerPresence({
         }
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('online');
-          await publishPresence(channel, payloadRef.current, 'subscribe');
+          publishPresence(channel, payloadRef.current, 'subscribe');
         } else if (nextStatus === 'CHANNEL_ERROR' || nextStatus === 'TIMED_OUT') {
           setStatus('error');
         }
@@ -617,7 +674,7 @@ export function useMultiplayerPresence({
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [identity.presenceId, publishPresence]);
+  }, [identity.presenceId, publishPresence, syncPresenceUsers]);
 
   useEffect(() => {
     const channel = channelRef.current;
