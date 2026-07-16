@@ -376,6 +376,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const exaApiKey = process.env.EXA_API_KEY;
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!exaApiKey?.trim() || !supabaseUrl?.trim() || !supabaseSecretKey?.trim()) {
+    console.warn('EXA_CONFIG_DIAGNOSTIC', {
+      hasExaApiKey: Boolean(process.env.EXA_API_KEY?.trim()),
+      hasSupabaseUrl: Boolean(process.env.SUPABASE_URL?.trim()),
+      hasSupabaseSecretKey: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+      vercelEnvironment: process.env.VERCEL_ENV ?? 'unknown',
+      vercelDeploymentUrl: process.env.VERCEL_URL ?? 'unknown',
+      gitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? 'unknown',
+    });
+  }
   if (!exaApiKey || !supabaseUrl || !supabaseSecretKey) {
     sendFailure(res, 503, 'error', 'not_configured', input.ipAddress);
     return;
