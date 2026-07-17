@@ -445,6 +445,52 @@ function MiniUserAvatar({
   );
 }
 
+function PrimaryCanvasResizeSync() {
+  const { camera, gl, setSize } = useThree();
+
+  useEffect(() => {
+    const container = gl.domElement.parentElement;
+    if (!container) {
+      return;
+    }
+
+    let frameId = 0;
+    const syncCanvasSize = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const { width, height } = container.getBoundingClientRect();
+        if (width <= 0 || height <= 0) {
+          return;
+        }
+
+        setSize(width, height, false);
+        if (camera instanceof THREE.PerspectiveCamera) {
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+      });
+    };
+
+    syncCanvasSize();
+
+    const resizeObserver = new ResizeObserver(syncCanvasSize);
+    resizeObserver.observe(container);
+    window.addEventListener('resize', syncCanvasSize);
+    window.addEventListener('orientationchange', syncCanvasSize);
+    window.visualViewport?.addEventListener('resize', syncCanvasSize);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', syncCanvasSize);
+      window.removeEventListener('orientationchange', syncCanvasSize);
+      window.visualViewport?.removeEventListener('resize', syncCanvasSize);
+    };
+  }, [camera, gl, setSize]);
+
+  return null;
+}
+
 function getAvatarUrlDebugInfo(avatarUrl?: string) {
   const value = avatarUrl?.trim() ?? '';
   const lowerValue = value.toLowerCase();
@@ -3393,7 +3439,7 @@ function App() {
   };
 
   const renderWhoPanel = () => (
-    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+    <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Who</div>
       <div className="mt-3 space-y-2">
         {whoPanelUsers.length > 0 ? (
@@ -3450,7 +3496,7 @@ function App() {
   );
 
   const renderBookmarksPanel = () => (
-    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+    <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="flex items-center justify-between gap-3">
         <div className="font-bold text-lg">Your Saved Locations</div>
         <button
@@ -3536,7 +3582,7 @@ function App() {
   );
 
   const renderLocationPreferencesPanel = () => (
-    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+    <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Location Preferences</div>
       <div className="mt-3 rounded bg-gray-100 p-2 text-sm">
         <div className="font-semibold text-gray-900">Starting Location</div>
@@ -3610,7 +3656,7 @@ function App() {
     helperText: string,
     onClose: () => void
   ) => (
-    <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+    <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
       <div className="font-bold text-lg">Street and Building View: {target.ipAddress}</div>
       {target.organizationName?.trim() && (
         <div className="text-sm text-gray-700 mt-1">{target.organizationName.trim()}</div>
@@ -3820,7 +3866,7 @@ function App() {
     return (
       <div
         ref={gridContainerRef}
-        className="relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
+        className="app-canvas-shell relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]"
       >
         <Canvas
           key={viewKey}
@@ -3831,6 +3877,7 @@ function App() {
             cameraRef.current = camera as THREE.PerspectiveCamera;
           }}
         >
+          <PrimaryCanvasResizeSync />
           <fog attach="fog" args={['#111827', 12, 46]} />
           <ambientLight intensity={0.68} />
           <pointLight position={[10, 16, 10]} intensity={1.05} />
@@ -3881,12 +3928,12 @@ function App() {
   };
 
   return (
-    <div ref={appContainerRef} className="h-screen overflow-hidden bg-white text-black flex flex-col">
-      <div className="flex-1 min-h-0 p-3 flex flex-col gap-3">
-        <header className="shrink-0 bg-white text-black p-3 rounded-lg">
-          <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+    <div ref={appContainerRef} className="app-shell h-screen overflow-hidden bg-white text-black flex flex-col">
+      <div className="app-frame flex-1 min-h-0 p-3 flex flex-col gap-3">
+        <header className="app-header shrink-0 bg-white text-black p-3 rounded-lg">
+          <div className="app-header-layout flex flex-col gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
             <div className="min-w-0 lg:pr-4">
-              <h1 className="text-2xl font-bold">Burning Chrome</h1>
+              <h1 className="app-title text-2xl font-bold">Burning Chrome</h1>
             </div>
 
             <form
@@ -3894,21 +3941,21 @@ function App() {
                 event.preventDefault();
                 void runDomainSearch();
               }}
-              className="flex min-w-0 justify-center lg:px-4 lg:pt-1"
+              className="app-search-form flex min-w-0 justify-center lg:px-4 lg:pt-1"
             >
-              <div className="flex w-full min-w-0 max-w-xl gap-2">
+              <div className="app-search-row flex w-full min-w-0 max-w-xl gap-2">
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="Search by domain or IP address..."
-                  className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                  className="app-search-input min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
                   aria-label="Search domain or organization"
                 />
                 <button
                   type="submit"
                   disabled={!searchQuery.trim() || searchLoading}
-                  className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                  className="app-touch-button shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   {searchLoading ? 'Searching...' : 'Search'}
                 </button>
@@ -3918,7 +3965,7 @@ function App() {
             <div className="flex flex-col items-start lg:items-end gap-3 lg:pl-4">
               <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
                 <div
-                  className="relative"
+                  className="app-menu-root relative"
                   onMouseEnter={() => setIsOptionsOpen(true)}
                   onMouseLeave={() => setIsOptionsOpen(false)}
                   onBlur={(event) => {
@@ -3931,14 +3978,14 @@ function App() {
                     type="button"
                     onClick={() => setIsOptionsOpen(true)}
                     onFocus={() => setIsOptionsOpen(true)}
-                    className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                    className="app-menu-button app-touch-button px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
                     aria-expanded={isOptionsOpen}
                     aria-haspopup="menu"
                   >
                     Menu
                   </button>
                   {isOptionsOpen && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-visible rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
+                    <div className="app-menu-dropdown absolute right-0 top-full z-50 mt-2 w-48 overflow-visible rounded-lg border border-gray-300 bg-white py-1 text-sm text-gray-900 shadow-xl" role="menu">
                       <button
                         type="button"
                         onClick={() => {
@@ -4046,7 +4093,7 @@ function App() {
                         >
                           Info and Instructions
                         </button>
-                        <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
+                        <div className="app-info-popover pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 text-sm leading-relaxed text-gray-800 shadow-xl group-hover:block group-hover:pointer-events-auto group-focus-within:block group-focus-within:pointer-events-auto">
                           <p className="font-medium text-gray-950">3D IPv4 city grid with public-exposure-based heights and live RDAP/hostname lookups</p>
                           <p className="mt-2 text-xs italic text-gray-700">Hover over a location for information. Click on it to go to that location. Double-click on it to tunnel down to the next level of addresses.</p>
                           <p className="mt-2 italic">{getCurrentRangeLabel()}</p>
@@ -4065,8 +4112,8 @@ function App() {
         </header>
 
         {showSearchOverlay && (
-          <div className="fixed inset-x-4 top-28 bottom-28 z-40 flex items-start justify-center bg-black/20 p-4">
-            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-gray-400 bg-white text-gray-950 shadow-2xl">
+          <div className="app-search-overlay fixed inset-x-4 top-28 bottom-28 z-40 flex items-start justify-center bg-black/20 p-4">
+            <div className="app-search-dialog w-full max-w-2xl overflow-hidden rounded-lg border border-gray-400 bg-white text-gray-950 shadow-2xl">
               <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
                 <div>
                   <div className="text-base font-semibold">Search results</div>
@@ -4114,15 +4161,15 @@ function App() {
         )}
 
         {buildingView ? (
-          <div className="flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1 min-h-[260px] lg:flex-[1.35]">
+          <div className="app-main-area flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
+            <div className="app-visual-pane relative flex-1 min-h-[260px] lg:flex-[1.35]">
               {renderStreetSceneCanvas(
                 `building-street-${viewResetKey}-${buildingView.ipAddress}`,
                 { x: buildingView.x, y: buildingView.y }
               )}
             </div>
 
-            <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+            <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
               <div className="font-bold text-lg">Street and Building View: {buildingView.ipAddress}</div>
               {buildingView.organizationName?.trim() && (
                 <div className="text-sm text-gray-700 mt-1">{buildingView.organizationName.trim()}</div>
@@ -4319,8 +4366,8 @@ function App() {
             </div>
           </div>
         ) : layoutMode === 'street' ? (
-          <div className={`flex-1 min-h-0 flex ${showStreetAndBuildingPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
-            <div className={`${showStreetAndBuildingPanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'}`}>
+          <div className={`app-main-area flex-1 min-h-0 flex ${showStreetAndBuildingPanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
+            <div className={`app-visual-pane ${showStreetAndBuildingPanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'}`}>
               {renderStreetSceneCanvas(`street-${viewResetKey}-${streetTargetCell?.ipAddress ?? 'none'}`, streetFocusCell)}
             </div>
 
@@ -4332,7 +4379,7 @@ function App() {
                 () => setShowStreetAndBuildingPanel(false)
               )
             ) : (
-              <div className="min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
+              <div className="app-side-panel min-h-0 lg:w-[380px] bg-white text-black border border-gray-300 rounded-xl shadow-lg p-3 overflow-auto">
                 <div className="font-bold text-lg">Street and Building View: {streetPanelTargetIp}</div>
                 {streetPanelOrganizationName && (
                   <div className="text-sm text-gray-700 mt-1">{streetPanelOrganizationName}</div>
@@ -4361,10 +4408,10 @@ function App() {
             ))}
           </div>
         ) : (
-          <div className={`flex-1 min-h-0 flex ${showGridSidePanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
+          <div className={`app-main-area flex-1 min-h-0 flex ${showGridSidePanel ? 'flex-col gap-3 lg:flex-row' : 'justify-center'}`}>
             <div
               ref={gridContainerRef}
-              className={`${showGridSidePanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'} rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]`}
+              className={`app-canvas-shell app-visual-pane ${showGridSidePanel ? 'relative flex-1 min-h-[260px] lg:flex-[1.35]' : 'relative w-full h-full min-h-[260px]'} rounded-xl overflow-hidden border border-gray-700 bg-[#eaf6ff]`}
             >
               <Canvas
                 key={`${layoutMode}-${viewResetKey}`}
@@ -4375,6 +4422,7 @@ function App() {
                   cameraRef.current = camera as THREE.PerspectiveCamera;
                 }}
               >
+                <PrimaryCanvasResizeSync />
                 <fog attach="fog" args={['#111827', 18, 42]} />
                 <ambientLight intensity={0.6} />
                 <pointLight position={[10, 16, 10]} intensity={1.05} />
@@ -4498,7 +4546,7 @@ function App() {
 
         {!buildingView && (
           <div
-            className="relative shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
+            className="app-bottom-info relative shrink-0 h-[18vh] rounded-lg shadow-lg border border-gray-300 px-3 py-2 overflow-hidden"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
             {shouldShowLearnMoreButton && (
@@ -4506,12 +4554,12 @@ function App() {
                 type="button"
                 onClick={handleLearnMore}
                 disabled={publicWebState.status === 'loading' && publicWebState.ipAddress === displayedHoverIp}
-                className="absolute right-3 top-2 z-10 rounded border border-gray-400 bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                className="app-learn-button app-touch-button absolute right-3 top-2 z-10 rounded border border-gray-400 bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
               >
                 Learn More
               </button>
             )}
-            <div className={`h-full overflow-auto ${shouldShowLearnMoreButton ? 'pr-32' : ''}`}>
+            <div className={`app-bottom-info-content h-full overflow-auto ${shouldShowLearnMoreButton ? 'pr-32' : ''}`}>
               {bottomInfoHtml ? (
                 isPublicWebActive && publicWebContext ? (
                   <div className="text-sm leading-relaxed max-w-5xl [&_.font-bold]:text-base [&_.font-bold]:mb-2 [&_p]:mb-2">
@@ -4539,9 +4587,9 @@ function App() {
           </div>
         )}
 
-        <div className="shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-sm p-2">
-          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,auto)_minmax(320px,1.35fr)] lg:items-start">
-            <div className="min-w-0">
+        <div className="app-multiplayer-panel shrink-0 bg-white text-black border border-gray-300 rounded-lg shadow-sm p-2">
+          <div className="app-multiplayer-grid grid gap-2 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,auto)_minmax(320px,1.35fr)] lg:items-start">
+            <div className="app-status-section min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={`inline-block h-2.5 w-2.5 rounded-full ${
                   multiplayer.status === 'online'
@@ -4582,7 +4630,7 @@ function App() {
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500 break-all">Location: {userLocationLabel}</div>
-              <form onSubmit={handleSaveDisplayName} className="mt-2 flex max-w-xs items-center gap-2 text-xs">
+              <form onSubmit={handleSaveDisplayName} className="app-name-form mt-2 flex max-w-xs items-center gap-2 text-xs">
                 <label className="shrink-0 font-medium text-gray-700" htmlFor="display-name-input">
                   Name:
                 </label>
@@ -4603,9 +4651,9 @@ function App() {
               </form>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs lg:px-2">
+            <div className="app-avatar-section flex flex-wrap items-center justify-center gap-2 text-xs lg:px-2">
               <label
-                className="cursor-pointer rounded border border-gray-400 bg-gray-200 px-2 py-1 font-medium text-gray-900 shadow-sm hover:bg-gray-300"
+                className="app-touch-button cursor-pointer rounded border border-gray-400 bg-gray-200 px-2 py-1 font-medium text-gray-900 shadow-sm hover:bg-gray-300"
                 htmlFor="avatar-upload-input"
               >
                 Upload avatar (.glb)
@@ -4638,8 +4686,8 @@ function App() {
               </span>
             </div>
 
-            <div className="w-full lg:max-w-xl lg:justify-self-end">
-              <div className="max-h-16 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
+            <div className="app-chat-section w-full lg:max-w-xl lg:justify-self-end">
+              <div className="app-chat-log max-h-16 overflow-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
                 {multiplayer.messages.length > 0 ? (
                   multiplayer.messages.map((message) => (
                     <div key={message.id} className="flex gap-1 py-0.5">
@@ -4655,7 +4703,7 @@ function App() {
                   </div>
                 )}
               </div>
-              <form onSubmit={handleSendChat} className="mt-2 flex gap-2">
+              <form onSubmit={handleSendChat} className="app-chat-form mt-2 flex gap-2">
                 <input
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value.slice(0, 300))}
@@ -4685,7 +4733,7 @@ function App() {
         </div>
 
         {showHeightLegend && (
-          <div className="shrink-0 max-h-[16vh] overflow-auto bg-white text-black border border-gray-300 p-2 rounded-lg">
+          <div className="app-height-legend shrink-0 max-h-[16vh] overflow-auto bg-white text-black border border-gray-300 p-2 rounded-lg">
             {layoutMode === 'grid' ? (
               <>
                 <h3 className="font-semibold mb-2">Building Height = public service exposure</h3>
