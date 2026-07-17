@@ -134,7 +134,6 @@ const USER_COLOR_KEY = 'cyberspace.userColor';
 const AVATAR_URL_KEY = 'cyberspace.avatarUrl';
 const AVATAR_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2', '#be123c', '#65a30d'];
 const PRESENCE_CHANNEL = 'cyberspace-presence-global';
-const PRESENCE_STALE_MS = 45_000;
 const PRESENCE_HEARTBEAT_MS = 15_000;
 
 function readStorage(key: string): string | null {
@@ -292,12 +291,11 @@ function mergePresenceRecord(
   localPresenceId: string,
   source: 'presence-sync' | 'presence-update'
 ): MultiplayerPresence[] {
-  const freshCurrent = currentUsers.filter(isPresenceFresh);
-  if (incomingPresence.presenceId === localPresenceId || !isPresenceFresh(incomingPresence)) {
-    return freshCurrent;
+  if (incomingPresence.presenceId === localPresenceId) {
+    return currentUsers;
   }
 
-  const existingRecord = freshCurrent.find((presence) => presence.presenceId === incomingPresence.presenceId);
+  const existingRecord = currentUsers.find((presence) => presence.presenceId === incomingPresence.presenceId);
   const shouldAccept = !existingRecord || shouldReplacePresenceRecord(existingRecord, incomingPresence);
 
   if (DEBUG_PRESENCE) {
@@ -320,13 +318,13 @@ function mergePresenceRecord(
   }
 
   if (!shouldAccept) {
-    return freshCurrent;
+    return currentUsers;
   }
 
   return dedupePresenceRecords([
-    ...freshCurrent.filter((presence) => presence.presenceId !== incomingPresence.presenceId),
+    ...currentUsers.filter((presence) => presence.presenceId !== incomingPresence.presenceId),
     incomingPresence,
-  ]).filter((presence) => isPresenceFresh(presence) && presence.presenceId !== localPresenceId);
+  ]).filter((presence) => presence.presenceId !== localPresenceId);
 }
 
 function isPresence(value: unknown): value is MultiplayerPresence {
@@ -338,11 +336,6 @@ function isPresence(value: unknown): value is MultiplayerPresence {
     typeof (value as MultiplayerPresence).presenceId === 'string' &&
     typeof (value as MultiplayerPresence).displayName === 'string'
   );
-}
-
-function isPresenceFresh(presence: MultiplayerPresence, now = Date.now()): boolean {
-  const lastSeen = Date.parse(presence.lastSeenAt || '');
-  return Number.isFinite(lastSeen) && now - lastSeen <= PRESENCE_STALE_MS;
 }
 
 const DEBUG_PRESENCE = false;
@@ -603,7 +596,7 @@ export function useMultiplayerPresence({
   }, [flushPresencePublish]);
 
   const syncPresenceUsers = useCallback((rawPresenceRecords: MultiplayerPresence[], localPresenceId: string) => {
-    const uniqueBeforeSelfFilter = dedupePresenceRecords(rawPresenceRecords.filter(isPresenceFresh));
+    const uniqueBeforeSelfFilter = dedupePresenceRecords(rawPresenceRecords);
     authoritativePresenceIdsRef.current = new Set(uniqueBeforeSelfFilter.map((presence) => presence.presenceId));
     logPresenceDebug('DEBUG_PRESENCE active remote users before self filter', uniqueBeforeSelfFilter);
     const remoteUsers = uniqueBeforeSelfFilter.filter((presence) => presence.presenceId !== localPresenceId);
