@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import IPGrid, { type GridCellBuilding, type PublicWebEnrichmentContext } from './components/IPGrid';
@@ -115,6 +115,12 @@ type AdditionalServiceDetail = PortEntry & {
   description: string;
   confidence: ServiceConfidence;
   confidenceReason?: string;
+};
+
+type InsideServiceDoor = PortEntry & {
+  label: string;
+  serviceName: string;
+  isClientSupported: boolean;
 };
 
 type DomainSearchResult = {
@@ -462,7 +468,7 @@ type StoredLastLocation = {
   buildingView?: BuildingViewState | null;
 };
 
-type LayoutMode = 'grid' | 'street';
+type LayoutMode = 'grid' | 'street' | 'inside';
 type GridSystemMode = 'grid1' | 'grid2';
 type StreetHeading = 0 | 1 | 2 | 3;
 type SwipeDirection = 'up' | 'down' | 'left' | 'right';
@@ -1499,6 +1505,58 @@ function getAdditionalServiceDetails(exposure: ExposureRecord | null): Additiona
   });
 }
 
+function getInsideServiceName(entry: PortEntry, exposure: ExposureRecord): string {
+  const knownServices: Record<number, string> = {
+    22: 'SSH',
+    23: 'Telnet',
+    53: 'DNS',
+    80: 'HTTP',
+    443: 'HTTPS',
+  };
+  if (knownServices[entry.port]) {
+    return knownServices[entry.port];
+  }
+
+  const reference = getPortReference(entry);
+  if (reference) {
+    return reference.serviceName;
+  }
+
+  const serviceName = exposure.serviceNames
+    .map((value) => value.trim())
+    .find((value) => value && !value.toLowerCase().startsWith('cpe:'));
+  return serviceName ?? 'Unknown service';
+}
+
+function getInsideServiceDoors(exposure: ExposureRecord | null): InsideServiceDoor[] {
+  if (!exposure) {
+    return [];
+  }
+
+  const uniquePorts = new Map<string, PortEntry>();
+  exposure.topPorts
+    .map(parsePortEntry)
+    .filter((entry): entry is PortEntry => entry !== null)
+    .forEach((entry) => {
+      const key = `${entry.port}/${entry.transport ?? ''}`;
+      if (!uniquePorts.has(key)) {
+        uniquePorts.set(key, entry);
+      }
+    });
+
+  return [...uniquePorts.values()]
+    .sort((left, right) => left.port - right.port)
+    .map((entry) => {
+      const serviceName = getInsideServiceName(entry, exposure);
+      return {
+        ...entry,
+        serviceName,
+        label: `${entry.port} - ${serviceName}`,
+        isClientSupported: entry.port === 22,
+      };
+    });
+}
+
 function AdditionalExposureServices({ exposure }: { exposure: ExposureRecord }) {
   const services = getAdditionalServiceDetails(exposure);
 
@@ -1694,6 +1752,144 @@ function StreetGridCamera({
   }, [camera, streetPlayerX, streetPlayerY, heading, focusCell?.x, focusCell?.y]);
 
   return null;
+}
+
+function InsideLobbyCamera() {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    camera.up.set(0, 1, 0);
+    camera.position.set(0, 3.2, 8.2);
+    camera.lookAt(0, 0.2, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
+
+  return null;
+}
+
+function InsideLobbyScene({
+  ipAddress,
+  doors,
+  onDoorClick,
+}: {
+  ipAddress: string;
+  doors: InsideServiceDoor[];
+  onDoorClick: (door: InsideServiceDoor) => void;
+}) {
+  useEffect(() => () => {
+    document.body.style.cursor = '';
+  }, []);
+
+  const displayedDoors = doors.slice(0, 12);
+  const wallSlots = [
+    { position: [-4.6, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [-2.8, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [-1.0, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [1.0, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [2.8, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [4.6, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
+    { position: [-5.6, 1.15, -0.9] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] },
+    { position: [-5.6, 1.15, 1.1] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] },
+    { position: [5.6, 1.15, -0.9] as [number, number, number], rotation: [0, -Math.PI / 2, 0] as [number, number, number] },
+    { position: [5.6, 1.15, 1.1] as [number, number, number], rotation: [0, -Math.PI / 2, 0] as [number, number, number] },
+    { position: [-1.4, 1.15, 2.8] as [number, number, number], rotation: [0, Math.PI, 0] as [number, number, number] },
+    { position: [1.4, 1.15, 2.8] as [number, number, number], rotation: [0, Math.PI, 0] as [number, number, number] },
+  ];
+
+  return (
+    <>
+      <InsideLobbyCamera />
+      <color attach="background" args={['#f8fbff']} />
+      <ambientLight intensity={0.9} />
+      <pointLight position={[0, 4.8, 1.8]} intensity={1.8} />
+      <directionalLight position={[2, 5, 4]} intensity={0.9} />
+
+      <mesh position={[0, -0.04, 0]} receiveShadow>
+        <boxGeometry args={[12, 0.08, 8]} />
+        <meshStandardMaterial color="#e7eef7" roughness={0.42} />
+      </mesh>
+      <mesh position={[0, 2.25, -3.05]}>
+        <boxGeometry args={[12, 4.6, 0.16]} />
+        <meshStandardMaterial color="#f7fafc" roughness={0.5} />
+      </mesh>
+      <mesh position={[-6.05, 2.25, 0]}>
+        <boxGeometry args={[0.16, 4.6, 8]} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.52} />
+      </mesh>
+      <mesh position={[6.05, 2.25, 0]}>
+        <boxGeometry args={[0.16, 4.6, 8]} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.52} />
+      </mesh>
+      <mesh position={[0, 4.55, 0]}>
+        <boxGeometry args={[12, 0.12, 8]} />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={0.25} />
+      </mesh>
+      <mesh position={[0, 4.46, 0]}>
+        <boxGeometry args={[4.8, 0.04, 1.1]} />
+        <meshStandardMaterial color="#fff7d6" emissive="#fff7d6" emissiveIntensity={0.85} />
+      </mesh>
+
+      <Text
+        position={[0, 0.035, 1.45]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.56}
+        color="#111827"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={5.5}
+      >
+        {ipAddress}
+      </Text>
+
+      {displayedDoors.map((door, index) => {
+        const slot = wallSlots[index] ?? wallSlots[wallSlots.length - 1];
+        const isActive = door.isClientSupported;
+        return (
+          <group key={`${door.port}-${door.transport ?? 'port'}-${index}`} position={slot.position} rotation={slot.rotation}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1.08, 1.95, 0.12]} />
+              <meshStandardMaterial color={isActive ? '#334155' : '#64748b'} roughness={0.48} />
+            </mesh>
+            <mesh
+              position={[0, 0.48, 0.075]}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (isActive) {
+                  onDoorClick(door);
+                }
+              }}
+              onPointerOver={(event) => {
+                event.stopPropagation();
+                document.body.style.cursor = isActive ? 'pointer' : 'not-allowed';
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = '';
+              }}
+            >
+              <boxGeometry args={[0.96, 0.42, 0.08]} />
+              <meshStandardMaterial color={isActive ? '#fef3c7' : '#e5e7eb'} roughness={0.32} />
+            </mesh>
+            <Text
+              position={[0, 0.48, 0.125]}
+              fontSize={0.13}
+              color={isActive ? '#111827' : '#6b7280'}
+              anchorX="center"
+              anchorY="middle"
+              maxWidth={0.86}
+            >
+              {door.label}
+            </Text>
+          </group>
+        );
+      })}
+
+      {displayedDoors.length === 0 && (
+        <Text position={[0, 1.3, -2.35]} fontSize={0.24} color="#374151" anchorX="center" anchorY="middle" maxWidth={4.8}>
+          No identified public service doors yet
+        </Text>
+      )}
+    </>
+  );
 }
 
 
@@ -2315,6 +2511,10 @@ function App() {
     () => getBuildingDirectoryEntries(exposureResult, certificateResult),
     [exposureResult, certificateResult]
   );
+  const insideServiceDoors = useMemo(
+    () => getInsideServiceDoors(exposureResult),
+    [exposureResult]
+  );
 
   const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip', targetGridSystemMode: GridSystemMode = gridSystemMode) => {
     const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
@@ -2872,6 +3072,11 @@ function App() {
   };
 
   const handleBack = () => {
+    if (layoutMode === 'inside') {
+      handleReturnFromInsideView();
+      return;
+    }
+
     if (layoutMode === 'street') {
       const nextLocation = streetTargetCell
         ? {
@@ -3281,19 +3486,46 @@ function App() {
 
   const handleEnterBuildingView = (building: BuildingViewState) => {
     setBuildingView(building);
+    setLayoutMode('street');
     setStreetTargetCell(building);
     setStreetFocusCell({ x: clampStreetCell(building.x), y: clampStreetCell(building.y) });
     applyPlayerLocation({ kind: 'building', ipAddress: building.ipAddress, outside: true });
     loadStreetTargetDetails(building);
   };
 
+  const handleEnterInsideView = (target: BuildingViewState) => {
+    setBuildingView(target);
+    setLayoutMode('inside');
+    setShowStreetAndBuildingPanel(false);
+    setStreetTargetCell(target);
+    setStreetFocusCell({ x: clampStreetCell(target.x), y: clampStreetCell(target.y) });
+    applyPlayerLocation({ kind: 'building', ipAddress: target.ipAddress, outside: true });
+    loadStreetTargetDetails(target);
+  };
+
   const handleExitBuildingView = () => {
     setBuildingView(null);
+    setLayoutMode('street');
     setStreetFocusCell(streetTargetCell ? { x: clampStreetCell(streetTargetCell.x), y: clampStreetCell(streetTargetCell.y) } : null);
     setCertificateLoadingIp(null);
     setExposureLoadingIp(null);
     setSshLaunchLoadingIp(null);
     setSshLaunchResult(null);
+  };
+
+  const handleReturnFromInsideView = () => {
+    setLayoutMode('street');
+    setShowStreetAndBuildingPanel(true);
+    if (buildingView) {
+      setStreetTargetCell(buildingView);
+      setStreetFocusCell({ x: clampStreetCell(buildingView.x), y: clampStreetCell(buildingView.y) });
+    }
+  };
+
+  const handleInsideDoorClick = (door: InsideServiceDoor) => {
+    if (door.port === 22) {
+      void handleLaunchSsh();
+    }
   };
 
   const handleLaunchSsh = async () => {
@@ -3353,6 +3585,10 @@ function App() {
   };
 
   const getInstructionText = (): string => {
+    if (layoutMode === 'inside') {
+      return 'Inside View shows the selected building lobby and the public services already identified for this IP.';
+    }
+
     if (layoutMode === 'street') {
       return 'Hover over a location for information. Click on it to go to that location. Scroll or drag up/down to move forward or backward. Use horizontal scroll, Shift-scroll, or horizontal dragging to move left and right. Swipe left or right, or right/modified-drag horizontally, to turn. Click a building to enter it.';
     }
@@ -3380,7 +3616,7 @@ function App() {
       : `Viewing the 256 host addresses in ${currentPosition.firstOctet}.${currentPosition.secondOctet}.${currentPosition.thirdOctet}.0/24. Heights reflect public service exposure for each exact IP. Single-click a building or square for street level. Hover a building to fetch hostname data.`;
   };
 
-  const isBackDisabled = layoutMode !== 'street' && (gridSystemMode === 'grid2' || zoomLevel === 0);
+  const isBackDisabled = layoutMode !== 'street' && layoutMode !== 'inside' && (gridSystemMode === 'grid2' || zoomLevel === 0);
   const visibleCoordinateRangeLabel = getVisibleCoordinateRangeLabel(
     gridSystemMode,
     zoomLevel,
@@ -4099,7 +4335,7 @@ function App() {
   );
 
   const renderStreetAndBuildingInfoPanel = (
-    target: { ipAddress: string; organizationName?: string | null },
+    target: BuildingViewState,
     onReturn: () => void,
     helperText: string,
     onClose: () => void
@@ -4123,12 +4359,11 @@ function App() {
 
           <button
             type="button"
-            onClick={handleLaunchSsh}
-            disabled={sshLaunchLoadingIp === target.ipAddress}
-            className={`px-3 py-2 rounded-md text-sm font-medium ${sshLaunchLoadingIp === target.ipAddress ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-            title="Open the local SSH client"
+            onClick={() => handleEnterInsideView(target)}
+            className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+            title="Enter the selected building"
           >
-            {sshLaunchLoadingIp === target.ipAddress ? 'Opening SSH...' : 'Open SSH client'}
+            Go Inside
           </button>
 
           {websiteCandidate && (
@@ -4377,6 +4612,38 @@ function App() {
     );
   };
 
+  const renderInsideSceneCanvas = (target: BuildingViewState) => (
+    <div
+      ref={gridContainerRef}
+      className="app-canvas-shell relative w-full h-full min-h-[260px] touch-none rounded-xl overflow-hidden border border-gray-700 bg-[#f8fbff]"
+    >
+      <Canvas
+        key={`inside-${viewResetKey}-${target.ipAddress}`}
+        camera={{ position: [0, 3.2, 8.2], fov: 50 }}
+        dpr={canvasDpr}
+        shadows
+        onCreated={({ camera }) => {
+          cameraRef.current = camera as THREE.PerspectiveCamera;
+        }}
+      >
+        <PrimaryCanvasResizeSync />
+        <InsideLobbyScene
+          ipAddress={target.ipAddress}
+          doors={insideServiceDoors}
+          onDoorClick={handleInsideDoorClick}
+        />
+      </Canvas>
+      {sshLaunchResult && sshLaunchResult.ipAddress === target.ipAddress && (
+        <div className={`pointer-events-none absolute left-3 top-3 z-10 max-w-sm rounded border bg-white/90 px-3 py-2 text-sm shadow ${sshLaunchResult.status === 'ready' ? 'border-green-300 text-green-800' : 'border-red-300 text-red-800'}`}>
+          {sshLaunchResult.statusSummary ?? sshLaunchResult.error}
+          {sshLaunchResult.command ? (
+            <div className="mt-1 break-all text-xs text-gray-600">Command: {sshLaunchResult.command}</div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div ref={appContainerRef} className="app-shell h-screen overflow-hidden bg-white text-black flex flex-col">
       <div className="app-frame flex-1 min-h-0 p-3 flex flex-col gap-3">
@@ -4610,7 +4877,13 @@ function App() {
           </div>
         )}
 
-        {buildingView ? (
+        {layoutMode === 'inside' && buildingView ? (
+          <div className="app-main-area flex-1 min-h-0 flex justify-center">
+            <div className="app-visual-pane relative w-full h-full min-h-[260px]">
+              {renderInsideSceneCanvas(buildingView)}
+            </div>
+          </div>
+        ) : buildingView ? (
           <div className="app-main-area flex-1 min-h-0 flex flex-col gap-3 lg:flex-row">
             <div className="app-visual-pane relative flex-1 min-h-[260px] lg:flex-[1.35]">
               {renderStreetSceneCanvas(
@@ -4638,12 +4911,12 @@ function App() {
                   </button>
 
                   <button
-                    onClick={handleLaunchSsh}
-                    disabled={sshLaunchLoadingIp === buildingView.ipAddress}
-                    className={`px-3 py-2 rounded-md text-sm font-medium ${sshLaunchLoadingIp === buildingView.ipAddress ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400'}`}
-                    title="Open the local SSH client"
+                    type="button"
+                    onClick={() => handleEnterInsideView(buildingView)}
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
+                    title="Enter the selected building"
                   >
-                    {sshLaunchLoadingIp === buildingView.ipAddress ? 'Opening SSH...' : 'Open SSH client'}
+                    Go Inside
                   </button>
 
                   {websiteCandidate && (
