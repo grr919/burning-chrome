@@ -94,6 +94,29 @@ type DirectoryEntry = {
   url: string;
 };
 
+type ServiceConfidence = 'Confirmed' | 'Probable' | 'Possible' | 'Unknown';
+
+type PortEntry = {
+  port: number;
+  transport?: string;
+};
+
+type PortServiceReference = {
+  serviceName: string;
+  category: string;
+  description: string;
+  keywords: string[];
+};
+
+type AdditionalServiceDetail = PortEntry & {
+  portLabel: string;
+  serviceName: string;
+  category: string;
+  description: string;
+  confidence: ServiceConfidence;
+  confidenceReason?: string;
+};
+
 type DomainSearchResult = {
   label: string;
   domain?: string;
@@ -120,6 +143,271 @@ type PublicWebEnrichmentState = {
   ipAddress?: string;
   synopsis?: string;
   message?: string;
+};
+
+const MAIL_SERVICE_PORTS = new Set([25, 110, 143, 465, 587, 993, 995]);
+const ADDITIONAL_SERVICE_EXCLUDED_PORTS = new Set([22, 80, 443, ...MAIL_SERVICE_PORTS]);
+
+const COMMON_PORT_REFERENCES: Record<string, PortServiceReference> = {
+  '21/tcp': {
+    serviceName: 'File transfer',
+    category: 'File transfer or file sharing',
+    description: 'Moves files between computers using the File Transfer Protocol.',
+    keywords: ['ftp', 'file transfer', 'vsftpd', 'proftpd'],
+  },
+  '23/tcp': {
+    serviceName: 'Remote terminal',
+    category: 'Remote access',
+    description: 'Provides command-line remote access using Telnet.',
+    keywords: ['telnet'],
+  },
+  '53/tcp': {
+    serviceName: 'DNS',
+    category: 'Network infrastructure',
+    description: 'Answers domain-name lookup requests and may transfer DNS zone data.',
+    keywords: ['dns', 'domain name', 'bind', 'named'],
+  },
+  '53/udp': {
+    serviceName: 'DNS',
+    category: 'Network infrastructure',
+    description: 'Answers domain-name lookup requests.',
+    keywords: ['dns', 'domain name', 'bind', 'named'],
+  },
+  '123/udp': {
+    serviceName: 'Network time',
+    category: 'Network infrastructure',
+    description: 'Helps computers keep their clocks synchronized.',
+    keywords: ['ntp', 'network time'],
+  },
+  '161/udp': {
+    serviceName: 'Device monitoring',
+    category: 'Network infrastructure',
+    description: 'Exposes management or monitoring information for networked equipment.',
+    keywords: ['snmp'],
+  },
+  '389/tcp': {
+    serviceName: 'Directory service',
+    category: 'Network infrastructure',
+    description: 'Provides directory lookups for users, devices, or organizational records.',
+    keywords: ['ldap', 'directory'],
+  },
+  '445/tcp': {
+    serviceName: 'Windows file sharing',
+    category: 'File transfer or file sharing',
+    description: 'Shares files, printers, or Windows network resources.',
+    keywords: ['smb', 'microsoft-ds', 'samba', 'windows file sharing'],
+  },
+  '515/tcp': {
+    serviceName: 'Network printing',
+    category: 'Printer or connected device',
+    description: 'Accepts print jobs using the Line Printer protocol.',
+    keywords: ['printer', 'lpd', 'line printer'],
+  },
+  '554/tcp': {
+    serviceName: 'Streaming media',
+    category: 'Voice or video',
+    description: 'Delivers audio or video streams, commonly from cameras or media servers.',
+    keywords: ['rtsp', 'streaming', 'camera'],
+  },
+  '631/tcp': {
+    serviceName: 'Network printing',
+    category: 'Printer or connected device',
+    description: 'Accepts or manages print jobs using the Internet Printing Protocol.',
+    keywords: ['ipp', 'cups', 'printer'],
+  },
+  '636/tcp': {
+    serviceName: 'Secure directory service',
+    category: 'Network infrastructure',
+    description: 'Provides encrypted directory lookups for users, devices, or organizational records.',
+    keywords: ['ldaps', 'ldap', 'directory'],
+  },
+  '1080/tcp': {
+    serviceName: 'Proxy service',
+    category: 'Common VPN or proxy service',
+    description: 'Relays network connections through a proxy server.',
+    keywords: ['socks', 'proxy'],
+  },
+  '1194/udp': {
+    serviceName: 'VPN service',
+    category: 'Common VPN or proxy service',
+    description: 'Carries virtual private network traffic.',
+    keywords: ['openvpn', 'vpn'],
+  },
+  '1433/tcp': {
+    serviceName: 'Microsoft SQL database',
+    category: 'Database',
+    description: 'Accepts database connections for Microsoft SQL Server.',
+    keywords: ['mssql', 'sql server', 'database'],
+  },
+  '1521/tcp': {
+    serviceName: 'Oracle database',
+    category: 'Database',
+    description: 'Accepts database connections for Oracle Database.',
+    keywords: ['oracle', 'database'],
+  },
+  '1723/tcp': {
+    serviceName: 'VPN service',
+    category: 'Common VPN or proxy service',
+    description: 'Carries older point-to-point virtual private network traffic.',
+    keywords: ['pptp', 'vpn'],
+  },
+  '1883/tcp': {
+    serviceName: 'Device messaging',
+    category: 'Printer or connected device',
+    description: 'Moves lightweight messages between connected devices and applications.',
+    keywords: ['mqtt', 'mosquitto'],
+  },
+  '2049/tcp': {
+    serviceName: 'Network file sharing',
+    category: 'File transfer or file sharing',
+    description: 'Shares filesystems across a network using NFS.',
+    keywords: ['nfs', 'network file system'],
+  },
+  '3128/tcp': {
+    serviceName: 'Web proxy',
+    category: 'Common VPN or proxy service',
+    description: 'Relays web requests through a proxy or caching service.',
+    keywords: ['squid', 'proxy', 'cache'],
+  },
+  '3306/tcp': {
+    serviceName: 'MySQL database',
+    category: 'Database',
+    description: 'Accepts database connections for MySQL or compatible database servers.',
+    keywords: ['mysql', 'mariadb', 'database'],
+  },
+  '3389/tcp': {
+    serviceName: 'Remote Desktop',
+    category: 'Remote access',
+    description: 'Allows someone to operate a Windows computer remotely through a graphical desktop.',
+    keywords: ['rdp', 'remote desktop', 'terminal services', 'windows'],
+  },
+  '500/udp': {
+    serviceName: 'VPN key exchange',
+    category: 'Common VPN or proxy service',
+    description: 'Helps establish IPsec virtual private network connections.',
+    keywords: ['ipsec', 'isakmp', 'ike', 'vpn'],
+  },
+  '5000/tcp': {
+    serviceName: 'Web service',
+    category: 'Website or web application',
+    description: 'Provides a website, web application, API, development server, or administrative interface.',
+    keywords: ['http', 'web', 'api', 'flask'],
+  },
+  '5060/tcp': {
+    serviceName: 'Voice signaling',
+    category: 'Voice or video',
+    description: 'Sets up internet voice or video calls.',
+    keywords: ['sip', 'voip'],
+  },
+  '5060/udp': {
+    serviceName: 'Voice signaling',
+    category: 'Voice or video',
+    description: 'Sets up internet voice or video calls.',
+    keywords: ['sip', 'voip'],
+  },
+  '5432/tcp': {
+    serviceName: 'PostgreSQL database',
+    category: 'Database',
+    description: 'Accepts database connections for PostgreSQL.',
+    keywords: ['postgres', 'postgresql', 'database'],
+  },
+  '5672/tcp': {
+    serviceName: 'Message queue',
+    category: 'Network infrastructure',
+    description: 'Moves messages between applications using a queue or broker.',
+    keywords: ['amqp', 'rabbitmq'],
+  },
+  '5900/tcp': {
+    serviceName: 'Remote screen sharing',
+    category: 'Remote access',
+    description: 'Allows remote viewing or control of a graphical desktop.',
+    keywords: ['vnc', 'remote framebuffer'],
+  },
+  '6379/tcp': {
+    serviceName: 'Redis database',
+    category: 'Database',
+    description: 'Stores and retrieves fast in-memory data for applications.',
+    keywords: ['redis'],
+  },
+  '8000/tcp': {
+    serviceName: 'Web service',
+    category: 'Website or web application',
+    description: 'Provides a website, web application, API, development server, or administrative interface.',
+    keywords: ['http', 'web', 'api'],
+  },
+  '8080/tcp': {
+    serviceName: 'Web service',
+    category: 'Website or web application',
+    description: 'Provides a website, web application, API, proxy, development server, or administrative interface.',
+    keywords: ['http', 'web', 'api', 'proxy', 'tomcat'],
+  },
+  '8443/tcp': {
+    serviceName: 'Secure web service',
+    category: 'Website or web application',
+    description: 'Provides an encrypted website, web application, API, proxy, or administrative interface.',
+    keywords: ['https', 'http', 'tls', 'ssl', 'web'],
+  },
+  '8888/tcp': {
+    serviceName: 'Web service',
+    category: 'Website or web application',
+    description: 'Provides a website, web application, API, proxy, development server, or administrative interface.',
+    keywords: ['http', 'web', 'api', 'proxy'],
+  },
+  '8883/tcp': {
+    serviceName: 'Secure device messaging',
+    category: 'Printer or connected device',
+    description: 'Moves encrypted lightweight messages between connected devices and applications.',
+    keywords: ['mqtt', 'tls', 'mosquitto'],
+  },
+  '9000/tcp': {
+    serviceName: 'Web or application service',
+    category: 'Website or web application',
+    description: 'Provides an application, API, administrative interface, or web service.',
+    keywords: ['http', 'web', 'api', 'php-fpm'],
+  },
+  '9042/tcp': {
+    serviceName: 'Cassandra database',
+    category: 'Database',
+    description: 'Accepts database connections for Apache Cassandra.',
+    keywords: ['cassandra', 'database'],
+  },
+  '9100/tcp': {
+    serviceName: 'Network printing',
+    category: 'Printer or connected device',
+    description: 'Commonly accepts print jobs directly over a network.',
+    keywords: ['jetdirect', 'printer', 'pdl-datastream'],
+  },
+  '9200/tcp': {
+    serviceName: 'Search database',
+    category: 'Database',
+    description: 'Accepts search and indexing requests for Elasticsearch or a compatible service.',
+    keywords: ['elasticsearch', 'opensearch', 'search'],
+  },
+  '11211/tcp': {
+    serviceName: 'Memory cache',
+    category: 'Database',
+    description: 'Stores temporary application data in memory for fast retrieval.',
+    keywords: ['memcached'],
+  },
+  '27017/tcp': {
+    serviceName: 'MongoDB database',
+    category: 'Database',
+    description: 'Accepts database connections for MongoDB.',
+    keywords: ['mongodb', 'mongo', 'database'],
+  },
+  '4500/udp': {
+    serviceName: 'VPN traversal',
+    category: 'Common VPN or proxy service',
+    description: 'Carries IPsec VPN traffic through network address translation.',
+    keywords: ['ipsec', 'nat-t', 'vpn'],
+  },
+};
+
+const COMMON_PORT_ALIASES: Record<number, string> = {
+  500: '500/udp',
+  4500: '4500/udp',
+  5672: '5672/tcp',
+  8883: '8883/tcp',
 };
 
 type PublicWebFailureReason =
@@ -1058,10 +1346,9 @@ function getExposureSummarySentences(exposure: ExposureRecord | null): string[] 
     sentences.push('This IP appears to expose Remote Desktop services.');
   }
 
-  const knownPorts = new Set([22, 25, 53, 80, 443, 465, 587, 3389]);
-  const additionalPorts = [...ports].filter((port) => !knownPorts.has(port));
+  const additionalPorts = [...ports].filter((port) => !ADDITIONAL_SERVICE_EXCLUDED_PORTS.has(port));
   if (additionalPorts.length > 0) {
-    sentences.push(`This IP appears to expose additional public-facing services on ports ${additionalPorts.slice(0, 4).join(', ')}.`);
+    sentences.push('This IP appears to expose additional public-facing services.');
   }
 
   if (sentences.length === 0) {
@@ -1073,6 +1360,150 @@ function getExposureSummarySentences(exposure: ExposureRecord | null): string[] 
   }
 
   return sentences;
+}
+
+function parsePortEntry(value: string): PortEntry | null {
+  const match = value.trim().match(/^(\d+)(?:\s*[/:-]\s*([a-zA-Z0-9]+))?/);
+  if (!match) {
+    return null;
+  }
+
+  const port = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(port) || port < 0 || port > 65535) {
+    return null;
+  }
+
+  const rawTransport = match[2]?.trim().toLowerCase();
+  const transport = rawTransport && /^[a-z0-9]+$/.test(rawTransport) ? rawTransport : undefined;
+  return { port, transport };
+}
+
+function getPortLabel({ port, transport }: PortEntry): string {
+  return transport ? `${port}/${transport.toUpperCase()}` : String(port);
+}
+
+function getPortReference({ port, transport }: PortEntry): PortServiceReference | undefined {
+  if (transport) {
+    const transportReference = COMMON_PORT_REFERENCES[`${port}/${transport}`];
+    if (transportReference) {
+      return transportReference;
+    }
+  }
+
+  const alias = COMMON_PORT_ALIASES[port];
+  if (alias) {
+    return COMMON_PORT_REFERENCES[alias];
+  }
+
+  return Object.entries(COMMON_PORT_REFERENCES)
+    .find(([key]) => key.startsWith(`${port}/`))?.[1];
+}
+
+function includesServiceEvidence(values: string[], keywords: string[]): boolean {
+  const normalizedValues = values
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return keywords.some((keyword) => {
+    const normalizedKeyword = keyword.toLowerCase();
+    return normalizedValues.some((value) => value.includes(normalizedKeyword));
+  });
+}
+
+function getAdditionalServiceDetails(exposure: ExposureRecord | null): AdditionalServiceDetail[] {
+  if (!exposure) {
+    return [];
+  }
+
+  const uniquePorts = new Map<string, PortEntry>();
+  exposure.topPorts
+    .map(parsePortEntry)
+    .filter((entry): entry is PortEntry => entry !== null && !ADDITIONAL_SERVICE_EXCLUDED_PORTS.has(entry.port))
+    .forEach((entry) => {
+      const key = `${entry.port}/${entry.transport ?? ''}`;
+      if (!uniquePorts.has(key)) {
+        uniquePorts.set(key, entry);
+      }
+    });
+
+  const detectedServices = exposure.serviceNames.filter((value) => !value.trim().toLowerCase().startsWith('cpe:'));
+  const metadata = [
+    ...exposure.serviceNames.filter((value) => value.trim().toLowerCase().startsWith('cpe:')),
+    ...exposure.labels,
+    ...exposure.hostnames,
+  ];
+
+  return [...uniquePorts.values()].map((entry) => {
+    const reference = getPortReference(entry);
+    if (!reference) {
+      return {
+        ...entry,
+        portLabel: getPortLabel(entry),
+        serviceName: 'Unknown service',
+        category: 'Unknown or proprietary service',
+        description: 'A publicly reachable program appears to respond on this port, but the available information does not identify its purpose.',
+        confidence: 'Unknown',
+      };
+    }
+
+    if (includesServiceEvidence(detectedServices, reference.keywords)) {
+      return {
+        ...entry,
+        portLabel: getPortLabel(entry),
+        serviceName: reference.serviceName,
+        category: reference.category,
+        description: reference.description,
+        confidence: 'Confirmed',
+        confidenceReason: 'recognized service information was detected.',
+      };
+    }
+
+    if (includesServiceEvidence(metadata, reference.keywords)) {
+      return {
+        ...entry,
+        portLabel: getPortLabel(entry),
+        serviceName: reference.serviceName,
+        category: reference.category,
+        description: reference.description,
+        confidence: 'Probable',
+        confidenceReason: 'related product, hostname, or tag information was detected.',
+      };
+    }
+
+    return {
+      ...entry,
+      portLabel: getPortLabel(entry),
+      serviceName: reference.serviceName,
+      category: reference.category,
+      description: reference.description,
+      confidence: 'Possible',
+      confidenceReason: 'inferred from the customary use of this port.',
+    };
+  });
+}
+
+function AdditionalExposureServices({ exposure }: { exposure: ExposureRecord }) {
+  const services = getAdditionalServiceDetails(exposure);
+
+  if (services.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-semibold text-gray-800">Additional public-facing services</div>
+      {services.map((service) => (
+        <div key={service.portLabel} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <div className="font-semibold text-gray-950">{service.serviceName} - {service.portLabel}</div>
+          <div className="mt-1">{service.description}</div>
+          <div className="mt-1 text-xs text-gray-600">Category: {service.category}</div>
+          <div className="mt-1 text-xs italic text-gray-600">
+            Confidence: {service.confidence}{service.confidenceReason ? ` - ${service.confidenceReason}` : '.'}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function extractPortNumbers(exposure: ExposureRecord | null): Set<number> {
@@ -3732,6 +4163,8 @@ function App() {
                 ))}
               </div>
 
+              <AdditionalExposureServices exposure={exposureResult} />
+
               <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                 <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
                 <div><span className="text-gray-600">Observed open ports:</span> {exposureResult.openPortCount}</div>
@@ -4244,6 +4677,8 @@ function App() {
                           </div>
                         ))}
                       </div>
+
+                      <AdditionalExposureServices exposure={exposureResult} />
 
                       <div className="text-xs bg-gray-100 rounded p-3 space-y-1">
                         <div><span className="text-gray-600">Observed service count:</span> {exposureResult.serviceCount}</div>
