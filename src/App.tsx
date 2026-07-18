@@ -712,6 +712,7 @@ function MiniUserAvatar({
   renderCustomOnConstrainedDevice?: boolean;
 }) {
   const renderWebGLAvatar = !isConstrainedWebGLDevice() || (renderCustomOnConstrainedDevice && Boolean(user.avatarUrl));
+  const canvasDpr = getCanvasDpr();
 
   return (
     <div
@@ -721,7 +722,7 @@ function MiniUserAvatar({
       role={ariaLabel ? 'img' : undefined}
     >
       {renderWebGLAvatar ? (
-        <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }}>
+        <Canvas camera={{ position: [0, 0, 2.4], fov: 38 }} dpr={canvasDpr} frameloop="demand">
           <ambientLight intensity={0.85} />
           <directionalLight position={[2, 2, 3]} intensity={0.9} />
           <MiniCustomAvatar avatarUrl={user.avatarUrl} color={user.color} />
@@ -743,13 +744,22 @@ function PrimaryCanvasResizeSync() {
     }
 
     let frameId = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
     const syncCanvasSize = () => {
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
-        const { width, height } = container.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
         if (width <= 0 || height <= 0) {
           return;
         }
+        if (width === lastWidth && height === lastHeight) {
+          return;
+        }
+        lastWidth = width;
+        lastHeight = height;
 
         setSize(width, height, false);
         if (camera instanceof THREE.PerspectiveCamera) {
@@ -766,6 +776,11 @@ function PrimaryCanvasResizeSync() {
     window.addEventListener('resize', syncCanvasSize);
     window.addEventListener('orientationchange', syncCanvasSize);
     window.visualViewport?.addEventListener('resize', syncCanvasSize);
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+    };
+    gl.domElement.addEventListener('webglcontextlost', handleContextLost);
+    gl.domElement.addEventListener('webglcontextrestored', syncCanvasSize);
 
     return () => {
       window.cancelAnimationFrame(frameId);
@@ -773,6 +788,8 @@ function PrimaryCanvasResizeSync() {
       window.removeEventListener('resize', syncCanvasSize);
       window.removeEventListener('orientationchange', syncCanvasSize);
       window.visualViewport?.removeEventListener('resize', syncCanvasSize);
+      gl.domElement.removeEventListener('webglcontextlost', handleContextLost);
+      gl.domElement.removeEventListener('webglcontextrestored', syncCanvasSize);
     };
   }, [camera, gl, setSize]);
 
