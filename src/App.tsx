@@ -121,6 +121,7 @@ type InsideServiceDoor = PortEntry & {
   label: string;
   serviceName: string;
   isClientSupported: boolean;
+  websiteUrl?: string;
 };
 
 type DomainSearchResult = {
@@ -1645,6 +1646,14 @@ function getWebsiteCandidate(exposure: ExposureRecord | null, certificate: Https
   };
 }
 
+function openWebsiteUrl(url: string) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  link.click();
+}
+
 function getBuildingDirectoryEntries(exposure: ExposureRecord | null, certificate: HttpsCertificateResponse | null): DirectoryEntry[] {
   const ports = extractPortNumbers(exposure);
   const hasHttp = ports.has(80);
@@ -2641,10 +2650,19 @@ function App() {
     () => getBuildingDirectoryEntries(exposureResult, certificateResult),
     [exposureResult, certificateResult]
   );
-  const insideServiceDoors = useMemo(
-    () => getInsideServiceDoors(exposureResult),
-    [exposureResult]
-  );
+  const insideServiceDoors = useMemo(() => {
+    const doors = getInsideServiceDoors(exposureResult);
+    if (!websiteCandidate) {
+      return doors;
+    }
+
+    const websitePort = websiteCandidate.hasHttps ? 443 : 80;
+    return doors.map((door) => (
+      door.port === websitePort
+        ? { ...door, isClientSupported: true, websiteUrl: websiteCandidate.primaryUrl }
+        : door
+    ));
+  }, [exposureResult, websiteCandidate]);
 
   const moveToIpLocation = (ipAddress: string, kind: 'ip' | 'building' = 'ip', targetGridSystemMode: GridSystemMode = gridSystemMode) => {
     const [firstOctet, secondOctet, thirdOctet, fourthOctet] = parseIpOctets(ipAddress);
@@ -3653,6 +3671,11 @@ function App() {
   };
 
   const handleInsideDoorClick = (door: InsideServiceDoor) => {
+    if (door.websiteUrl) {
+      openWebsiteUrl(door.websiteUrl);
+      return;
+    }
+
     if (door.port === 22) {
       void handleLaunchSsh();
     }
@@ -4500,18 +4523,6 @@ function App() {
           >
             Go Inside
           </button>
-
-          {websiteCandidate && (
-            <a
-              href={websiteCandidate.primaryUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-              title={`Open ${websiteCandidate.hostname}`}
-            >
-              Open website
-            </a>
-          )}
         </div>
 
         {websiteCandidate && (
@@ -5054,18 +5065,6 @@ function App() {
                   >
                     Go Inside
                   </button>
-
-                  {websiteCandidate && (
-                    <a
-                      href={websiteCandidate.primaryUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-900 border border-gray-400 shadow-sm hover:bg-gray-300 active:bg-gray-400"
-                      title={`Open ${websiteCandidate.hostname}`}
-                    >
-                      Open website
-                    </a>
-                  )}
                 </div>
 
                 {websiteCandidate && (
