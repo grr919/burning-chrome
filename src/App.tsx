@@ -1771,30 +1771,20 @@ function InsideLobbyScene({
   ipAddress,
   doors,
   onDoorClick,
+  onExit,
 }: {
   ipAddress: string;
   doors: InsideServiceDoor[];
   onDoorClick: (door: InsideServiceDoor) => void;
+  onExit: () => void;
 }) {
   useEffect(() => () => {
     document.body.style.cursor = '';
   }, []);
 
   const displayedDoors = doors.slice(0, 12);
-  const wallSlots = [
-    { position: [-4.6, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [-2.8, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [-1.0, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [1.0, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [2.8, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [4.6, 1.15, -2.6] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] },
-    { position: [-5.6, 1.15, -0.9] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] },
-    { position: [-5.6, 1.15, 1.1] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] },
-    { position: [5.6, 1.15, -0.9] as [number, number, number], rotation: [0, -Math.PI / 2, 0] as [number, number, number] },
-    { position: [5.6, 1.15, 1.1] as [number, number, number], rotation: [0, -Math.PI / 2, 0] as [number, number, number] },
-    { position: [-1.4, 1.15, 2.8] as [number, number, number], rotation: [0, Math.PI, 0] as [number, number, number] },
-    { position: [1.4, 1.15, 2.8] as [number, number, number], rotation: [0, Math.PI, 0] as [number, number, number] },
-  ];
+  const doorSpacing = displayedDoors.length > 1 ? Math.min(1.8, 9.2 / (displayedDoors.length - 1)) : 1.8;
+  const centeredDoorOffset = ((displayedDoors.length - 1) * doorSpacing) / 2;
 
   return (
     <>
@@ -1840,12 +1830,57 @@ function InsideLobbyScene({
       >
         {ipAddress}
       </Text>
+      <Text
+        position={[0, 0.04, 2.18]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.34}
+        color="#1d4ed8"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={2}
+        onClick={(event) => {
+          event.stopPropagation();
+          onExit();
+        }}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = '';
+        }}
+      >
+        Exit
+      </Text>
+      <Text
+        position={[0, 0.045, 2.62]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.38}
+        color="#1d4ed8"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={1}
+        onClick={(event) => {
+          event.stopPropagation();
+          onExit();
+        }}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = '';
+        }}
+      >
+        {'↓'}
+      </Text>
 
       {displayedDoors.map((door, index) => {
-        const slot = wallSlots[index] ?? wallSlots[wallSlots.length - 1];
+        const position: [number, number, number] = [index * doorSpacing - centeredDoorOffset, 1.15, -2.6];
+        const rotation: [number, number, number] = [0, 0, 0];
         const isActive = door.isClientSupported;
         return (
-          <group key={`${door.port}-${door.transport ?? 'port'}-${index}`} position={slot.position} rotation={slot.rotation}>
+          <group key={`${door.port}-${door.transport ?? 'port'}-${index}`} position={position} rotation={rotation}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1.08, 1.95, 0.12]} />
               <meshStandardMaterial color={isActive ? '#334155' : '#64748b'} roughness={0.48} />
@@ -1867,12 +1902,12 @@ function InsideLobbyScene({
               }}
             >
               <boxGeometry args={[0.96, 0.42, 0.08]} />
-              <meshStandardMaterial color={isActive ? '#fef3c7' : '#e5e7eb'} roughness={0.32} />
+              <meshStandardMaterial color={isActive ? '#fbbf24' : '#f8fafc'} roughness={0.32} />
             </mesh>
             <Text
               position={[0, 0.48, 0.125]}
               fontSize={0.13}
-              color={isActive ? '#111827' : '#6b7280'}
+              color="#111827"
               anchorX="center"
               anchorY="middle"
               maxWidth={0.86}
@@ -4631,6 +4666,7 @@ function App() {
           ipAddress={target.ipAddress}
           doors={insideServiceDoors}
           onDoorClick={handleInsideDoorClick}
+          onExit={handleReturnFromInsideView}
         />
       </Canvas>
       {sshLaunchResult && sshLaunchResult.ipAddress === target.ipAddress && (
