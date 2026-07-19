@@ -445,6 +445,12 @@ type UserBookmarkRow = {
   updated_at: string | null;
 };
 
+type PublicBookmarkDisplayNameRow = {
+  user_id: string;
+  display_name: string | null;
+  last_seen: string | null;
+};
+
 type StartingLocationPreference = 'default' | 'last_location' | 'random_grid1' | 'random_grid2' | 'specific';
 
 type StartingLocationPreferenceState = {
@@ -2021,6 +2027,7 @@ function App() {
   const [followStatus, setFollowStatus] = useState('');
   const [followedBookmarks, setFollowedBookmarks] = useState<SharedBookmarkEntry[]>([]);
   const [followedBookmarksStatus, setFollowedBookmarksStatus] = useState('');
+  const [publicBookmarkDisplayNames, setPublicBookmarkDisplayNames] = useState<Map<string, string>>(() => new Map());
   const [isFollowedBookmarksLoading, setIsFollowedBookmarksLoading] = useState(false);
   const [bookmarksSharingStatus, setBookmarksSharingStatus] = useState('');
   const [startingLocationPreference, setStartingLocationPreference] = useState<StartingLocationPreference>('default');
@@ -2383,6 +2390,38 @@ function App() {
       isActive = false;
     };
   }, [multiplayer.currentUser.userId]);
+  useEffect(() => {
+    setPublicBookmarkDisplayNames(new Map());
+
+    if (!supabase || !isSupabaseConfigured || followedUserIds.length === 0 || !showBookmarksPanel) {
+      return;
+    }
+
+    let isActive = true;
+    void supabase
+      .from('multiplayer_presence')
+      .select('user_id, display_name, last_seen')
+      .in('user_id', followedUserIds)
+      .order('last_seen', { ascending: false })
+      .then(({ data }) => {
+        if (!isActive) {
+          return;
+        }
+
+        const nextDisplayNames = new Map<string, string>();
+        ((data ?? []) as PublicBookmarkDisplayNameRow[]).forEach((row) => {
+          const displayName = row.display_name?.trim();
+          if (typeof row.user_id === 'string' && displayName && !nextDisplayNames.has(row.user_id)) {
+            nextDisplayNames.set(row.user_id, displayName);
+          }
+        });
+        setPublicBookmarkDisplayNames(nextDisplayNames);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [followedUserIds, showBookmarksPanel]);
   useEffect(() => {
     setFollowedBookmarksStatus('');
     setFollowedBookmarks([]);
@@ -3731,6 +3770,11 @@ function App() {
   const followedUserIdSet = useMemo(() => new Set(followedUserIds), [followedUserIds]);
   const followedUserDisplayNames = useMemo(() => {
     const displayNames = new Map<string, string>();
+    publicBookmarkDisplayNames.forEach((displayName, userId) => {
+      if (displayName.trim()) {
+        displayNames.set(userId, displayName);
+      }
+    });
     avatarUsers.forEach((user) => {
       const displayName = user.displayName?.trim();
       if (displayName) {
@@ -3738,7 +3782,7 @@ function App() {
       }
     });
     return displayNames;
-  }, [avatarUsers]);
+  }, [avatarUsers, publicBookmarkDisplayNames]);
   const showGridSidePanel = showWhoPanel || showBookmarksPanel || showLocationPreferencesPanel;
   const currentStoredLastLocation = useMemo<StoredLastLocation>(() => ({
     gridSystemMode,
