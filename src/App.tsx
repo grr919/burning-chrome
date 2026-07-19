@@ -1785,6 +1785,14 @@ function InsideLobbyScene({
   const displayedDoors = doors.slice(0, 12);
   const doorSpacing = displayedDoors.length > 1 ? Math.min(1.8, 9.2 / (displayedDoors.length - 1)) : 1.8;
   const centeredDoorOffset = ((displayedDoors.length - 1) * doorSpacing) / 2;
+  const exitArrowShape = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -0.24);
+    shape.lineTo(-0.24, 0.18);
+    shape.lineTo(0.24, 0.18);
+    shape.lineTo(0, -0.24);
+    return shape;
+  }, []);
 
   return (
     <>
@@ -1819,6 +1827,59 @@ function InsideLobbyScene({
         <meshStandardMaterial color="#fff7d6" emissive="#fff7d6" emissiveIntensity={0.85} />
       </mesh>
 
+      {[-3.8, 0, 3.8].map((x) => (
+        <group key={`inside-window-${x}`} position={[x, 3.0, -2.94]}>
+          <mesh>
+            <boxGeometry args={[1.15, 0.74, 0.045]} />
+            <meshStandardMaterial color="#bfdbfe" emissive="#dbeafe" emissiveIntensity={0.28} roughness={0.18} />
+          </mesh>
+          <mesh position={[0, 0, 0.03]}>
+            <boxGeometry args={[0.08, 0.82, 0.035]} />
+            <meshStandardMaterial color="#94a3b8" roughness={0.42} />
+          </mesh>
+          <mesh position={[0, 0, 0.035]}>
+            <boxGeometry args={[1.23, 0.08, 0.035]} />
+            <meshStandardMaterial color="#94a3b8" roughness={0.42} />
+          </mesh>
+        </group>
+      ))}
+
+      {[-1, 1].map((side) => (
+        <group key={`inside-bench-${side}`} position={[side * 4.8, 0.34, 2.25]} rotation={[0, side > 0 ? -0.16 : 0.16, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[1.6, 0.18, 0.48]} />
+            <meshStandardMaterial color="#94a3b8" roughness={0.46} />
+          </mesh>
+          <mesh position={[0, 0.28, -0.18]} castShadow>
+            <boxGeometry args={[1.6, 0.52, 0.14]} />
+            <meshStandardMaterial color="#64748b" roughness={0.48} />
+          </mesh>
+          {[-0.58, 0.58].map((x) => (
+            <mesh key={`inside-bench-leg-${side}-${x}`} position={[x, -0.24, 0.12]} castShadow>
+              <boxGeometry args={[0.1, 0.42, 0.1]} />
+              <meshStandardMaterial color="#475569" roughness={0.52} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+
+      {[-1, 1].map((side) => (
+        <group key={`inside-plant-${side}`} position={[side * 5.05, 0.18, -1.9]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.2, 0.28, 0.36, 10]} />
+            <meshStandardMaterial color="#b45309" roughness={0.62} />
+          </mesh>
+          <mesh position={[0, 0.43, 0]} castShadow>
+            <sphereGeometry args={[0.34, 12, 8]} />
+            <meshStandardMaterial color="#15803d" roughness={0.58} />
+          </mesh>
+          <mesh position={[side * 0.18, 0.62, -0.04]} castShadow>
+            <sphereGeometry args={[0.24, 10, 8]} />
+            <meshStandardMaterial color="#22c55e" roughness={0.56} />
+          </mesh>
+        </group>
+      ))}
+
       <Text
         position={[0, 0.035, 1.45]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -1831,7 +1892,7 @@ function InsideLobbyScene({
         {ipAddress}
       </Text>
       <Text
-        position={[0, 0.04, 2.18]}
+        position={[0, 0.04, 2.42]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.34}
         color="#1d4ed8"
@@ -1852,14 +1913,9 @@ function InsideLobbyScene({
       >
         Exit
       </Text>
-      <Text
-        position={[0, 0.045, 2.62]}
+      <mesh
+        position={[0, 0.05, 2.84]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.38}
-        color="#1d4ed8"
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={1}
         onClick={(event) => {
           event.stopPropagation();
           onExit();
@@ -1872,9 +1928,9 @@ function InsideLobbyScene({
           document.body.style.cursor = '';
         }}
       >
-        {'↓'}
-      </Text>
-
+        <shapeGeometry args={[exitArrowShape]} />
+        <meshBasicMaterial color="#1d4ed8" side={THREE.DoubleSide} />
+      </mesh>
       {displayedDoors.map((door, index) => {
         const position: [number, number, number] = [index * doorSpacing - centeredDoorOffset, 1.15, -2.6];
         const rotation: [number, number, number] = [0, 0, 0];
