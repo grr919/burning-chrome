@@ -1,6 +1,6 @@
 # Building asset library
 
-Eight optimized exterior models for Burning Chrome, enabled by default at the main
+Nine optimized exterior models for Burning Chrome, enabled by default at the main
 URL. Existing `/?buildingModels=mixed` links still work. Use
 `/?buildingModels=procedural` for the original service-based scene comparison.
 The model integration applies to both grids and their street views. No database
@@ -19,7 +19,7 @@ traffic do not increase complexity. Hostnames alone do not prove multiple websit
 |---|---|---|---|
 | 0–2 | Low | Row house / brick house | 96 / 48 |
 | 3–5 | Moderate | Apartment complex / mansion / warehouse | 8 / 8 / 8 |
-| 6–9 | Complex | Historic tower | 16 |
+| 6–9 | Complex | Historic tower / factory | 8 / 8 |
 | 10–15 | High | Modern office tower | 8 |
 | 16+ | Exceptional | Futuristic tower / modern office tower | 1 / 8 shared with high tier |
 
@@ -63,7 +63,7 @@ Models load by default and are cached by URL; the procedural comparison skips th
 materials and textures, but use separate transforms and draw calls. Failed or
 pending loads retain the original structure. This is a mixed scene,
 not a fully instanced 256-model renderer. Higher instance counts add draw calls,
-but reuse the same eight files and do not add database storage. Mobile performance needs device testing.
+but reuse the same nine files and do not add database storage. Mobile performance needs device testing.
 
 ## Models
 
@@ -77,6 +77,7 @@ but reuse the same eight files and do not add database storage. Mobile performan
 | Sterling Exchange | `heritage-tower-01.glb` | 94,012 | 2,280 | 4 |
 | Bellevue Manor | `mansion-01.glb` | 358,984 | 7,662 | 2 |
 | Northline Depot | `warehouse-01.glb` | 241,004 | 5,072 | 2 |
+| Ironvale Works | `factory-01.glb` | 268,152 | 5,814 | 2 |
 
 The original five files total **1,259,920 bytes**, down from 12,720,240 bytes for the
 original building-only files (90.1% smaller). Their combined geometry decreased
@@ -101,6 +102,14 @@ units. This is a moderate-complexity visual choice, not a claim that the IP
 operates an industrial facility. The eight-model library totals **1,953,920
 bytes**, 42,901 triangles and 21 drawable primitives.
 
+Ironvale Works adds brick production halls, four glazed sawtooth roof bays,
+twin masonry chimneys, process tanks, overhead pipes and a front office. Its
+1.65-unit footprint gives a height of about 1.181 grid units including chimneys.
+It shares the complex tier with the historic tower, up to eight of each. Factory
+architecture indicates observed service complexity, not a claim about the IP
+operator's business. The nine-model library totals **2,222,072 bytes**, 48,715
+triangles and 23 drawable primitives.
+
 Draw counts above are per model in a simple single-pass preview, not a promise
 of whole-grid performance. Repeating models still requires a future instanced
 renderer and appropriate distance/detail decisions.
@@ -119,7 +128,7 @@ renderer and appropriate distance/detail decisions.
   The futuristic building-only source omits its plaza and starts above Y=0.
 - Paths are `/models/buildings/<filename>` on a deployed site.
 - Embedded textures keep this pilot self-contained; there is no separate texture folder.
-- Individual asset versions are 1.0.0; the expanded catalog is 1.3.0. For future revisions, update the catalog and use a versioned
+- Individual asset versions are 1.0.0; the expanded catalog is 1.4.0. For future revisions, update the catalog and use a versioned
   URL or filename with suitable cache headers; do not assume unchanged URLs are
   safe for permanent immutable caching.
 
@@ -141,6 +150,9 @@ and terrace features that are part of the buildings.
   interiors are included.
 - Northline Depot: cladding ribs and shutter slats use merged geometry; palette
   batching and one compact sign texture keep the asset to two draw batches.
+- Ironvale Works: merged low-sided pipes, tanks and chimneys, palette materials
+  and one compact sign texture produce two draw batches. No smoke, animation or
+  interior is included.
 - All models: indexed geometry, conservative simplification, unused-data
   removal, material palettes, and compatible mesh merging.
 
@@ -150,7 +162,7 @@ properties but do not yet expose independent per-building color controls.
 
 ## Validation
 
-All eight pass the Khronos glTF Validator with zero errors and zero warnings.
+All nine pass the Khronos glTF Validator with zero errors and zero warnings.
 The original five were visually compared with their sources; Sterling Exchange
 was inspected from multiple sides in Three.js r162, matching the app dependency.
 The mixed scene uses at most 193 library models per 256-cell level; counts depend

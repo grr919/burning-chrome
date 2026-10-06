@@ -11,7 +11,8 @@ export const BUILDING_MODEL_MIX = [
   { id: 'warehouse-01', name: 'Northline Depot', tiers: ['moderate'], maxPerLevel: 8, weight: 1, footprint: 1.6 },
   { id: 'office-tower-01', name: 'Meridian Tower', tiers: ['high', 'exceptional'], maxPerLevel: 8, weight: 1, footprint: 0.94 },
   { id: 'futuristic-towers-01', name: 'Astra Spires', tiers: ['exceptional'], maxPerLevel: 1, weight: 1, footprint: 1.52 },
-  { id: 'heritage-tower-01', name: 'Sterling Exchange', tiers: ['complex'], maxPerLevel: 16, weight: 1, footprint: 1.05 },
+  { id: 'factory-01', name: 'Ironvale Works', tiers: ['complex'], maxPerLevel: 8, weight: 1, footprint: 1.65 },
+  { id: 'heritage-tower-01', name: 'Sterling Exchange', tiers: ['complex'], maxPerLevel: 8, weight: 1, footprint: 1.05 },
 ] as const;
 
 export type BuildingModelId = typeof BUILDING_MODEL_MIX[number]['id'];

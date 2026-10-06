@@ -111,5 +111,17 @@ test('registered models have matching catalog files and fit the grid lot', async
   const warehouse=catalog.models.find(item=>item.id==='warehouse-01');
   assert.equal(warehouse.primitives,2);
   assert.ok(warehouse.bytes<300000);
+  const factory=catalog.models.find(item=>item.id==='factory-01');
+  assert.equal(factory.primitives,2);
+  assert.ok(factory.bytes<300000);
   for(const score of [1,7,12,20]) assert.ok(![...allocate('warehouse-eligibility',[cell(0,{openPortCount:score})]).values()].includes('warehouse-01'));
+});
+
+test('factory and historic tower share complex addresses without changing the overall ceiling', () => {
+  const map=allocate('factory-district',Array.from({length:256},(_,i)=>cell(i,{openPortCount:7})));
+  assert.equal(count(map,'factory-01'),8);
+  assert.equal(count(map,'heritage-tower-01'),8);
+  assert.equal(map.size,16);
+  assert.equal(models.reduce((sum,m)=>sum+m.maxPerLevel,0),193);
+  for(const score of [1,4,12,20])assert.ok(![...allocate('factory-eligibility',[cell(0,{openPortCount:score})]).values()].includes('factory-01'));
 });
