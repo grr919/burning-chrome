@@ -1,9 +1,10 @@
 # Building asset library
 
-Six optimized exterior models for Burning Chrome. An optional mixed-building
-pilot is available at `/?buildingModels=mixed`; omit the parameter for the
-existing service-based scene. The pilot applies to both grids and their street
-views. No database or navigation changes are included.
+Six optimized exterior models for Burning Chrome, enabled by default at the main
+URL. Existing `/?buildingModels=mixed` links still work. Use
+`/?buildingModels=procedural` for the original service-based scene comparison.
+The model integration applies to both grids and their street views. No database
+or navigation changes are included.
 
 Models are now selected by observed exposure complexity, rather than fixed quotas.
 The score is the greater of the full observed port count, distinct listed ports,
@@ -16,11 +17,11 @@ traffic do not increase complexity. Hostnames alone do not prove multiple websit
 
 | Score | Tier | Eligible models | Maximum per level |
 |---|---|---|---|
-| 0–2 | Low | Row house / brick house | 48 / 24 |
-| 3–5 | Moderate | Apartment complex | 12 |
-| 6–9 | Complex | Historic tower | 8 |
-| 10–15 | High | Modern office tower | 4 |
-| 16+ | Exceptional | Futuristic tower / modern office tower | 1 / 4 shared with high tier |
+| 0–2 | Low | Row house / brick house | 96 / 48 |
+| 3–5 | Moderate | Apartment complex | 24 |
+| 6–9 | Complex | Historic tower | 16 |
+| 10–15 | High | Modern office tower | 8 |
+| 16+ | Exceptional | Futuristic tower / modern office tower | 1 / 8 shared with high tier |
 
 These are ceilings, not targets: some levels may have no towers or no library
 models at all. Highest scores receive scarce compatible models first; the
@@ -29,7 +30,10 @@ selection supplies variation within a tier (row houses have twice the brick
 house weight). Identical data yields identical assignments, regardless of record
 order. New observations may change a tier or displace a capped allocation.
 Overflow keeps procedural architecture, never a model from a lower tier.
-At least 159 of 256 cells remain procedural, preserving the existing variants.
+The combined ceiling is 193 of 256 cells (75.4%), up from 97 (37.9%).
+At least 63 cells remain procedural, preserving the existing variants. These
+percentages are maximum capacity, not a guaranteed share on every level; missing
+data and tier distribution can reduce the actual count.
 
 Missing, failed, warning-only or unusable observations are **unknown**, shown
 with `?` and a hover explanation, and do not qualify for library models. A
@@ -41,7 +45,7 @@ Scores describe observed exposure, not live traffic, computing power or importan
 Model proportions and lot footprints stay intact: building type indicates a
 complexity band, not a linear height measurement. Procedural fallbacks in the
 mixed view use the same cleaned score for height, with a small block for unknown
-data. The normal view retains its prior behavior. ASN-colored lots, flags,
+data. The explicit procedural comparison retains its prior behavior. ASN-colored lots, flags,
 address selection and metadata remain available; data-fetching services are unchanged.
 Incomplete cached records (for example, hostnames with no port observation) no
 longer suppress the existing exposure lookup. No database fields or APIs changed.
@@ -55,10 +59,11 @@ registry entries automatically; scoring does not depend on model names.
 Keep the sum of ceilings below 256 to retain procedural variety and check the
 new footprint and height in the grid. Run `node scripts/test-building-complexity.mjs`.
 
-Models load only in the pilot and are cached by URL. Instances share geometry,
+Models load by default and are cached by URL; the procedural comparison skips them. Instances share geometry,
 materials and textures, but use separate transforms and draw calls. Failed or
-pending loads retain the original structure. This is a modest mixed-scene test,
-not a fully instanced 256-model renderer. Mobile performance needs device testing.
+pending loads retain the original structure. This is a mixed scene,
+not a fully instanced 256-model renderer. Higher instance counts add draw calls,
+but reuse the same six files and do not add database storage. Mobile performance needs device testing.
 
 ## Models
 
@@ -126,7 +131,7 @@ properties but do not yet expose independent per-building color controls.
 All six pass the Khronos glTF Validator with zero errors and zero warnings.
 The original five were visually compared with their sources; Sterling Exchange
 was inspected from multiple sides in Three.js r162, matching the app dependency.
-The mixed scene uses at most 97 library models per 256-cell level; counts depend
+The mixed scene uses at most 193 library models per 256-cell level; counts depend
 on usable evidence and tier eligibility.
 
 Geometry and source textures were created procedurally for this project;

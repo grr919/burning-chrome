@@ -39,22 +39,22 @@ test('full counts survive truncated port lists and absolute thresholds do not de
 test('unknown and quiet levels never get towers to meet a quota', () => {
   assert.equal(allocate('unknown',Array.from({length:256},(_,i)=>cell(i,undefined))).size,0);
   const map=allocate('quiet',Array.from({length:256},(_,i)=>cell(i,{openPortCount:0})));
-  assert.equal(map.size,72);
+  assert.equal(map.size,144);
   assert.ok([...map.values()].every(id=>id==='row-house-01'||id==='brick-house-01'));
 });
 test('one landmark goes to the strongest qualifying address; capped overflow is not downgraded', () => {
   const cells=Array.from({length:256},(_,i)=>cell(i,{openPortCount:16+i}));
   const map=allocate('busy',cells);
   assert.equal(map.get(255),'futuristic-towers-01');
-  assert.equal(count(map,'futuristic-towers-01'),1);assert.equal(count(map,'office-tower-01'),4);
-  assert.equal(map.size,5);
-  assert.deepEqual([...map.keys()].sort((a,b)=>a-b),[251,252,253,254,255]);
+  assert.equal(count(map,'futuristic-towers-01'),1);assert.equal(count(map,'office-tower-01'),8);
+  assert.equal(map.size,9);
+  assert.deepEqual([...map.keys()].sort((a,b)=>a-b),[247,248,249,250,251,252,253,254,255]);
 });
 test('caps, tier compatibility and order independence hold across 128 mixed levels', () => {
   for(let level=0;level<128;level++){
     const cells=Array.from({length:256},(_,i)=>cell(i,(i+level)%7===0?undefined:{openPortCount:(i*17+level)%24}));
     const map=allocate(`level-${level}`,cells);
-    assert.ok(map.size<=97);
+    assert.ok(map.size<=193);
     assert.deepEqual([...map],[...allocate(`level-${level}`,[...cells].reverse())]);
     assert.deepEqual([...map],[...allocate(`level-${level}`,cells)]);
     for(const model of models)assert.ok(count(map,model.id)<=model.maxPerLevel);
@@ -66,12 +66,21 @@ test('new evidence can promote a cell, without freezing its initial unknown stat
   assert.ok(['row-house-01','brick-house-01'].includes(allocate('updates',[cell(0,{openPortCount:1})]).get(0)));
   assert.equal(allocate('updates',[cell(0,{openPortCount:12})]).get(0),'office-tower-01');
 });
+test('a qualifying level can use the increased 193-model capacity while retaining 63 procedural cells', () => {
+  const scores=[...Array(180).fill(1),...Array(30).fill(4),...Array(30).fill(7),...Array(15).fill(12),20];
+  const map=allocate('capacity',scores.map((score,i)=>cell(i,{openPortCount:score})));
+  assert.equal(map.size,193);
+  assert.equal(scores.length-map.size,63);
+  for(const model of models)assert.equal(count(map,model.id),model.maxPerLevel);
+});
 test('future registry entries work without changing scoring', () => {
   models.push({id:'test-future-model',name:'Test only',tiers:['complex'],maxPerLevel:3,weight:1,footprint:1});
   try {assert.equal(count(allocate('extension',Array.from({length:30},(_,i)=>cell(i,{openPortCount:7}))),'test-future-model'),3);}
   finally {models.pop();}
 });
-test('normal URL stays unchanged and the mixed URL enables the integration', () => {
-  assert.equal(isBuildingModelTestEnabled(''),false);
+test('main URL enables models, old mixed links work, and procedural comparison remains available', () => {
+  assert.equal(isBuildingModelTestEnabled(''),true);
   assert.equal(isBuildingModelTestEnabled('?buildingModels=mixed'),true);
+  assert.equal(isBuildingModelTestEnabled('?unrelated=value'),true);
+  assert.equal(isBuildingModelTestEnabled('?buildingModels=procedural'),false);
 });

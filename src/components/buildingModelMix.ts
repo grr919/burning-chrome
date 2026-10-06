@@ -4,12 +4,12 @@ type KnownTier = Exclude<ComplexityTier, 'unknown'>;
 // Add models with compatible tiers, a footprint, selection weight and ceiling.
 // Ceilings never force a model onto an unsuitable address.
 export const BUILDING_MODEL_MIX = [
-  { id: 'row-house-01', name: 'Maple Row', tiers: ['low'], maxPerLevel: 48, weight: 2, footprint: 0.86 },
-  { id: 'brick-house-01', name: 'Brick House', tiers: ['low'], maxPerLevel: 24, weight: 1, footprint: 1.04 },
-  { id: 'apartment-complex-01', name: 'Courtyard Gardens', tiers: ['moderate'], maxPerLevel: 12, weight: 1, footprint: 1.5 },
-  { id: 'office-tower-01', name: 'Meridian Tower', tiers: ['high', 'exceptional'], maxPerLevel: 4, weight: 1, footprint: 0.94 },
+  { id: 'row-house-01', name: 'Maple Row', tiers: ['low'], maxPerLevel: 96, weight: 2, footprint: 0.86 },
+  { id: 'brick-house-01', name: 'Brick House', tiers: ['low'], maxPerLevel: 48, weight: 1, footprint: 1.04 },
+  { id: 'apartment-complex-01', name: 'Courtyard Gardens', tiers: ['moderate'], maxPerLevel: 24, weight: 1, footprint: 1.5 },
+  { id: 'office-tower-01', name: 'Meridian Tower', tiers: ['high', 'exceptional'], maxPerLevel: 8, weight: 1, footprint: 0.94 },
   { id: 'futuristic-towers-01', name: 'Astra Spires', tiers: ['exceptional'], maxPerLevel: 1, weight: 1, footprint: 1.52 },
-  { id: 'heritage-tower-01', name: 'Sterling Exchange', tiers: ['complex'], maxPerLevel: 8, weight: 1, footprint: 1.05 },
+  { id: 'heritage-tower-01', name: 'Sterling Exchange', tiers: ['complex'], maxPerLevel: 16, weight: 1, footprint: 1.05 },
 ] as const;
 
 export type BuildingModelId = typeof BUILDING_MODEL_MIX[number]['id'];
@@ -89,7 +89,8 @@ export function assessBuildingComplexity(record?: ComplexityEvidence | null): Bu
 }
 
 export function isBuildingModelTestEnabled(search: string): boolean {
-  return new URLSearchParams(search).get('buildingModels') === 'mixed';
+  // Library buildings are the default; retain an explicit comparison fallback.
+  return new URLSearchParams(search).get('buildingModels') !== 'procedural';
 }
 
 function hash(value: string): number {
