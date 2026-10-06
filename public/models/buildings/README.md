@@ -1,6 +1,6 @@
 # Building asset library
 
-Six optimized exterior models for Burning Chrome, enabled by default at the main
+Seven optimized exterior models for Burning Chrome, enabled by default at the main
 URL. Existing `/?buildingModels=mixed` links still work. Use
 `/?buildingModels=procedural` for the original service-based scene comparison.
 The model integration applies to both grids and their street views. No database
@@ -18,7 +18,7 @@ traffic do not increase complexity. Hostnames alone do not prove multiple websit
 | Score | Tier | Eligible models | Maximum per level |
 |---|---|---|---|
 | 0–2 | Low | Row house / brick house | 96 / 48 |
-| 3–5 | Moderate | Apartment complex | 24 |
+| 3–5 | Moderate | Apartment complex / mansion | 12 / 12 |
 | 6–9 | Complex | Historic tower | 16 |
 | 10–15 | High | Modern office tower | 8 |
 | 16+ | Exceptional | Futuristic tower / modern office tower | 1 / 8 shared with high tier |
@@ -54,7 +54,7 @@ longer suppress the existing exposure lookup. No database fields or APIs changed
 
 Add its optimized GLB and catalog entry, then register its ID, display name,
 eligible `tiers`, `maxPerLevel`, relative `weight`, and `footprint` in
-`src/components/buildingModelMix.ts`. The loader and loading indicator discover
+`src/components/buildingModelMix.ts`. The loader discovers
 registry entries automatically; scoring does not depend on model names.
 Keep the sum of ceilings below 256 to retain procedural variety and check the
 new footprint and height in the grid. Run `node scripts/test-building-complexity.mjs`.
@@ -63,7 +63,7 @@ Models load by default and are cached by URL; the procedural comparison skips th
 materials and textures, but use separate transforms and draw calls. Failed or
 pending loads retain the original structure. This is a mixed scene,
 not a fully instanced 256-model renderer. Higher instance counts add draw calls,
-but reuse the same six files and do not add database storage. Mobile performance needs device testing.
+but reuse the same seven files and do not add database storage. Mobile performance needs device testing.
 
 ## Models
 
@@ -75,6 +75,7 @@ but reuse the same six files and do not add database storage. Mobile performance
 | Astra Spires | `futuristic-towers-01.glb` | 303,324 | 7,877 | 3 |
 | Courtyard Gardens | `apartment-complex-01.glb` | 402,800 | 8,452 | 4 |
 | Sterling Exchange | `heritage-tower-01.glb` | 94,012 | 2,280 | 4 |
+| Bellevue Manor | `mansion-01.glb` | 358,984 | 7,662 | 2 |
 
 The original five files total **1,259,920 bytes**, down from 12,720,240 bytes for the
 original building-only files (90.1% smaller). Their combined geometry decreased
@@ -84,6 +85,14 @@ triangles and 17 drawable primitives. Sterling Exchange was built directly for
 the game: 23 stories, terracotta window bays, limestone piers and cornices,
 setbacks, a bronze entry canopy and a copper crown. At its 1.05-unit lot footprint,
 it is approximately 2.58 units tall, below the modern and futuristic towers.
+Bellevue Manor is a late-20th-century French-inspired neo-eclectic mansion with
+limestone walls, slate roofs, arched fanlights, dormers, a columned portico,
+a corner turret, balconies and a rear terrace. Its 1.55-unit footprint gives
+a height of approximately 0.784 grid units. It shares the moderate tier with
+the apartment complex, with up to 12 instances of each, retaining the combined
+193-model ceiling. The seven-model library totals **1,712,916 bytes**, 37,829
+triangles and 19 drawable primitives.
+
 Draw counts above are per model in a simple single-pass preview, not a promise
 of whole-grid performance. Repeating models still requires a future instanced
 renderer and appropriate distance/detail decisions.
@@ -102,7 +111,7 @@ renderer and appropriate distance/detail decisions.
   The futuristic building-only source omits its plaza and starts above Y=0.
 - Paths are `/models/buildings/<filename>` on a deployed site.
 - Embedded textures keep this pilot self-contained; there is no separate texture folder.
-- Individual asset versions are 1.0.0; the expanded catalog is 1.1.0. For future revisions, update the catalog and use a versioned
+- Individual asset versions are 1.0.0; the expanded catalog is 1.2.0. For future revisions, update the catalog and use a versioned
   URL or filename with suitable cache headers; do not assume unchanged URLs are
   safe for permanent immutable caching.
 
@@ -119,6 +128,9 @@ and terrace features that are part of the buildings.
 - Astra Spires: fewer curve segments; floor bands moved into a repeating texture.
 - Courtyard Gardens: window frames/sills baked into reusable panels; balcony
   guards simplified to thin surfaces and very small rail details removed.
+- Bellevue Manor: a compact window texture and palette-batched materials preserve
+  fanlights and stone detailing in two draw batches. No external landscaping or
+  interiors are included.
 - All models: indexed geometry, conservative simplification, unused-data
   removal, material palettes, and compatible mesh merging.
 
@@ -128,7 +140,7 @@ properties but do not yet expose independent per-building color controls.
 
 ## Validation
 
-All six pass the Khronos glTF Validator with zero errors and zero warnings.
+All seven pass the Khronos glTF Validator with zero errors and zero warnings.
 The original five were visually compared with their sources; Sterling Exchange
 was inspected from multiple sides in Three.js r162, matching the app dependency.
 The mixed scene uses at most 193 library models per 256-cell level; counts depend

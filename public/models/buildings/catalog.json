@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assetVersion": "1.1.0",
+  "assetVersion": "1.2.0",
   "units": "meters",
   "upAxis": "Y",
   "frontAxis": "+Z",
@@ -21,7 +21,7 @@
       "bounds": {
         "min": [
           -5.76039981842041,
-          0.000007810280357567478,
+          7.810280357567478e-06,
           -4.65506769833204
         ],
         "max": [
@@ -38,7 +38,7 @@
       "origin": "Preserved source origin; use bounds for later placement",
       "groundOffsetMeters": [
         0,
-        -0.000007810280357567478,
+        -7.810280357567478e-06,
         0
       ],
       "textures": "Embedded",
@@ -64,7 +64,7 @@
       "bounds": {
         "min": [
           -2.7049965460743493,
-          -0.0000030272254449847935,
+          -3.0272254449847935e-06,
           -4.989999771118164
         ],
         "max": [
@@ -81,7 +81,7 @@
       "origin": "Preserved source origin; use bounds for later placement",
       "groundOffsetMeters": [
         0,
-        0.0000030272254449847935,
+        3.0272254449847935e-06,
         0
       ],
       "textures": "Embedded",
@@ -254,6 +254,49 @@
       "groundOffsetMeters": [
         0,
         0,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "mansion-01",
+      "name": "Bellevue Manor",
+      "category": "neo-eclectic-mansion",
+      "url": "/models/buildings/mansion-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 358984,
+      "sha256": "cc77448a5a3d16615ac7ccb723c10d84f7ba20f1fd029e7d344cc9adeed35f89",
+      "triangles": 7662,
+      "primitives": 2,
+      "materials": 2,
+      "bounds": {
+        "min": [
+          -13.75,
+          -5.512510842109464e-05,
+          -8.31997361527912
+        ],
+        "max": [
+          13.350000381469727,
+          13.700054934373558,
+          9.899973538985174
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 27.100000381469727,
+        "height": 13.700110059481979,
+        "depth": 18.219947154264293
+      },
+      "origin": "Centered footprint; lowest step at Y=0",
+      "groundOffsetMeters": [
+        0,
+        5.512510842109464e-05,
         0
       ],
       "textures": "Embedded",

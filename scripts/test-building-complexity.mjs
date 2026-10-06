@@ -84,3 +84,27 @@ test('main URL enables models, old mixed links work, and procedural comparison r
   assert.equal(isBuildingModelTestEnabled('?unrelated=value'),true);
   assert.equal(isBuildingModelTestEnabled('?buildingModels=procedural'),false);
 });
+
+test('mansion shares the moderate tier with apartments without increasing total capacity', () => {
+  const cells=Array.from({length:256},(_,i)=>cell(i,{openPortCount:4}));
+  const map=allocate('mansion-neighborhood',cells);
+  assert.equal(count(map,'mansion-01'),12);
+  assert.equal(count(map,'apartment-complex-01'),12);
+  assert.equal(map.size,24);
+  assert.equal(models.reduce((sum,m)=>sum+m.maxPerLevel,0),193);
+  assert.ok(![...allocate('low',cells.map(c=>({...c,complexity:assess({openPortCount:1})}))).values()].includes('mansion-01'));
+});
+test('registered models have matching catalog files and fit the grid lot', async () => {
+  const {createHash}=await import('node:crypto');
+  const catalog=JSON.parse(await readFile(new URL('../public/models/buildings/catalog.json',import.meta.url),'utf8'));
+  for(const model of models){
+    const entry=catalog.models.find(item=>item.id===model.id);assert.ok(entry);
+    const bytes=await readFile(new URL('../public'+entry.url,import.meta.url));
+    assert.equal(bytes.length,entry.bytes);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),entry.sha256);
+    assert.ok(model.footprint*1.018+.06<1.9);
+  }
+  const mansion=catalog.models.find(item=>item.id==='mansion-01');
+  assert.equal(mansion.primitives,2);
+  assert.ok(mansion.bytes<400000);
+});
