@@ -5,16 +5,55 @@ pilot is available at `/?buildingModels=mixed`; omit the parameter for the
 existing service-based scene. The pilot applies to both grids and their street
 views. No database or navigation changes are included.
 
-Each 256-cell level has 48 row houses, 24 brick houses, 12 apartment complexes,
-4 modern office towers, 1 futuristic tower, 8 historic office towers, and 159 existing procedural structures.
-The deterministic allocation depends on grid/level/address, not metadata load
-order. All existing procedural variants remain eligible in those 159 cells.
-The historic tower occupies eight previously procedural cells; the original five
-model allocations remain unchanged.
-New model proportions are preserved and fitted inside their lots. Their heights
-are architectural, not exposure measurements; this is stated in their hover
-information. Existing structures retain their service-derived heights/styles,
-and ASN-colored lots, flags, address selection and metadata remain available.
+Models are now selected by observed exposure complexity, rather than fixed quotas.
+The score is the greater of the full observed port count, distinct listed ports,
+and recognized named service categories, plus a diversity bonus of up to three
+points (distinct categories minus one). Port lists may be truncated; the full
+count is retained. Categories inferred from port numbers are approximate.
+The old `serviceCount` field can include aliases and product fingerprints and is
+therefore not used in this score. Hostnames, CPEs, tags, ASN ownership and presumed
+traffic do not increase complexity. Hostnames alone do not prove multiple websites.
+
+| Score | Tier | Eligible models | Maximum per level |
+|---|---|---|---|
+| 0–2 | Low | Row house / brick house | 48 / 24 |
+| 3–5 | Moderate | Apartment complex | 12 |
+| 6–9 | Complex | Historic tower | 8 |
+| 10–15 | High | Modern office tower | 4 |
+| 16+ | Exceptional | Futuristic tower / modern office tower | 1 / 4 shared with high tier |
+
+These are ceilings, not targets: some levels may have no towers or no library
+models at all. Highest scores receive scarce compatible models first; the
+futuristic landmark goes to the strongest qualifying address. Weighted stable
+selection supplies variation within a tier (row houses have twice the brick
+house weight). Identical data yields identical assignments, regardless of record
+order. New observations may change a tier or displace a capped allocation.
+Overflow keeps procedural architecture, never a model from a lower tier.
+At least 159 of 256 cells remain procedural, preserving the existing variants.
+
+Missing, failed, warning-only or unusable observations are **unknown**, shown
+with `?` and a hover explanation, and do not qualify for library models. A
+successful explicit zero is low observed complexity, not proof of inactivity.
+Both prose and structured hover views explain the tier and evidence. Higher grid
+levels score the representative IP already used by the app, not an entire subnet.
+Scores describe observed exposure, not live traffic, computing power or importance.
+
+Model proportions and lot footprints stay intact: building type indicates a
+complexity band, not a linear height measurement. Procedural fallbacks in the
+mixed view use the same cleaned score for height, with a small block for unknown
+data. The normal view retains its prior behavior. ASN-colored lots, flags,
+address selection and metadata remain available; data-fetching services are unchanged.
+Incomplete cached records (for example, hostnames with no port observation) no
+longer suppress the existing exposure lookup. No database fields or APIs changed.
+
+## Adding another model
+
+Add its optimized GLB and catalog entry, then register its ID, display name,
+eligible `tiers`, `maxPerLevel`, relative `weight`, and `footprint` in
+`src/components/buildingModelMix.ts`. The loader and loading indicator discover
+registry entries automatically; scoring does not depend on model names.
+Keep the sum of ceilings below 256 to retain procedural variety and check the
+new footprint and height in the grid. Run `node scripts/test-building-complexity.mjs`.
 
 Models load only in the pilot and are cached by URL. Instances share geometry,
 materials and textures, but use separate transforms and draw calls. Failed or
@@ -87,7 +126,8 @@ properties but do not yet expose independent per-building color controls.
 All six pass the Khronos glTF Validator with zero errors and zero warnings.
 The original five were visually compared with their sources; Sterling Exchange
 was inspected from multiple sides in Three.js r162, matching the app dependency.
-The mixed-scene pilot uses 97 library models per 256-cell level.
+The mixed scene uses at most 97 library models per 256-cell level; counts depend
+on usable evidence and tier eligibility.
 
 Geometry and source textures were created procedurally for this project;
 no third-party model assets were used.

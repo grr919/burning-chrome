@@ -3,7 +3,7 @@ import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { allocateBuildingModels, BUILDING_MODEL_MIX, isBuildingModelTestEnabled, type BuildingModelId } from './buildingModelMix';
+import { allocateBuildingModels, assessBuildingComplexity, BUILDING_MODEL_MIX, isBuildingModelTestEnabled, type BuildingModelId } from './buildingModelMix';
 import { LibraryBuilding, useBuildingAssets } from './LibraryBuilding';
 import { useIpMetadataCache, type CachedAsnMetadata, type CachedExposure, type CachedIpMetadata, type CachedReverseDns } from '../hooks/useIpMetadataCache';
 import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
@@ -425,6 +425,7 @@ type ExposureRecord = {
   labels: string[];
   hostnames: string[];
   lastUpdatedAt?: string;
+  observationAvailable?: boolean;
   warning?: string;
   error?: string;
 };
@@ -509,6 +510,7 @@ function cachedIpMetadataToExposureRecord(row: CachedIpMetadata): ExposureRecord
     ipAddress: row.ip_address,
     sourceProvider: 'internetdb',
     serviceCount: row.services?.length ?? 0,
+    observationAvailable: row.open_ports != null,
     openPortCount: row.open_ports?.length ?? 0,
     topPorts: row.open_ports?.map((port) => String(port)) ?? [],
     serviceNames: row.services ?? [],
@@ -536,6 +538,7 @@ function cachedExposureToExposureRecord(row: CachedExposure): ExposureRecord {
     ipAddress: row.ip_address,
     sourceProvider: 'internetdb',
     serviceCount: row.service_count ?? row.service_names?.length ?? 0,
+    observationAvailable: row.open_port_count != null || row.open_ports != null || row.top_ports != null,
     openPortCount: row.open_port_count ?? row.open_ports?.length ?? 0,
     topPorts: row.top_ports ?? row.open_ports?.map((port) => String(port)) ?? [],
     serviceNames: row.service_names ?? [],
@@ -1896,10 +1899,6 @@ function IPGrid({
   const buildingAssets = useBuildingAssets(mixedBuildings);
   const firstAddress = getLookupAddress(zoomLevel, currentPosition, 0, 0, gridSystemMode, grid2Position).ipAddress;
   const modelLevelKey = `${gridSystemMode}:${zoomLevel}:${firstAddress}`;
-  const modelAssignments = useMemo(
-    () => mixedBuildings ? allocateBuildingModels(modelLevelKey) : new Map<number, BuildingModelId>(),
-    [mixedBuildings, modelLevelKey]
-  );
 
   const [hoveredCell, setHoveredCell] = useState<HoveredCellState | null>(null);
   const hoveredCellRef = useRef<HoveredCellState | null>(null);
@@ -2230,7 +2229,8 @@ function IPGrid({
   };
 
   const performExposureLookup = async (ipAddresses: string[]) => {
-    const missing = ipAddresses.filter((ipAddress) => !exposureCache[ipAddress] && !pendingExposureLookups.has(ipAddress));
+    const missing = ipAddresses.filter((ipAddress) =>
+      (!exposureCache[ipAddress] || exposureCache[ipAddress].observationAvailable === false) && !pendingExposureLookups.has(ipAddress));
     if (missing.length === 0) {
       return;
     }
@@ -2298,6 +2298,7 @@ function IPGrid({
             serviceNames: [],
             labels: [],
             hostnames: [],
+            warning: 'The exposure lookup returned no observation for this address.',
           };
           nextRecords[ipAddress] = fallback;
           exposureCache[ipAddress] = fallback;
@@ -2610,6 +2611,16 @@ function IPGrid({
   };
 
   const flatGridTargeting = !onBuildingClick;
+  // Read the same records used by the cell renderer. Sorting is independent of
+  // response order; later evidence may legitimately change a tier or capped slot.
+  const complexityCells = mixedBuildings ? visibleLookupAddresses.map((address, index) => ({
+    index,
+    ipAddress: address.ipAddress,
+    complexity: assessBuildingComplexity(exposureInfo[address.ipAddress] ?? exposureCache[address.ipAddress]),
+  })) : [];
+  const modelAssignments = mixedBuildings
+    ? allocateBuildingModels(modelLevelKey, complexityCells)
+    : new Map<number, BuildingModelId>();
   const cubes = [];
 
   for (let y = 0; y < gridSize; y += 1) {
@@ -2624,7 +2635,9 @@ function IPGrid({
         fourthOctetValue,
       } = getLookupAddress(zoomLevel, currentPosition, x, y, gridSystemMode, grid2Position);
       const exposureRecord = exposureInfo[ipAddress] ?? exposureCache[ipAddress];
-      const serviceCount = exposureRecord?.serviceCount ?? 0;
+      const complexity = complexityCells[y * gridSize + x]?.complexity;
+      const unknownComplexity = complexity?.tier === 'unknown';
+      const serviceCount = mixedBuildings ? complexity?.score ?? 0 : exposureRecord?.serviceCount ?? 0;
       const serviceHeight = getHeightFromServiceCount(cubeSize, serviceCount);
       const ipTypeLabel = getIpTypeLabel(firstOctetValue, secondOctetValue);
       const color = getIPColor(firstOctetValue, secondOctetValue, thirdOctetValue, fourthOctetValue);
@@ -2692,7 +2705,7 @@ function IPGrid({
       const extraPorts = visiblePorts.filter((port) => ![80, 443, 22, 53, 25, 465, 587, 3389].includes(port)).slice(0, 4);
       const openPortCount = exposureRecord?.openPortCount ?? 0;
       const buildingFamily =
-        hasRdp || extraPorts.length >= 2 || openPortCount >= 4
+        unknownComplexity ? 'block' : hasRdp || extraPorts.length >= 2 || openPortCount >= 4
           ? 'fort'
           : hasDns || hasMail || hasHttps || openPortCount >= 3
             ? 'stepped'
@@ -2794,10 +2807,7 @@ function IPGrid({
       const hoverInfoLines: string[] = [
         `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
       ];
-      if (modelAsset) {
-        const modelName = BUILDING_MODEL_MIX.find((model) => model.id === modelId)?.name ?? '';
-        hoverInfoLines.push(`<div class="text-xs mt-1">Model test: ${escapeHtml(modelName)}. This model's height is architectural; service information below is unchanged.</div>`);
-      }
+      const complexityHtml = complexity ? `<div class="text-xs mt-1">${escapeHtml(complexity.explanation)}${modelAsset ? ` Building: ${escapeHtml(BUILDING_MODEL_MIX.find((model) => model.id === modelId)?.name ?? '')}.` : ''}</div>` : '';
 
       if (isAsnLoading[ipAddress]) {
         hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching ASN neighborhood data...</div>');
@@ -2874,7 +2884,7 @@ function IPGrid({
         countryName ? `The registration country currently shown is ${countryName}.` : null,
         describeIpPurpose(ipTypeLabel),
         getAsnPhrase(asnRecord, Boolean(isAsnLoading[ipAddress])),
-        getExposurePhrase(exposureRecord),
+        unknownComplexity ? null : getExposurePhrase(exposureRecord),
         getHostnamePhrase(dnsRecord, topReverseDnsHostname, Boolean(isReverseLoading[ipAddress])),
       ];
 
@@ -2905,7 +2915,7 @@ function IPGrid({
       }
 
       const proseHoverHtml = `<p><span class="font-bold">Address ${escapeHtml(ipAddress)}</span>. ${linkifyText(joinSentenceParts(proseSentences))}</p>`;
-      const hoverInfoHtml = infoDisplayMode === 'prose' ? proseHoverHtml : structuredHoverInfoHtml;
+      const hoverInfoHtml = (infoDisplayMode === 'prose' ? proseHoverHtml : structuredHoverInfoHtml) + complexityHtml;
       const publicHostnames = [...new Set([
         ...(dnsRecord?.hostnames ?? []),
         ...(exposureRecord?.hostnames ?? []),
@@ -3808,7 +3818,7 @@ function IPGrid({
               anchorY="middle"
               rotation={[-Math.PI / 2, 0, 0]}
             >
-              {displayLabel}
+              {unknownComplexity ? `${displayLabel} ?` : displayLabel}
             </Text>
           </group>
 
@@ -4072,7 +4082,7 @@ function IPGrid({
       {mixedBuildings && (
         <Html fullscreen style={{ pointerEvents: 'none' }}>
           <div style={{ position: 'absolute', top: 38, left: 12, padding: '4px 8px', borderRadius: 6, background: '#ffffffdd', color: '#334155', fontSize: 11 }}>
-            Mixed building test · {Object.keys(buildingAssets).length}/{BUILDING_MODEL_MIX.length} models ready · Model heights show architecture, not service counts
+            Complexity-based buildings · {Object.keys(buildingAssets).length}/{BUILDING_MODEL_MIX.length} models ready · ? = unknown exposure
           </div>
         </Html>
       )}
