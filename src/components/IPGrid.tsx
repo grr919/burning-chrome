@@ -3,6 +3,8 @@ import { Html, Text } from '@react-three/drei';
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { allocateBuildingModels, BUILDING_MODEL_MIX, isBuildingModelTestEnabled, type BuildingModelId } from './buildingModelMix';
+import { LibraryBuilding, useBuildingAssets } from './LibraryBuilding';
 import { useIpMetadataCache, type CachedAsnMetadata, type CachedExposure, type CachedIpMetadata, type CachedReverseDns } from '../hooks/useIpMetadataCache';
 import { getPlayerLocationDisplay, type MultiplayerPresence } from '../hooks/useMultiplayerPresence';
 
@@ -1890,6 +1892,14 @@ function IPGrid({
   const groundY = -cubeSize / 2;
   const offset = (gridSize * spacing) / 2 - spacing / 2;
   const gridExtent = gridSize * spacing;
+  const mixedBuildings = isBuildingModelTestEnabled(window.location.search);
+  const buildingAssets = useBuildingAssets(mixedBuildings);
+  const firstAddress = getLookupAddress(zoomLevel, currentPosition, 0, 0, gridSystemMode, grid2Position).ipAddress;
+  const modelLevelKey = `${gridSystemMode}:${zoomLevel}:${firstAddress}`;
+  const modelAssignments = useMemo(
+    () => mixedBuildings ? allocateBuildingModels(modelLevelKey) : new Map<number, BuildingModelId>(),
+    [mixedBuildings, modelLevelKey]
+  );
 
   const [hoveredCell, setHoveredCell] = useState<HoveredCellState | null>(null);
   const hoveredCellRef = useRef<HoveredCellState | null>(null);
@@ -2721,7 +2731,9 @@ function IPGrid({
       const turretHeight = Math.max(0.22, buildingHeight * 0.26);
       const fortRoofTopY = 0.07 + fortWallHeight + keepHeight + 0.06;
 
-      const roofTopY =
+      const modelId = modelAssignments.get(y * gridSize + x);
+      const modelAsset = modelId ? buildingAssets[modelId] : undefined;
+      const roofTopY = modelAsset ? 0.09 + modelAsset.height :
         buildingFamily === 'block'
           ? blockRoofTopY
           : buildingFamily === 'stepped'
@@ -2746,11 +2758,11 @@ function IPGrid({
       const blockVariant = ['square', 'round', 'hex', 'courtyard'][blockVariantIndex] as 'square' | 'round' | 'hex' | 'courtyard';
       const tooltipX = x < gridSize / 2 ? towerWidth / 2 + 0.82 : -(towerWidth / 2 + 3.1);
       const tooltipY = roofTopY + 0.16;
-      const facadeFlagY = Math.min(
+      const facadeFlagY = modelAsset ? 0.09 + modelAsset.height * 0.65 : Math.min(
         Math.max(0.85, roofTopY * 0.68),
         Math.max(0.85, roofTopY - 0.24)
       );
-      const facadeFlagZ =
+      const facadeFlagZ = modelAsset ? modelAsset.depth / 2 + 0.02 :
         buildingFamily === 'tower'
           ? towerDepth / 2 + 0.012
         : buildingFamily === 'block'
@@ -2758,8 +2770,8 @@ function IPGrid({
             : buildingFamily === 'stepped'
               ? steppedDepth / 2 + 0.012
               : fortDepth / 2 + 0.012;
-      const facadeWidth = buildingFamily === 'tower' ? towerWidth : buildingFamily === 'block' ? blockWidth : buildingFamily === 'stepped' ? steppedWidth : fortWidth;
-      const facadeDepth = buildingFamily === 'tower' ? towerDepth : buildingFamily === 'block' ? blockDepth : buildingFamily === 'stepped' ? steppedDepth : fortDepth;
+      const facadeWidth = modelAsset?.width ?? (buildingFamily === 'tower' ? towerWidth : buildingFamily === 'block' ? blockWidth : buildingFamily === 'stepped' ? steppedWidth : fortWidth);
+      const facadeDepth = modelAsset?.depth ?? (buildingFamily === 'tower' ? towerDepth : buildingFamily === 'block' ? blockDepth : buildingFamily === 'stepped' ? steppedDepth : fortDepth);
 
       const buildingBodyColor = visualStyle.bodyColor;
       const trimColor = visualStyle.trimColor;
@@ -2782,6 +2794,10 @@ function IPGrid({
       const hoverInfoLines: string[] = [
         `<div class="font-bold">${escapeHtml(headerParts.join(' - '))}</div>`,
       ];
+      if (modelAsset) {
+        const modelName = BUILDING_MODEL_MIX.find((model) => model.id === modelId)?.name ?? '';
+        hoverInfoLines.push(`<div class="text-xs mt-1">Model test: ${escapeHtml(modelName)}. This model's height is architectural; service information below is unchanged.</div>`);
+      }
 
       if (isAsnLoading[ipAddress]) {
         hoverInfoLines.push('<div class="text-blue-700 mt-2">Fetching ASN neighborhood data...</div>');
@@ -3120,14 +3136,15 @@ function IPGrid({
             >
               <boxGeometry
                 args={[
-                  Math.max(cubeSize + 0.16, towerWidth + 0.12),
+                  modelAsset ? modelAsset.width + 0.06 : Math.max(cubeSize + 0.16, towerWidth + 0.12),
                   hitboxHeight,
-                  Math.max(cubeSize + 0.16, towerDepth + 0.12),
+                  modelAsset ? modelAsset.depth + 0.06 : Math.max(cubeSize + 0.16, towerDepth + 0.12),
                 ]}
               />
               <meshBasicMaterial transparent opacity={0} />
             </mesh>
 
+            {modelAsset ? <LibraryBuilding asset={modelAsset} /> : <>
             {buildingFamily === 'block' && (
               <>
                 {blockVariant === 'square' && (
@@ -3765,12 +3782,14 @@ function IPGrid({
               );
             })}
 
+            </>}
+
             {visibleFlagImageUrl && (
               <WallMountedFlag
                 imageUrl={visibleFlagImageUrl}
                 countryCodeLabel={visibleCountryCodeLabel}
                 width={Math.min(0.34, facadeWidth * 0.34)}
-                height={Math.min(0.24, facadeWidth * 0.24)}
+                height={Math.min(0.24, facadeWidth * 0.24, modelAsset ? modelAsset.height * 0.35 : Infinity)}
                 position={[0, facadeFlagY, facadeFlagZ]}
                 onClick={flatGridTargeting ? undefined : handleBuildingSingleClick}
                 onDoubleClick={flatGridTargeting ? undefined : handleBuildingDoubleClick}
@@ -3779,7 +3798,7 @@ function IPGrid({
               />
             )}
 
-            {windowBands}
+            {!modelAsset && windowBands}
 
             <Text
               position={[0, roofTopY + 0.12, 0]}
@@ -4050,6 +4069,13 @@ function IPGrid({
   return (
     <>
       {createStreetGrid()}
+      {mixedBuildings && (
+        <Html fullscreen style={{ pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', top: 38, left: 12, padding: '4px 8px', borderRadius: 6, background: '#ffffffdd', color: '#334155', fontSize: 11 }}>
+            Mixed building test · {Object.keys(buildingAssets).length}/5 models ready · Model heights show architecture, not service counts
+          </div>
+        </Html>
+      )}
       {cubes}
       {flatGridTargetPlane}
       {remoteAvatarMarkers}

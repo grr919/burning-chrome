@@ -1,9 +1,23 @@
 # Building asset library
 
-Five optimized exterior models for Burning Chrome. These files are available for
-future use; they are **not assigned to grid cells or loaded by the application**.
-No grid design, building-selection rules, navigation, or database changes are
-included in this asset upload.
+Five optimized exterior models for Burning Chrome. An optional mixed-building
+pilot is available at `/?buildingModels=mixed`; omit the parameter for the
+existing service-based scene. The pilot applies to both grids and their street
+views. No database or navigation changes are included.
+
+Each 256-cell level has 48 row houses, 24 brick houses, 12 apartment complexes,
+4 office towers, 1 futuristic tower, and 167 existing procedural structures.
+The deterministic allocation depends on grid/level/address, not metadata load
+order. All existing procedural variants remain eligible in those 167 cells.
+New model proportions are preserved and fitted inside their lots. Their heights
+are architectural, not exposure measurements; this is stated in their hover
+information. Existing structures retain their service-derived heights/styles,
+and ASN-colored lots, flags, address selection and metadata remain available.
+
+Models load only in the pilot and are cached by URL. Instances share geometry,
+materials and textures, but use separate transforms and draw calls. Failed or
+pending loads retain the original structure. This is a modest mixed-scene test,
+not a fully instanced 256-model renderer. Mobile performance needs device testing.
 
 ## Models
 
@@ -65,7 +79,7 @@ properties but do not yet expose independent per-building color controls.
 All five pass the Khronos glTF Validator with zero errors and zero warnings.
 They were loaded and visually compared with their originals in Three.js r162,
 matching the app's existing Three.js dependency, with no extra decoder.
-No 256-building grid benchmark has been performed: integration is deferred.
+The mixed-scene pilot is limited to 89 library models per 256-cell level.
 
 Geometry and source textures were created procedurally for this project;
 no third-party model assets were used.
