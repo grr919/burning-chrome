@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "assetVersion": "1.0.0",
+  "units": "meters",
+  "upAxis": "Y",
+  "frontAxis": "+Z",
+  "purpose": "Building assets only; no grid assignments or rendering integration.",
+  "models": [
+    {
+      "id": "brick-house-01",
+      "name": "Brick House",
+      "category": "house",
+      "url": "/models/buildings/brick-house-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 112292,
+      "sha256": "c3c93b8fa0eb15cd812696f07d0068c8dde0607a916889ff6efedd0bd434ca2e",
+      "triangles": 2274,
+      "primitives": 3,
+      "materials": 3,
+      "bounds": {
+        "min": [
+          -5.76039981842041,
+          0.000007810280357567478,
+          -4.65506769833204
+        ],
+        "max": [
+          5.76039981842041,
+          10.009992418601477,
+          5.300067679258554
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 11.52079963684082,
+        "height": 10.009984608321119,
+        "depth": 9.955135377590594
+      },
+      "origin": "Preserved source origin; use bounds for later placement",
+      "groundOffsetMeters": [
+        0,
+        -0.000007810280357567478,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "row-house-01",
+      "name": "Maple Row",
+      "category": "row-house",
+      "url": "/models/buildings/row-house-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 81372,
+      "sha256": "d726acb5780a32e3e53fb5ef8d9802d1e5ea1998d0748569c009e4cbaf599408",
+      "triangles": 1508,
+      "primitives": 2,
+      "materials": 2,
+      "bounds": {
+        "min": [
+          -2.7049965460743493,
+          -0.0000030272254449847935,
+          -4.989999771118164
+        ],
+        "max": [
+          2.7049965460743493,
+          6.700002836490581,
+          5.659999847412109
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 5.4099930921486985,
+        "height": 6.700005863716026,
+        "depth": 10.649999618530273
+      },
+      "origin": "Preserved source origin; use bounds for later placement",
+      "groundOffsetMeters": [
+        0,
+        0.0000030272254449847935,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "office-tower-01",
+      "name": "Meridian Tower",
+      "category": "office-tower",
+      "url": "/models/buildings/office-tower-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 360132,
+      "sha256": "3e04d8da7b9205364bab17d776ab21b039c255bbcca4a24d449e8b5ef2a55883",
+      "triangles": 7776,
+      "primitives": 1,
+      "materials": 1,
+      "bounds": {
+        "min": [
+          -31.499069185460986,
+          0,
+          -23.500442518387402
+        ],
+        "max": [
+          31.499069185460986,
+          220,
+          29.500442518387402
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 62.99813837092197,
+        "height": 220,
+        "depth": 53.000885036774804
+      },
+      "origin": "Preserved source origin; use bounds for later placement",
+      "groundOffsetMeters": [
+        0,
+        0,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "futuristic-towers-01",
+      "name": "Astra Spires",
+      "category": "landmark",
+      "url": "/models/buildings/futuristic-towers-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 303324,
+      "sha256": "d840dc16864ad81e88878da0f6a4ad66393448843a23cea690b209b2a0fc8b5a",
+      "triangles": 7877,
+      "primitives": 3,
+      "materials": 3,
+      "bounds": {
+        "min": [
+          -71.39787300751667,
+          1.600000023841858,
+          -70.99938352116479
+        ],
+        "max": [
+          72.15787514374713,
+          344,
+          70.99938352116479
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 143.5557481512638,
+        "height": 342.39999997615814,
+        "depth": 141.99876704232958
+      },
+      "origin": "Preserved source origin; use bounds for later placement",
+      "groundOffsetMeters": [
+        0,
+        -1.600000023841858,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "apartment-complex-01",
+      "name": "Courtyard Gardens",
+      "category": "apartments",
+      "url": "/models/buildings/apartment-complex-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 402800,
+      "sha256": "f8926ebe5e53e6b6941b34df722212b332482284cf1665032cc94de36ad20f30",
+      "triangles": 8452,
+      "primitives": 4,
+      "materials": 4,
+      "bounds": {
+        "min": [
+          -53.810001373291016,
+          -0.0005902272794084951,
+          -35.80967987372084
+        ],
+        "max": [
+          53.814998626708984,
+          23.860590837630973,
+          36.949679263369276
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 107.625,
+        "height": 23.861181064910383,
+        "depth": 72.75935913709012
+      },
+      "origin": "Preserved source origin; use bounds for later placement",
+      "groundOffsetMeters": [
+        0,
+        0.0005902272794084951,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    }
+  ]
+}
