@@ -4079,13 +4079,6 @@ function IPGrid({
   return (
     <>
       {createStreetGrid()}
-      {mixedBuildings && (
-        <Html fullscreen style={{ pointerEvents: 'none' }}>
-          <div style={{ position: 'absolute', top: 38, left: 12, padding: '4px 8px', borderRadius: 6, background: '#ffffffdd', color: '#334155', fontSize: 11 }}>
-            Complexity-based buildings · {Object.keys(buildingAssets).length}/{BUILDING_MODEL_MIX.length} models ready · ? = unknown exposure
-          </div>
-        </Html>
-      )}
       {cubes}
       {flatGridTargetPlane}
       {remoteAvatarMarkers}
