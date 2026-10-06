@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "assetVersion": "1.0.0",
+  "assetVersion": "1.1.0",
   "units": "meters",
   "upAxis": "Y",
   "frontAxis": "+Z",
-  "purpose": "Building assets only; no grid assignments or rendering integration.",
+  "purpose": "Optimized building library; mixed-view allocations are defined in buildingModelMix.ts.",
   "models": [
     {
       "id": "brick-house-01",
@@ -211,6 +211,49 @@
       "groundOffsetMeters": [
         0,
         0.0005902272794084951,
+        0
+      ],
+      "textures": "Embedded",
+      "extensionsRequired": [
+        "KHR_mesh_quantization"
+      ],
+      "requiredDecoders": [],
+      "hasInterior": false,
+      "hasCollisionMesh": false
+    },
+    {
+      "id": "heritage-tower-01",
+      "name": "Sterling Exchange",
+      "category": "historic-office-tower",
+      "url": "/models/buildings/heritage-tower-01.glb",
+      "version": "1.0.0",
+      "detail": "optimized-exterior",
+      "bytes": 94012,
+      "sha256": "41a22f9621686bf8d24f6c46f89919e85cb58a97365c78c9095540e804f73707",
+      "triangles": 2280,
+      "primitives": 4,
+      "materials": 4,
+      "bounds": {
+        "min": [
+          -15.600209940391897,
+          0,
+          -12.599497719418158
+        ],
+        "max": [
+          15.600209940391897,
+          76.69999694824219,
+          14.050015818879176
+        ]
+      },
+      "dimensionsMeters": {
+        "width": 31.200419880783794,
+        "height": 76.69999694824219,
+        "depth": 26.649513538297334
+      },
+      "origin": "Main tower centered on X/Z; base at Y=0; entry projects toward +Z",
+      "groundOffsetMeters": [
+        0,
+        0,
         0
       ],
       "textures": "Embedded",

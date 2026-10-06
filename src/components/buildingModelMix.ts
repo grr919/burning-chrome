@@ -5,6 +5,7 @@ export const BUILDING_MODEL_MIX = [
   { id: 'apartment-complex-01', name: 'Courtyard Gardens', count: 12, footprint: 1.5 },
   { id: 'office-tower-01', name: 'Meridian Tower', count: 4, footprint: 0.94 },
   { id: 'futuristic-towers-01', name: 'Astra Spires', count: 1, footprint: 1.52 },
+  { id: 'heritage-tower-01', name: 'Sterling Exchange', count: 8, footprint: 1.05 },
 ] as const;
 
 export type BuildingModelId = typeof BUILDING_MODEL_MIX[number]['id'];
