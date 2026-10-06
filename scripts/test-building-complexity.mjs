@@ -85,11 +85,12 @@ test('main URL enables models, old mixed links work, and procedural comparison r
   assert.equal(isBuildingModelTestEnabled('?buildingModels=procedural'),false);
 });
 
-test('mansion shares the moderate tier with apartments without increasing total capacity', () => {
+test('mansion, apartments and warehouse share the moderate tier without increasing total capacity', () => {
   const cells=Array.from({length:256},(_,i)=>cell(i,{openPortCount:4}));
   const map=allocate('mansion-neighborhood',cells);
-  assert.equal(count(map,'mansion-01'),12);
-  assert.equal(count(map,'apartment-complex-01'),12);
+  assert.equal(count(map,'mansion-01'),8);
+  assert.equal(count(map,'apartment-complex-01'),8);
+  assert.equal(count(map,'warehouse-01'),8);
   assert.equal(map.size,24);
   assert.equal(models.reduce((sum,m)=>sum+m.maxPerLevel,0),193);
   assert.ok(![...allocate('low',cells.map(c=>({...c,complexity:assess({openPortCount:1})}))).values()].includes('mansion-01'));
@@ -107,4 +108,8 @@ test('registered models have matching catalog files and fit the grid lot', async
   const mansion=catalog.models.find(item=>item.id==='mansion-01');
   assert.equal(mansion.primitives,2);
   assert.ok(mansion.bytes<400000);
+  const warehouse=catalog.models.find(item=>item.id==='warehouse-01');
+  assert.equal(warehouse.primitives,2);
+  assert.ok(warehouse.bytes<300000);
+  for(const score of [1,7,12,20]) assert.ok(![...allocate('warehouse-eligibility',[cell(0,{openPortCount:score})]).values()].includes('warehouse-01'));
 });
