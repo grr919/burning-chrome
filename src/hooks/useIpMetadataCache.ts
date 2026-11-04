@@ -68,6 +68,12 @@ const EMPTY_STATE: IpMetadataCacheState = {
   error: null,
 };
 
+// Keep the cache record fields, but omit unused database timestamps.
+const IP_METADATA_COLUMNS = 'ip_address,asn,asn_name,asn_country,rdap_org,rdap_network_name,rdap_country,reverse_dns,open_ports,services,hostnames,flag_country_code,flag_url,source_status';
+const ASN_METADATA_COLUMNS = 'asn,asn_name,country,registry,route,source_status';
+const REVERSE_DNS_COLUMNS = 'ip_address,hostnames,ptr_hostnames,fallback_hostnames,source_status,error';
+const EXPOSURE_COLUMNS = 'ip_address,source_provider,service_count,open_port_count,top_ports,open_ports,service_names,labels,hostnames,warning,error';
+
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
@@ -88,12 +94,12 @@ function normalizeAsn(value?: string | null): string | null {
   return text;
 }
 
-async function fetchRowsByIp<T extends { ip_address: string }>(table: string, ipAddresses: string[]): Promise<T[]> {
+async function fetchRowsByIp<T extends { ip_address: string }>(table: string, columns: string, ipAddresses: string[]): Promise<T[]> {
   if (!supabase || ipAddresses.length === 0) return [];
 
   const rows: T[] = [];
   for (const chunk of chunkValues(ipAddresses, 100)) {
-    const { data, error } = await supabase.from(table).select('*').in('ip_address', chunk);
+    const { data, error } = await supabase.from(table).select(columns).in('ip_address', chunk);
     if (error) throw error;
     rows.push(...((data ?? []) as T[]));
   }
@@ -118,16 +124,16 @@ export function useIpMetadataCache(visibleIpAddresses: string[]): IpMetadataCach
     void (async () => {
       try {
         const [ipRows, reverseRows, exposureRows] = await Promise.all([
-          fetchRowsByIp<CachedIpMetadata>('ip_metadata', ipAddresses),
-          fetchRowsByIp<CachedReverseDns>('reverse_dns_cache', ipAddresses),
-          fetchRowsByIp<CachedExposure>('exposure_cache', ipAddresses),
+          fetchRowsByIp<CachedIpMetadata>('ip_metadata', IP_METADATA_COLUMNS, ipAddresses),
+          fetchRowsByIp<CachedReverseDns>('reverse_dns_cache', REVERSE_DNS_COLUMNS, ipAddresses),
+          fetchRowsByIp<CachedExposure>('exposure_cache', EXPOSURE_COLUMNS, ipAddresses),
         ]);
 
         const asns = uniqueSorted(ipRows.map((row) => normalizeAsn(row.asn)).filter((asn): asn is string => Boolean(asn)));
         const asnRows: CachedAsnMetadata[] = [];
         if (supabase && asns.length > 0) {
           for (const chunk of chunkValues(asns, 100)) {
-            const { data, error } = await supabase.from('asn_metadata').select('*').in('asn', chunk);
+            const { data, error } = await supabase.from('asn_metadata').select(ASN_METADATA_COLUMNS).in('asn', chunk);
             if (error) throw error;
             asnRows.push(...((data ?? []) as CachedAsnMetadata[]));
           }
